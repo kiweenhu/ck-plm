@@ -1,0 +1,61 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: CK-PLM
+  jackson:
+    default-property-inclusion: always
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ck_plm
+    username: your_username
+    password: your_password
+    driver-class-name: org.postgresql.Driver
+#  sql:
+#    init:
+#      mode: never
+#      schema-locations: classpath:schema.sql
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+  activiti:
+    database-schema-update: "false"
+    db-history-used: true
+    async-executor-activate: true
+    history-level: audit
+    process-definition-location-prefix: classpath:processes/
+    check-process-definitions: false
+
+# MyBatis 配置
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    auto-mapping-behavior: full
+
+
+# PLM 业务配置
+plm:
+  database:
+    type: postgresql
+  storage:
+    base-path: ${PLM_STORAGE_BASE:${user.home}/ck-plm/uploads}
+    media:
+      path: ${plm.storage.base-path}/media
+    files:
+      path: ${plm.storage.base-path}/files
+    cad:
+      path: ${plm.storage.base-path}/cad
+    attachments:
+      path: ${plm.storage.base-path}/attachments
+  media:
+    upload-dir: ${plm.storage.media.path}
+
+# Springdoc OpenAPI 配置
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs

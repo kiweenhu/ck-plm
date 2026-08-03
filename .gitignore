@@ -1,0 +1,41 @@
+# ===== Maven =====
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+
+# ===== IDE =====
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.project
+.classpath
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Logs =====
+logs/
+*.log
+
+# ===== Uploads & Generated =====
+uploads/
+generated-images/
+
+# ===== Environment =====
+application-local.yml
+application-dev.yml
+application-prod.yml
+
+# ===== Node (frontend) =====
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# ===== AI/IDE Tools (不进开源仓库) =====
+.codebuddy/
+.playwright-cli/
+.workbuddy/
