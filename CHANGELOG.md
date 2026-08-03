@@ -20,8 +20,9 @@ CK-PLM v0.1.0 是国内首个开源 PLM（产品生命周期管理）产品的**
 
 ### 核心特性
 
-#### 1. 版本控制引擎（Master-Iteration 双层模型）
-- 参考 Windchill 架构，Master（主数据）+ Iteration（版本迭代）双层版本模型
+#### 1. 版本控制引擎（Master-View-Iteration-BOM 四层模型）
+- Master（主数据）→ View（视图）→ Iteration（版本迭代）→ BOM（用量结构）四层架构
+- 优化 Teamcenter/Windchill 的 View 架构：将 View 从 Iteration 的属性提升为独立层级，各视图下的版本演进相互独立
 - 支持修订版本（Revision A.B.C）+ 迭代版本（Iteration 1.2.3）
 - 检出/检入（Checkout/Checkin）协作机制，防止并发冲突
 - 版本规则可配置，支持多种版本号方案
