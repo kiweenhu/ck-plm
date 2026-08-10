@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CK-PLM 极简版本迭代模型架构设计解析</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: #f5f5f5;
+    color: #333;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 0 0 40px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.05);
+  }
+  .hero {
+    text-align: center;
+    padding: 60px 30px 50px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f3460 100%);
+    color: #fff;
+  }
+  .hero h1 {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.5;
+    padding: 0 20px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .hero .subtitle {
+    margin-top: 16px;
+    font-size: 14px;
+    color: #8ecae6;
+    font-weight: 400;
+  }
+  .hero .meta {
+    margin-top: 20px;
+    font-size: 12px;
+    color: #64748b;
+  }
+  .hero .meta span {
+    display: inline-block;
+    padding: 3px 12px;
+    border: 1px solid #2a4a6b;
+    border-radius: 12px;
+    margin: 0 4px;
+  }
+
+  .content {
+    padding: 40px 40px 0;
+  }
+
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 48px 0 20px;
+    text-align: center;
+    position: relative;
+  }
+  h2::before, h2::after {
+    content: '';
+    display: inline-block;
+    width: 40px;
+    height: 2px;
+    background: #0f3460;
+    vertical-align: middle;
+    margin: 0 12px;
+  }
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 32px 0 14px;
+    text-align: center;
+  }
+  h4 {
+    font-size: 15px;
+    font-weight: 600;
+    color: #334155;
+    margin: 24px 0 10px;
+    text-align: center;
+  }
+  p {
+    font-size: 15px;
+    color: #475569;
+    margin-bottom: 16px;
+    text-align: justify;
+  }
+  .lead {
+    font-size: 16px;
+    color: #334155;
+    background: linear-gradient(135deg, #f0f4f8 0%, #e8f0fe 100%);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin: 28px 0;
+    text-align: center;
+    line-height: 1.8;
+  }
+  .lead strong { color: #0f3460; }
+
+  ul, ol {
+    margin: 12px auto 20px;
+    max-width: 600px;
+    padding-left: 20px;
+  }
+  li {
+    font-size: 15px;
+    color: #475569;
+    margin-bottom: 8px;
+    line-height: 1.7;
+  }
+  li strong { color: #0f172a; }
+
+  pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 20px 24px;
+    border-radius: 10px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 20px auto;
+    max-width: 600px;
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+  }
+  pre .keyword { color: #cba6f7; }
+  pre .string { color: #a6e3a1; }
+  pre .comment { color: #6c7086; }
+  pre .type { color: #89b4fa; }
+
+  table {
+    width: 100%;
+    max-width: 600px;
+    margin: 20px auto;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th {
+    background: #0f3460;
+    color: #fff;
+    padding: 10px 14px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  th:first-child { border-radius: 8px 0 0 0; }
+  th:last-child { border-radius: 0 8px 0 0; }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 13.5px;
+    color: #475569;
+    text-align: center;
+  }
+  tr:nth-child(even) td { background: #f8fafc; }
+
+  .callout {
+    background: #fefce8;
+    border: 1px solid #fde047;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 28px auto;
+    max-width: 600px;
+    font-size: 14px;
+  }
+  .callout-title {
+    font-weight: 700;
+    color: #854d0e;
+    margin-bottom: 8px;
+    font-size: 15px;
+    text-align: center;
+  }
+  .callout p { font-size: 14px; margin-bottom: 0; color: #713f12; text-align: justify; }
+
+  .tip {
+    background: #ecfdf5;
+    border-left: 4px solid #10b981;
+    padding: 14px 20px;
+    border-radius: 0 8px 8px 0;
+    margin: 20px auto;
+    max-width: 600px;
+    font-size: 14px;
+    color: #065f46;
+  }
+
+  .diagram-box {
+    background: #0f172a;
+    border-radius: 12px;
+    padding: 28px 20px;
+    margin: 28px auto;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .diagram-box svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .diagram-caption {
+    font-size: 12px;
+    color: #8ecae6;
+    margin-top: 12px;
+    text-align: center;
+  }
+
+  blockquote {
+    border-left: 4px solid #3b82f6;
+    padding: 14px 22px;
+    margin: 20px auto;
+    max-width: 600px;
+    background: #eff6ff;
+    font-size: 14.5px;
+    color: #1e3a5c;
+    border-radius: 0 8px 8px 0;
+  }
+  blockquote p { margin-bottom: 0; }
+
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    margin: 28px auto;
+    max-width: 640px;
+  }
+  .compare-col {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 16px 14px;
+    border-top: 3px solid #ccc;
+    text-align: center;
+  }
+  .compare-col.wc { border-top-color: #ef4444; }
+  .compare-col.tc { border-top-color: #3b82f6; }
+  .compare-col.ck { border-top-color: #10b981; }
+  .compare-col h4 {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .compare-col.wc h4 { color: #ef4444; }
+  .compare-col.tc h4 { color: #3b82f6; }
+  .compare-col.ck h4 { color: #10b981; }
+  .compare-col p {
+    font-size: 12.5px;
+    margin-bottom: 5px;
+    color: #64748b;
+    text-align: center;
+  }
+
+  .scenario-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin: 24px auto;
+    max-width: 600px;
+  }
+  .scenario-card .scenario-tag {
+    display: inline-block;
+    background: #0f3460;
+    color: #fff;
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+  }
+  .scenario-card h3 {
+    margin-top: 0;
+    text-align: left;
+  }
+
+  .code-label {
+    display: inline-block;
+    background: #dbeafe;
+    color: #1e40af;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-family: monospace;
+  }
+
+  .highlight-row td { background: #dcfce7 !important; font-weight: 600; }
+
+  .divider {
+    text-align: center;
+    margin: 40px 0 32px;
+    color: #94a3b8;
+    font-size: 14px;
+  }
+  .divider span {
+    display: inline-block;
+    padding: 0 16px;
+    position: relative;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .divider span::before, .divider span::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 60px;
+    height: 1px;
+    background: #cbd5e1;
+  }
+  .divider span::before { right: 100%; }
+  .divider span::after { left: 100%; }
+
+  .footer {
+    text-align: center;
+    padding: 40px 30px 20px;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 48px;
+  }
+  .footer p { font-size: 13px; color: #94a3b8; text-align: center; }
+  .footer .footer-title { font-size: 14px; font-weight: 600; color: #64748b; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="hero">
+    <h1>CK-PLM 极简版本迭代模型架构设计解析</h1>
+    <p class="subtitle">从 Windchill 和 Teamcenter 的经验出发，用极简的架构管理 Branch、Revision、Iteration、View 和 BOM 行</p>
+    <div class="meta">
+      <span>开源 PLM</span>
+      <span>架构设计</span>
+      <span>落地方案</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <div class="lead">
+      做了多年 Windchill 实施，也研究过 Teamcenter 的对象模型，之后从 0 到 1 建设国产替代 PLM 时，发现一个朴素的道理：<strong>最好的架构不是面面俱到，而是极简，满足行业要求，同时保证未来的扩展。</strong>
+    </div>
+
+    <!-- ===== Section 1: 问题 ===== -->
+    <h2>PLM 版本管理到底在管什么</h2>
+
+    <p>不管用 Windchill 还是 Teamcenter，PLM 的版本管理本质上要回答五个问题：</p>
+
+    <ul>
+      <li><strong>Revision（版本）</strong>——这是第几版？A、B、C，每次正式发布递增</li>
+      <li><strong>Branch（分支）</strong>——走哪条开发线？同一版本下的并行演进路径</li>
+      <li><strong>Iteration（迭代）</strong>——这版改了几次？.1、.2、.3，检出-检入循环中递增</li>
+      <li><strong>View（视图）</strong>——你站在哪个角度看？设计 BOM、制造 BOM、采购 BOM</li>
+      <li><strong>BOM 行</strong>——里面装了什么？子件、数量、单位、行号</li>
+    </ul>
+
+    <p>这五个维度交织在一起，数据量是爆炸性的。同一个部件：3 个版本 x 2 条分支 x 每分支 5 个迭代 x 2 个视图 x 每视图 20 行 BOM = 1200 条记录。模型设计不好，查询和维护都是噩梦。</p>
+
+    <p>Windchill 和 Teamcenter 各自给出了答案，它们用了几十年积累出复杂的对象模型。CK-PLM 作为开源产品，需要一条不同的路。</p>
+
+    <!-- ===== Section 2: 两条老路 ===== -->
+    <h2>两条老路：Windchill 和 Teamcenter 怎么做的</h2>
+
+    <div class="diagram-box">
+      <svg viewBox="0 0 660 420" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0,0 8,3 0,6" fill="#8ecae6"/>
+          </marker>
+        </defs>
+
+        <text x="165" y="24" text-anchor="middle" fill="#f87171" font-size="14" font-weight="bold" font-family="system-ui">Windchill</text>
+        <text x="495" y="24" text-anchor="middle" fill="#60a5fa" font-size="14" font-weight="bold" font-family="system-ui">Teamcenter</text>
+
+        <line x1="330" y1="14" x2="330" y2="400" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>
+
+        <rect x="45" y="40" width="240" height="56" rx="8" fill="#1e2a3a" stroke="#f87171" stroke-width="1"/>
+        <text x="165" y="60" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="bold" font-family="system-ui">WTPartMaster</text>
+        <text x="165" y="78" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="monospace">number, name</text>
+        <text x="165" y="92" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui" font-style="italic">身份层</text>
+
+        <line x1="165" y1="96" x2="165" y2="116" stroke="#8ecae6" stroke-width="1" marker-end="url(#arr1)"/>
+        <text x="175" y="110" fill="#8ecae6" font-size="9">1:N</text>
+
+        <rect x="25" y="118" width="130" height="76" rx="8" fill="#1e2a3a" stroke="#f87171" stroke-width="1"/>
+        <text x="90" y="138" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="bold" font-family="system-ui">WTPart</text>
+        <text x="90" y="154" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="monospace">view=Design</text>
+        <text x="90" y="168" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="monospace">version: A, it: .1 .2 .3</text>
+        <text x="90" y="182" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui" font-style="italic">版本+迭代+视图合并</text>
+
+        <rect x="175" y="118" width="130" height="76" rx="8" fill="#1e2a3a" stroke="#f87171" stroke-width="1"/>
+        <text x="240" y="138" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="bold" font-family="system-ui">WTPart</text>
+        <text x="240" y="154" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="monospace">view=Mfg</text>
+        <text x="240" y="168" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="monospace">version: A, it: .1 .2</text>
+        <text x="240" y="182" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui" font-style="italic">版本+迭代+视图合并</text>
+
+        <text x="165" y="210" text-anchor="middle" fill="#fca5a5" font-size="10" font-family="system-ui">+ WTPartUsageLink (BOM)</text>
+        <text x="165" y="225" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui" font-style="italic">核心3张表 | View在对象实例上 | 迭代按视图独立</text>
+
+        <rect x="375" y="40" width="240" height="56" rx="8" fill="#1e2a3a" stroke="#60a5fa" stroke-width="1"/>
+        <text x="495" y="60" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="bold" font-family="system-ui">Item</text>
+        <text x="495" y="78" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="monospace">number, name</text>
+        <text x="495" y="92" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui" font-style="italic">身份层</text>
+
+        <line x1="495" y1="96" x2="495" y2="116" stroke="#8ecae6" stroke-width="1" marker-end="url(#arr1)"/>
+        <text x="505" y="110" fill="#8ecae6" font-size="9">1:N</text>
+
+        <rect x="375" y="118" width="240" height="56" rx="8" fill="#1e2a3a" stroke="#60a5fa" stroke-width="1"/>
+        <text x="495" y="138" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="bold" font-family="system-ui">ItemRevision</text>
+        <text x="495" y="154" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="monospace">version A, lifecycle</text>
+        <text x="495" y="168" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui" font-style="italic">版本层（无 view、无显式迭代）</text>
+
+        <line x1="495" y1="174" x2="420" y2="194" stroke="#8ecae6" stroke-width="1" marker-end="url(#arr1)"/>
+        <line x1="495" y1="174" x2="570" y2="194" stroke="#8ecae6" stroke-width="1" marker-end="url(#arr1)"/>
+
+        <rect x="355" y="196" width="130" height="48" rx="8" fill="#1e2a3a" stroke="#60a5fa" stroke-width="1"/>
+        <text x="420" y="216" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="bold" font-family="system-ui">BVR (Design)</text>
+        <text x="420" y="232" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="monospace">BOMLines</text>
+
+        <rect x="505" y="196" width="130" height="48" rx="8" fill="#1e2a3a" stroke="#60a5fa" stroke-width="1"/>
+        <text x="570" y="216" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="bold" font-family="system-ui">BVR (Mfg)</text>
+        <text x="570" y="232" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="monospace">BOMLines</text>
+
+        <text x="495" y="265" text-anchor="middle" fill="#93c5fd" font-size="10" font-family="system-ui">+ BOMLine (BOM行)</text>
+        <text x="495" y="280" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui" font-style="italic">核心3+张表 | 模型简洁 | 迭代隐式不可寻址</text>
+
+        <rect x="45" y="310" width="570" height="90" rx="10" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+        <text x="330" y="332" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="bold" font-family="system-ui">两者的核心取舍</text>
+        <text x="60" y="352" fill="#f87171" font-size="11" font-family="system-ui">Windchill: View 在 WTPart 对象上</text>
+        <text x="60" y="368" fill="#94a3b8" font-size="10" font-family="system-ui" font-style="italic">不同视图 = 不同对象 -> 迭代按视图独立 -> 冗余高</text>
+        <text x="350" y="352" fill="#60a5fa" font-size="11" font-family="system-ui">Teamcenter: View 在 BVR 容器上</text>
+        <text x="350" y="368" fill="#94a3b8" font-size="10" font-family="system-ui" font-style="italic">同一对象不同 BOM -> 迭代隐式 -> 架构复杂</text>
+        <text x="330" y="390" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui" font-style="italic">迭代设计是视图设计的选择结果 -- View 放哪层，迭代就在哪层</text>
+      </svg>
+      <p class="diagram-caption">Windchill（对象实例分离）vs Teamcenter（BVR 容器分离）</p>
+    </div>
+
+    <p>两者的差异看似是技术细节，实则是一个根本性的设计选择：<strong>View 放在哪一层。</strong></p>
+
+    <p>Windchill 的核心是两张表：WTPartMaster 管身份（number、name），WTPart 同时管版本号、迭代号和视图。同一 number 不同 View 就是不同的 WTPart 对象，各自有独立的版本链和迭代链。好处是视图级独立性强（Design 可以走 A.4 而 Mfg 停在 A.2），代价是属性冗余高、同步成本大。</p>
+
+    <p>Teamcenter 把 View 放在 BVR 容器上——同一 ItemRevision 下挂多个 BVR，每个 BVR 装一套 BOM 结构。好处是模型简洁、属性共享，代价是迭代隐式不可寻址，做不到视图级独立迭代，版本升级时所有视图同步推进。</p>
+
+    <!-- ===== Section 3: CK-PLM 的路 ===== -->
+    <h2>第三条路：CK-PLM 的三表迭代模型</h2>
+
+    <div class="lead">
+      <strong>基于架构至简的道理，CK-PLM 采用对象实例分离的设计模式——Part、PartIteration、Bom_links。</strong>在此基础上，CK-PLM 还增加了 BOM 获取效率的架构设计，让大规模 BOM 的渲染和查询不再依赖应用层缓存。
+    </div>
+
+    <div class="diagram-box">
+      <svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0,0 8,3 0,6" fill="#8ecae6"/>
+          </marker>
+          <marker id="arr2-dashed" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0,0 8,3 0,6" fill="#94a3b8"/>
+          </marker>
+        </defs>
+
+        <rect x="605" y="125" width="255" height="320" rx="14" fill="#0b1220" stroke="#334155" stroke-width="1" stroke-dasharray="6,4"/>
+        <text x="732" y="150" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">BOM 效率扩展（按需引入）</text>
+
+        <rect x="190" y="15" width="320" height="95" rx="10" fill="#0f1c2e" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="350" y="37" text-anchor="middle" fill="#60a5fa" font-size="14" font-weight="bold" font-family="system-ui">CK_PART · 身份层</text>
+        <line x1="200" y1="45" x2="500" y2="45" stroke="#1e3a5f" stroke-width="0.5"/>
+        <text x="210" y="63" fill="#c4daf5" font-size="11" font-family="monospace">id (PK)</text>
+        <text x="210" y="79" fill="#c4daf5" font-size="11" font-family="monospace">number, name — 跨版本不变的身份</text>
+        <text x="210" y="95" fill="#c4daf5" font-size="11" font-family="monospace">source, part_type, default_unit</text>
+        <text x="210" y="111" fill="#c4daf5" font-size="11" font-family="monospace">created_by, created_at</text>
+
+        <line x1="350" y1="110" x2="350" y2="135" stroke="#8ecae6" stroke-width="1.5" marker-end="url(#arr2)"/>
+        <text x="360" y="128" fill="#8ecae6" font-size="10">1 : N</text>
+
+        <rect x="110" y="140" width="480" height="130" rx="10" fill="#0f1c2e" stroke="#10b981" stroke-width="1.5"/>
+        <text x="350" y="162" text-anchor="middle" fill="#34d399" font-size="14" font-weight="bold" font-family="system-ui">CK_PART_ITERATION · 版本+迭代+视图层</text>
+        <line x1="120" y1="170" x2="580" y2="170" stroke="#0f3322" stroke-width="0.5"/>
+        <text x="130" y="188" fill="#a3e5b5" font-size="11" font-family="monospace">id (PK) — 每行独立ID，可被BOM精确引用</text>
+        <text x="130" y="204" fill="#a3e5b5" font-size="11" font-family="monospace">part_id (FK → CK_PART)</text>
+        <text x="130" y="220" fill="#a3e5b5" font-size="11" font-family="monospace">version (A/B/C) + iteration_number (.1 .2 .3)</text>
+        <text x="130" y="236" fill="#34d399" font-size="11" font-family="monospace">view (design/mfg/null) — 视图属性在此</text>
+        <text x="130" y="252" fill="#a3e5b5" font-size="11" font-family="monospace">is_checked_out, checkout_user, lifecycle_state</text>
+
+        <line x1="350" y1="270" x2="350" y2="295" stroke="#8ecae6" stroke-width="1.5" marker-end="url(#arr2)"/>
+        <text x="360" y="288" fill="#8ecae6" font-size="10">1 : N</text>
+
+        <rect x="80" y="300" width="540" height="110" rx="10" fill="#0f1c2e" stroke="#e64980" stroke-width="1.5"/>
+        <text x="350" y="322" text-anchor="middle" fill="#f783ac" font-size="14" font-weight="bold" font-family="system-ui">CK_BOM_LINKS · BOM 行</text>
+        <line x1="90" y1="330" x2="610" y2="330" stroke="#3b0a30" stroke-width="0.5"/>
+        <text x="100" y="348" fill="#e8a5c5" font-size="11" font-family="monospace">id, parent_iteration_id (FK), child_part_id (FK)</text>
+        <text x="100" y="364" fill="#f783ac" font-size="11" font-family="monospace">child_iteration_id (FK, nullable) + resolved_iteration_id (FK)</text>
+        <text x="100" y="380" fill="#e8a5c5" font-size="11" font-family="monospace">quantity, unit, line_number</text>
+        <text x="350" y="402" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="system-ui">resolved_iteration_id：非精确引用的解析缓存</text>
+
+        <rect x="620" y="140" width="225" height="130" rx="10" fill="#0f1c2e" stroke="#f59e0b" stroke-width="1.5"/>
+        <text x="732" y="162" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="bold" font-family="system-ui">CK_BOM_SNAPSHOT</text>
+        <line x1="630" y1="170" x2="835" y2="170" stroke="#3f2e05" stroke-width="0.5"/>
+        <text x="640" y="188" fill="#fde68a" font-size="10" font-family="monospace">iteration_id (PK, FK)</text>
+        <text x="640" y="204" fill="#fde68a" font-size="10" font-family="monospace">snapshot_json (JSONB)</text>
+        <text x="640" y="220" fill="#fde68a" font-size="10" font-family="monospace">node_count, max_depth</text>
+        <text x="640" y="240" fill="#fbbf24" font-size="10" font-family="monospace">Released BOM O(1) 读取</text>
+
+        <rect x="620" y="300" width="225" height="110" rx="10" fill="#0f1c2e" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="732" y="322" text-anchor="middle" fill="#c4b5fd" font-size="13" font-weight="bold" font-family="system-ui">CK_BOM_DIFF</text>
+        <line x1="630" y1="330" x2="835" y2="330" stroke="#2e1065" stroke-width="0.5"/>
+        <text x="640" y="348" fill="#ddd6fe" font-size="10" font-family="monospace">from_iteration_id (PK, FK)</text>
+        <text x="640" y="364" fill="#ddd6fe" font-size="10" font-family="monospace">to_iteration_id (PK, FK)</text>
+        <text x="640" y="380" fill="#ddd6fe" font-size="10" font-family="monospace">diff_json (JSONB)</text>
+        <text x="640" y="400" fill="#c4b5fd" font-size="10" font-family="monospace">检入时预计算 Diff</text>
+
+        <line x1="620" y1="205" x2="590" y2="205" stroke="#64748b" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr2-dashed)"/>
+        <line x1="620" y1="355" x2="590" y2="240" stroke="#64748b" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr2-dashed)"/>
+      </svg>
+      <p class="diagram-caption">核心三表 + BOM 效率扩展：快照表、解析列、Diff 表按需引入，不改动基础结构</p>
+    </div>
+
+    <!-- ===== Section 4: 五个维度怎么管 ===== -->
+    <div class="divider"><span>五个维度怎么管</span></div>
+
+    <h2>Revision + Branch + Iteration + View：在同一张表里管理</h2>
+
+    <p>CK_PART_ITERATION 表同时管版本号（<code>version</code> 列，A/B/C）、迭代号（<code>iteration_number</code> 列，1/2/3）和视图（<code>view</code> 列，design/mfg）。每行就是一个 (view, version, iteration) 组合，如 Design A.3。这和 Windchill 的 WTPart 完全一样——WTPart 也是同时管 versionIdentifier、iterationIdentifier 和 view。</p>
+
+    <p>Branch（分支）在同一张表里通过 <code>branch_id</code> 列管理——默认值 '0' 表示主线，需要并行研发时从某个版本分叉出新分支。这是按需扩展的设计：基础三表不包含 branch_id，当业务真正需要并行分支时加一列即可，不影响已有结构。</p>
+
+    <p>典型场景：产品版本 A 已发布，标准产品继续迭代（主线 branch_id='0'），同时客户要求定制变型（分叉 branch_id='custom_001'）。两条线各自独立迭代，同一个 (version, iteration, view) 但 branch_id 不同，互不影响。最终可以各自发布，也可以将定制分支的修改合并回主线后递增版本到 B。</p>
+
+    <p>大多数 PLM 实施项目用不到分支——单线版本迭代就够用了。CK-PLM 把 Branch 设计成按需扩展：<strong>不需要时没有 branch_id 列，需要时加一列，默认值 '0' 让所有已有数据自动归入主线，零迁移成本</strong>。</p>
+
+    <table>
+      <tr><th>做法</th><th>身份层</th><th>版本+迭代+视图层</th><th>是否分表</th></tr>
+      <tr><td>Windchill</td><td>WTPartMaster</td><td>WTPart (version+iteration+view)</td><td>身份与版本迭代分表</td></tr>
+      <tr><td>CK-PLM</td><td>CK_PART</td><td>CK_PART_ITERATION (version+iteration+view)</td><td>身份与版本迭代分表</td></tr>
+      <tr><td>Teamcenter</td><td>Item</td><td>ItemRevision (仅version, 无view/显式迭代)</td><td>身份与版本分表，无独立迭代</td></tr>
+    </table>
+
+    <p>CK-PLM 认为迭代是在版本下产生的——version 是父概念，iteration 是子概念。但物理上两者合在一张表里，没有拆成独立的 version 表和 iteration 表。View 也在这张表上，不同 view 就是不同的迭代行。Windchill 也是如此。</p>
+
+    <h2>检出 = INSERT 新迭代行</h2>
+
+    <p>这是整个模型最精妙的部分——<strong>检出不是"锁住"已有行，而是 INSERT 一个新的迭代行作为工作副本。</strong> 原有的已发布版本数据完全不动。</p>
+
+    <p>以编号 <code>100-001</code> 的电机部件为例，当前 Design 视图版本 A 已发布到第 3 次迭代（Design A.3）。</p>
+
+    <div class="scenario-card">
+      <span class="scenario-tag">检出</span>
+      <h3>Step 1：工程师张三检出 Design A.3</h3>
+      <p>INSERT 一个新的迭代行 Design A.4，从 A.3 深拷贝所有属性。原 A.3 行完全不动。</p>
+
+      <pre><span class="comment">-- 检出 = INSERT 新迭代行</span>
+<span class="keyword">INSERT INTO</span> ck_part_iteration (part_id, version, iteration_number, view,
+                            is_checked_out, checkout_user,
+                            checkout_at, lifecycle_state, created_by)
+<span class="keyword">VALUES</span> (
+    (筛选 part number=<span class="string">'100-001'</span> 的 id),
+    <span class="string">'A'</span>,                              <span class="comment">-- 版本不变</span>
+    4,                              <span class="comment">-- A.3 -> A.4</span>
+    <span class="string">'design'</span>,                       <span class="comment">-- 视图不变</span>
+    <span class="keyword">true</span>,                           <span class="comment">-- 标记检出</span>
+    <span class="string">'zhangsan'</span>,
+    <span class="type">CURRENT_TIMESTAMP</span>,
+    <span class="string">'INWORK'</span>,                  <span class="comment">-- 强制 INWORK</span>
+    <span class="string">'zhangsan'</span>
+);</pre>
+
+      <table>
+        <tr><th>视图</th><th>版本</th><th>迭代</th><th>状态</th><th>检出人</th><th>说明</th></tr>
+        <tr><td>design</td><td>A</td><td>.1</td><td>RELEASED</td><td>-</td><td>历史迭代</td></tr>
+        <tr><td>design</td><td>A</td><td>.2</td><td>RELEASED</td><td>-</td><td>历史迭代</td></tr>
+        <tr><td>design</td><td>A</td><td>.3</td><td>RELEASED</td><td>-</td><td>原行不动</td></tr>
+        <tr class="highlight-row"><td>design</td><td>A</td><td>.4</td><td>INWORK</td><td>zhangsan</td><td>工作副本</td></tr>
+      </table>
+    </div>
+
+    <div class="scenario-card">
+      <span class="scenario-tag">检入</span>
+      <h3>Step 2：张三检入 Design A.4</h3>
+      <p>只需两条 UPDATE——关闭检出标记 + 触发状态流转。不需要"合并工作副本"，A.4 本身就是最终数据载体。</p>
+
+      <pre><span class="comment">-- 检入 = 关闭检出标记</span>
+<span class="keyword">UPDATE</span> ck_part_iteration
+<span class="keyword">SET</span> is_checked_out = <span class="keyword">false</span>,
+    checkout_user = <span class="keyword">NULL</span>,
+    checkin_note = <span class="string">'增加紧固件子件，数量4个'</span>,
+    lifecycle_state = <span class="string">'REVIEW'</span>
+<span class="keyword">WHERE</span> id = (Design A.4 的 id);</pre>
+    </div>
+
+    <div class="scenario-card">
+      <span class="scenario-tag">撤销检出</span>
+      <h3>替代路径：撤销检出（DELETE）</h3>
+      <p>改到一半发现问题不想检入了？DELETE 掉 A.4 这行即可。原 A.3 纹丝不动，自动恢复为最新迭代。</p>
+
+      <pre><span class="comment">-- 撤销检出 = DELETE 工作副本</span>
+<span class="keyword">DELETE FROM</span> ck_part_iteration
+<span class="keyword">WHERE</span> id = (Design A.4 的 id);
+<span class="comment">-- ck_bom_links 的 A.4 BOM 行通过 CASCADE 自动清理</span></pre>
+    </div>
+
+    <div class="tip">三种结果的 SQL 语义：检入=UPDATE，撤销检出=DELETE。核心原因是检出时 INSERT 了独立的工作副本行——这就是 Windchill "乐观检出"模型的精髓，CK-PLM 完整继承了这一点。</div>
+
+    <h2>View：在迭代对象上，和 Windchill 一致</h2>
+
+    <p>同一个部件，设计工程师看 EBOM，工艺工程师看 MBOM，采购员看采购 BOM。三套 BOM 结构可以完全不同——它们属于同一个部件的不同视图迭代。</p>
+
+    <p>CK-PLM 把 View 放在 <strong>CK_PART_ITERATION</strong> 上——和 Windchill 的 WTPart 完全一致。同一 number 不同 View 就是不同的迭代行：Design A.3 和 Mfg A.2 是表中两条独立记录，各自有独立的版本链、迭代链和 BOM 结构。</p>
+
+    <div class="diagram-box">
+      <svg viewBox="0 0 620 300" xmlns="http://www.w3.org/2000/svg">
+        <rect x="220" y="10" width="180" height="40" rx="8" fill="#0f1c2e" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="310" y="35" text-anchor="middle" fill="#60a5fa" font-size="12" font-weight="bold" font-family="system-ui">CK_PART: 100-001 电机</text>
+
+        <rect x="20" y="80" width="270" height="200" rx="8" fill="#0f1c2e" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,2" opacity="0.7"/>
+        <text x="155" y="100" text-anchor="middle" fill="#60a5fa" font-size="11" font-weight="bold" font-family="system-ui">Iteration: view='design' A.4</text>
+
+        <rect x="40" y="115" width="100" height="36" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="0.8"/>
+        <text x="90" y="138" text-anchor="middle" fill="#c4daf5" font-size="11" font-family="system-ui">转子 100-002</text>
+
+        <rect x="160" y="115" width="100" height="36" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="0.8"/>
+        <text x="210" y="138" text-anchor="middle" fill="#c4daf5" font-size="11" font-family="system-ui">定子 100-003</text>
+
+        <rect x="40" y="165" width="100" height="36" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="0.8"/>
+        <text x="90" y="188" text-anchor="middle" fill="#c4daf5" font-size="11" font-family="system-ui">端盖 100-004</text>
+
+        <rect x="160" y="165" width="100" height="36" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="0.8"/>
+        <text x="210" y="188" text-anchor="middle" fill="#c4daf5" font-size="11" font-family="system-ui">轴承 100-005</text>
+
+        <text x="155" y="230" text-anchor="middle" fill="#60a5fa" font-size="10" font-family="system-ui">4个子件 - 设计视角</text>
+        <text x="155" y="248" text-anchor="middle" fill="#475569" font-size="9" font-family="system-ui" font-style="italic">独立迭代行 - 独立BOM</text>
+
+        <line x1="310" y1="50" x2="155" y2="80" stroke="#3b82f6" stroke-width="1" stroke-dasharray="3,2"/>
+
+        <rect x="330" y="80" width="270" height="200" rx="8" fill="#0f1c2e" stroke="#10b981" stroke-width="1" stroke-dasharray="4,2" opacity="0.7"/>
+        <text x="465" y="100" text-anchor="middle" fill="#34d399" font-size="11" font-weight="bold" font-family="system-ui">Iteration: view='mfg' A.2</text>
+
+        <rect x="350" y="115" width="100" height="36" rx="6" fill="#0f3322" stroke="#10b981" stroke-width="0.8"/>
+        <text x="400" y="138" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">转子 100-002</text>
+
+        <rect x="470" y="115" width="100" height="36" rx="6" fill="#0f3322" stroke="#10b981" stroke-width="0.8"/>
+        <text x="520" y="138" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">定子 100-003</text>
+
+        <rect x="350" y="165" width="100" height="36" rx="6" fill="#0f3322" stroke="#10b981" stroke-width="0.8"/>
+        <text x="400" y="188" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">端盖 100-004</text>
+
+        <rect x="470" y="165" width="100" height="36" rx="6" fill="#0f3322" stroke="#10b981" stroke-width="0.8"/>
+        <text x="520" y="188" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">轴承 100-005</text>
+
+        <rect x="410" y="215" width="100" height="36" rx="6" fill="#0f3322" stroke="#10b981" stroke-width="0.8"/>
+        <text x="460" y="238" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">螺栓M6 200-010</text>
+
+        <text x="465" y="265" text-anchor="middle" fill="#34d399" font-size="10" font-family="system-ui">5个子件 - 制造视角</text>
+
+        <line x1="310" y1="50" x2="465" y2="80" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2"/>
+      </svg>
+      <p class="diagram-caption">同一部件的 Design A.4（4子件）vs Mfg A.2（5子件）——独立迭代行，各自独立BOM</p>
+    </div>
+
+    <p>查询某个视图的 BOM 时，先定位该视图的迭代，再查 BOM 行：</p>
+
+    <pre><span class="comment">-- 查 EBOM（设计 BOM）</span>
+<span class="keyword">SELECT</span> p.number, p.name, b.quantity, b.unit
+<span class="keyword">FROM</span> ck_bom_links b
+<span class="keyword">JOIN</span> ck_part p <span class="keyword">ON</span> p.id = b.child_part_id
+<span class="keyword">WHERE</span> b.parent_iteration_id = (
+    <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> ck_part_iteration
+    <span class="keyword">WHERE</span> part_id = ? <span class="keyword">AND</span> view = <span class="string">'design'</span>
+    <span class="keyword">ORDER BY</span> version <span class="keyword">DESC</span>, iteration_number <span class="keyword">DESC</span> <span class="keyword">LIMIT</span> 1
+);
+
+<span class="comment">-- 查 MBOM（制造 BOM）</span>
+<span class="keyword">SELECT</span> p.number, p.name, b.quantity, b.unit
+<span class="keyword">FROM</span> ck_bom_links b
+<span class="keyword">JOIN</span> ck_part p <span class="keyword">ON</span> p.id = b.child_part_id
+<span class="keyword">WHERE</span> b.parent_iteration_id = (
+    <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> ck_part_iteration
+    <span class="keyword">WHERE</span> part_id = ? <span class="keyword">AND</span> view = <span class="string">'mfg'</span>
+    <span class="keyword">ORDER BY</span> version <span class="keyword">DESC</span>, iteration_number <span class="keyword">DESC</span> <span class="keyword">LIMIT</span> 1
+);</pre>
+
+    <blockquote>
+      <p>因为 View 在迭代对象上，不同视图天然是不同的迭代行——Design 可以走 A.4 而 Mfg 停在 A.2，两条迭代链完全独立。这和 Windchill 的行为完全一致：Per-view 独立迭代天然支持，BOM 结构天然按视图隔离。</p>
+    </blockquote>
+
+    <h2>BOM 行：挂在迭代上，支持精确引用</h2>
+
+    <p>CK_BOM_LINKS 的 <code>parent_iteration_id</code> 指向某个具体迭代——这意味着 <strong>BOM 结构是和迭代绑定的</strong>，每次检出修改 BOM 都会创建新的 BOM 行集合，不会污染历史版本的 BOM。BOM 行不需要 view 列，因为迭代本身已经携带了 view 信息。</p>
+
+    <p>而 <code>child_iteration_id</code> 的可空设计，实现了精确/非精确引用能力：</p>
+
+    <table>
+      <tr><th>引用方式</th><th>child_iteration_id</th><th>语义</th><th>适用场景</th></tr>
+      <tr><td><strong>精确引用</strong></td><td>NOT NULL</td><td>锁定到子件某个迭代</td><td>已发布基线、合规追溯</td></tr>
+      <tr><td><strong>非精确引用</strong></td><td>NULL</td><td>始终取子件最新版本</td><td>设计阶段、快速迭代</td></tr>
+    </table>
+
+    <pre><span class="comment">-- 精确引用：锁定到子件 Design A.3</span>
+<span class="keyword">INSERT INTO</span> ck_bom_links (parent_iteration_id, child_part_id,
+                          child_iteration_id, quantity)
+<span class="keyword">VALUES</span> (
+    (父件 Design A.4 的 iteration id),
+    (子件 100-005 的 part id),
+    (子件 100-005 的 Design A.3 iteration id),   <span class="comment">-- 精确锁定</span>
+    2.0
+);
+
+<span class="comment">-- 非精确引用：跟随子件最新版本</span>
+<span class="keyword">INSERT INTO</span> ck_bom_links (parent_iteration_id, child_part_id,
+                          child_iteration_id, quantity)
+<span class="keyword">VALUES</span> (
+    (父件 Design A.4 的 iteration id),
+    (子件 100-005 的 part id),
+    <span class="keyword">NULL</span>,                                <span class="comment">-- 跟最新</span>
+    2.0
+);</pre>
+
+    <!-- ===== Section 5: BOM 效率扩展 ===== -->
+    <div class="divider"><span>BOM 效率扩展</span></div>
+
+    <h2>三表之外，按需引入效率机制</h2>
+
+    <p>核心三表解决"对不对"的问题，BOM 渲染效率解决"快不快"的问题。CK-PLM 在不动基础三表的前提下，通过加列和加表提供三个效率扩展点：</p>
+
+    <ul>
+      <li><strong>CK_BOM_LINKS.resolved_iteration_id</strong>：非精确引用（child_iteration_id = NULL）的解析缓存。渲染时直接 JOIN，不再为每行跑"子件最新迭代"子查询。</li>
+      <li><strong>CK_BOM_SNAPSHOT</strong>：RELEASED 迭代检入时预计算整棵 BOM 树的 JSONB 快照。已发布 BOM 的渲染 = 一行读取，零递归。</li>
+      <li><strong>CK_BOM_DIFF</strong>：检入时预计算相邻迭代之间的 BOM 差异（added/removed/changed）。版本对比视图直接读，不再两次全量查树。</li>
+    </ul>
+
+    <p>这三个扩展都是可选的——系统刚上线时只跑核心三表就能工作；数据量变大、BOM 渲染变慢时再加。复杂度按需生长，不会因为未来的性能需求而拖累早期的简洁性。</p>
+
+    <!-- ===== Section 6: 三方对比 ===== -->
+    <h2>三方对比：各自取舍了什么</h2>
+
+    <div class="compare-grid">
+      <div class="compare-col wc">
+        <h4>Windchill</h4>
+        <p>Master + WTPart (Version+Iteration+View)</p>
+        <p>View 在 WTPart 对象上</p>
+        <p>不同 View = 不同对象</p>
+        <p>迭代按视图独立</p>
+        <p>属性冗余高</p>
+        <p><strong>核心 3 张表</strong></p>
+      </div>
+      <div class="compare-col tc">
+        <h4>Teamcenter</h4>
+        <p>Item + Revision + BVR</p>
+        <p>View 在 BVR 容器层</p>
+        <p>不同 View = 不同 BOM</p>
+        <p>迭代隐式不可寻址</p>
+        <p>架构复杂</p>
+        <p><strong>核心 3+ 张表</strong></p>
+      </div>
+      <div class="compare-col ck">
+        <h4>CK-PLM</h4>
+        <p>Part + Iteration (Version+Iteration+View)</p>
+        <p>View 在 Iteration 对象上</p>
+        <p>不同 View = 不同迭代行</p>
+        <p>迭代按视图独立 + 可寻址</p>
+        <p>命名贴业务 + 按需扩展</p>
+        <p><strong>核心 3 张表</strong></p>
+      </div>
+    </div>
+
+    <p>关键认知：<strong>CK-PLM 和 Windchill 的架构基本一致</strong>，都是"身份层 + 版本迭代视图合并层 + BOM行层"三张表，View 都放在迭代对象上。差异仅在命名：</p>
+
+    <table>
+      <tr><th>维度</th><th>Windchill</th><th>CK-PLM</th></tr>
+      <tr><td>身份层</td><td>WTPartMaster</td><td>CK_PART</td></tr>
+      <tr><td>版本+迭代+视图层</td><td>WTPart</td><td>CK_PART_ITERATION</td></tr>
+      <tr><td>BOM 行</td><td>WTPartUsageLink</td><td>CK_BOM_LINKS</td></tr>
+      <tr><td><strong>View 放在哪</strong></td><td><strong>WTPart 对象上</strong></td><td><strong>CK_PART_ITERATION 上</strong>（一致）</td></tr>
+      <tr><td><strong>核心差异</strong></td><td>命名偏技术（Master/WTPart）</td><td><strong>命名贴业务（Part/Iteration/Bom_links）</strong></td></tr>
+    </table>
+
+    <div class="callout">
+      <div class="callout-title">CK-PLM 与 Windchill 的真正差异</div>
+      <p>不是架构差异，是<strong>命名和概念表述差异</strong>。Windchill 的 WTPartMaster、WTPart、WTPartUsageLink 带着浓厚的 PTC 技术风格，对非 Windchill 用户不友好。CK-PLM 用 Part、PartIteration、Bom_links——任何有制造业背景的人一眼就能看懂。架构上完全一致，降低了理解和贡献的门槛。</p>
+    </div>
+
+    <!-- ===== Section 6: 按需生长 ===== -->
+    <h2>复杂度按需生长</h2>
+
+    <p>三张表是起点，不是终点。每个新需求来了，加一个列或加一张表就解决，<strong>不动已有结构</strong>。</p>
+
+    <table>
+      <tr><th>新需求</th><th>怎么加</th><th>影响已有结构吗</th></tr>
+      <tr><td>版本分支（并行研发）</td><td>ck_part_iteration 加 branch_id 列</td><td>否，默认 0</td></tr>
+      <tr><td>视图层级关系</td><td>新建 ck_view_def 表</td><td>否，纯新增</td></tr>
+      <tr><td>替代件关系</td><td>新建 ck_part_alternate 表</td><td>否，纯新增</td></tr>
+      <tr><td>文档关联</td><td>新建 ck_part_doc_link 表</td><td>否，纯新增</td></tr>
+      <tr><td>IBA 软类型属性</td><td>新建 ck_part_attr_value 表</td><td>否，纯新增</td></tr>
+    </table>
+
+    <p>这就是"复杂度按需生长"的核心理念——<strong>三张表能跑就先跑，真有需求再加。</strong> 每个需求只动一个点，不碰其他东西。已部署的系统升级时，只需要 ALTER TABLE ADD COLUMN 或 CREATE TABLE，不需要停机迁移。</p>
+
+    <!-- ===== Summary ===== -->
+    <div class="divider"><span>总结</span></div>
+
+    <div class="lead">
+      <strong>Part、PartIteration、Bom_links。迭代是一等公民，View 在迭代对象上，复杂度按需求生长。</strong>
+    </div>
+
+    <ul>
+      <li><strong>CK_PART</strong> 管"这是哪个部件"——身份层，number 全局唯一，对应 Windchill 的 WTPartMaster</li>
+      <li><strong>CK_PART_ITERATION</strong> 管"哪个视图的哪个版本的哪次迭代"——同时管理 version(A/B/C) + iteration(.1/.2/.3) + view，对应 Windchill 的 WTPart。乐观检出模型，INSERT/UPDATE/DELETE 三态切换</li>
+      <li><strong>CK_BOM_LINKS</strong> 管"某次迭代的 BOM 结构"——挂在迭代级别（迭代本身已携带 view），child_iteration_id 区分精确/非精确引用</li>
+    </ul>
+
+    <p>对开源 PLM 产品来说，简单本身就是竞争力。用户能看懂、能改、能贡献——这比架构完美重要得多。CK-PLM 不照搬 Windchill 或 Teamcenter 的全部概念，而是取与 Windchill 一致的架构 + 更贴切的业务命名——用极简的架构管理 Branch、Revision、Iteration、View 和 BOM 行，让真实需求驱动复杂度的生长。</p>
+
+  </div>
+
+  <div class="footer">
+    <p class="footer-title">CK-PLM - 国内首个开源 PLM 产品</p>
+    <p>Open Core 商业模式 - Spring Boot 2.7 + Vue 3 + PostgreSQL + Activiti 7</p>
+  </div>
+
+</div>
+
+</body>
+</html>

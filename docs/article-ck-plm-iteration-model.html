@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CK-PLM版本管理解析之极简迭代模型架构</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: #f5f5f5;
+    color: #333;
+    line-height: 1.8;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container {
+    max-width: 680px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 40px 30px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.05);
+  }
+  .hero {
+    text-align: center;
+    padding: 50px 0 40px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    margin: -40px -30px 40px;
+    border-radius: 0 0 12px 12px;
+  }
+  .hero h1 {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.4;
+    padding: 0 20px;
+  }
+  .hero .subtitle {
+    margin-top: 12px;
+    font-size: 14px;
+    color: #8ecae6;
+    font-weight: 400;
+  }
+  .hero .tags {
+    margin-top: 16px;
+    font-size: 12px;
+    color: #6b7d8d;
+  }
+  .hero .tags span {
+    display: inline-block;
+    padding: 3px 10px;
+    border: 1px solid #2a4a6b;
+    border-radius: 12px;
+    margin: 0 4px;
+  }
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin: 40px 0 16px;
+    padding-left: 14px;
+    border-left: 4px solid #0f3460;
+    line-height: 1.4;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #16213e;
+    margin: 28px 0 12px;
+  }
+  p {
+    font-size: 15px;
+    color: #444;
+    margin-bottom: 14px;
+    text-align: justify;
+  }
+  .lead {
+    font-size: 15px;
+    color: #555;
+    background: #f0f4f8;
+    border-left: 4px solid #3da9fc;
+    padding: 14px 18px;
+    margin: 20px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  ul, ol {
+    margin: 10px 0 16px 20px;
+  }
+  li {
+    font-size: 15px;
+    color: #444;
+    margin-bottom: 6px;
+    line-height: 1.7;
+  }
+  pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 18px 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 16px 0;
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+  }
+  pre .keyword { color: #cba6f7; }
+  pre .string { color: #a6e3a1; }
+  pre .comment { color: #6c7086; }
+  pre .type { color: #89b4fa; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  th {
+    background: #16213e;
+    color: #fff;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  th:first-child { border-radius: 6px 0 0 0; }
+  th:last-child { border-radius: 0 6px 0 0; }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 13.5px;
+    color: #333;
+  }
+  tr:nth-child(even) td { background: #f9fafb; }
+  .callout {
+    background: #fff9e6;
+    border: 1px solid #ffe066;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 20px 0;
+    font-size: 14px;
+  }
+  .callout-title {
+    font-weight: 700;
+    color: #b8860b;
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+  .callout p { font-size: 14px; margin-bottom: 0; color: #5d4e1a; }
+  .tip {
+    background: #e6f4ea;
+    border-left: 4px solid #34a853;
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 16px 0;
+    font-size: 14px;
+    color: #1e5631;
+  }
+  .scenario-card {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 20px 0;
+  }
+  .scenario-card .scenario-tag {
+    display: inline-block;
+    background: #0f3460;
+    color: #fff;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+  }
+  .scenario-card h3 {
+    margin-top: 0;
+  }
+  .diagram-box {
+    background: #1a1a2e;
+    border-radius: 10px;
+    padding: 24px;
+    margin: 20px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .diagram-box svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .diagram-caption {
+    font-size: 12px;
+    color: #8ecae6;
+    margin-top: 10px;
+    text-align: center;
+  }
+  blockquote {
+    border-left: 4px solid #3da9fc;
+    padding: 10px 18px;
+    margin: 16px 0;
+    background: #f0f6ff;
+    font-size: 14.5px;
+    color: #1a3a5c;
+    border-radius: 0 6px 6px 0;
+  }
+  blockquote p { margin-bottom: 0; }
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .compare-col {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 14px;
+    border-top: 3px solid #ccc;
+  }
+  .compare-col.wc { border-top-color: #e74c3c; }
+  .compare-col.tc { border-top-color: #3498db; }
+  .compare-col.ck { border-top-color: #2ecc71; }
+  .compare-col h4 {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .compare-col.wc h4 { color: #e74c3c; }
+  .compare-col.tc h4 { color: #3498db; }
+  .compare-col.ck h4 { color: #2ecc71; }
+  .compare-col p { font-size: 13px; margin-bottom: 4px; color: #555; }
+  .footer {
+    text-align: center;
+    padding: 30px 0 10px;
+    border-top: 1px solid #eee;
+    margin-top: 40px;
+  }
+  .footer p { font-size: 13px; color: #999; }
+  .highlight-row {
+    background: #e8f5e9 !important;
+  }
+  .code-label {
+    display: inline-block;
+    background: #e3f2fd;
+    color: #1565c0;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-bottom: 6px;
+    font-family: monospace;
+  }
+  .divider {
+    text-align: center;
+    margin: 30px 0;
+    color: #ccc;
+    font-size: 14px;
+  }
+  .divider span {
+    display: inline-block;
+    padding: 0 10px;
+    position: relative;
+  }
+  .divider span::before, .divider span::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 80px;
+    height: 1px;
+    background: #ddd;
+  }
+  .divider span::before { right: 100%; }
+  .divider span::after { left: 100%; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="hero">
+    <h1>CK-PLM版本管理解析<br>之极简迭代模型架构</h1>
+    <p class="subtitle">从 Windchill 和 Teamcenter 的经验出发，用极简的架构管理 Branch、Revision、Iteration、View 和 BOM 行</p>
+    <div class="tags">
+      <span>CK-PLM</span>
+      <span>开源PLM</span>
+      <span>数据模型</span>
+      <span>迭代管理</span>
+    </div>
+  </div>
+
+  <div class="lead">
+    做了多年 Windchill 实施，也研究过 Teamcenter 的对象模型，之后从 0 到 1 建设国产替代 PLM 时，发现一个朴素的道理：<strong>最好的架构不是面面俱到，而是极简，满足行业要求，同时保证未来的扩展。</strong>
+  </div>
+
+  <!-- ===== Section 1 ===== -->
+  <h2>一、问题：PLM 版本管理到底在管什么</h2>
+
+  <p>先说清楚 PLM 的版本管理要管的东西。一个部件从设计到制造到采购，需要管理五个维度的数据：</p>
+
+  <ul>
+    <li><strong>Revision（版本）</strong>：A、B、C……每次正式发布递增，代表一个里程碑式的版本节点</li>
+    <li><strong>Branch（分支）</strong>：同一版本下的并行演进路径——需要同时走多条开发线时，从同一版本分叉</li>
+    <li><strong>Iteration（迭代）</strong>：.1、.2、.3……检出-检入循环中递增，代表工作过程中的中间状态</li>
+    <li><strong>View（视图）</strong>：设计视图（EBOM）、制造视图（MBOM）、采购视图……同一个部件在不同业务视角下的不同 BOM 结构</li>
+    <li><strong>BOM 行</strong>：父件到子件的装配关系，携带数量、行号、单位等行级属性</li>
+  </ul>
+
+  <p>这五个维度组合起来，数据量是爆炸性的——同一个部件可能有 3 个版本 × 2 条分支 × 每分支 5 个迭代 × 2 个视图 × 每视图 20 行 BOM = 1200 条数据记录。如果不做好模型设计，查询和维护都会变成噩梦。</p>
+
+  <p>Windchill 的做法是：WTPartMaster 管身份（number、name），WTPart 同时管版本+迭代+视图（同一 number 不同 view 是不同对象），WTPartUsageLink 管 BOM 行。功能强，但不同视图是不同对象，属性冗余高。</p>
+
+  <p>Teamcenter 的做法是：Item 管身份，ItemRevision 管版本（无独立迭代），BVR 容器管视图级 BOM。模型简洁，但迭代隐式不可寻址，做不到视图级独立迭代。</p>
+
+  <p>CK-PLM 的思路——<strong>Part、PartIteration、Bom_links</strong>。</p>
+
+  <!-- ===== Section 2 ===== -->
+  <h2>二、三张表：CK_PART + CK_PART_ITERATION + CK_BOM_LINKS</h2>
+
+  <p>核心模型就三张表。不多不少，刚好覆盖 Branch、Revision、Iteration、View 和 BOM 行的全部管理需求。</p>
+
+  <div class="diagram-box">
+    <svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0,0 8,3 0,6" fill="#8ecae6"/>
+        </marker>
+        <marker id="arr-dashed" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0,0 8,3 0,6" fill="#94a3b8"/>
+        </marker>
+      </defs>
+
+      <rect x="605" y="125" width="255" height="320" rx="14" fill="#0d1a2d" stroke="#334155" stroke-width="1" stroke-dasharray="6,4"/>
+      <text x="732" y="150" text-anchor="middle" fill="#64748b" font-size="12" font-family="system-ui">BOM 效率扩展（按需引入）</text>
+
+      <rect x="190" y="15" width="320" height="95" rx="10" fill="#1b3a5b" stroke="#3da9fc" stroke-width="1.5"/>
+      <text x="350" y="37" text-anchor="middle" fill="#8ecae6" font-size="14" font-weight="bold" font-family="system-ui">CK_PART · 身份层</text>
+      <line x1="200" y1="45" x2="500" y2="45" stroke="#2a4a6b" stroke-width="0.5"/>
+      <text x="210" y="63" fill="#c4daf5" font-size="11" font-family="monospace">id  (PK)</text>
+      <text x="210" y="79" fill="#c4daf5" font-size="11" font-family="monospace">number, name  ← 跨版本不变的身份</text>
+      <text x="210" y="95" fill="#c4daf5" font-size="11" font-family="monospace">source, part_type, default_unit</text>
+      <text x="210" y="111" fill="#c4daf5" font-size="11" font-family="monospace">created_by, created_at</text>
+
+      <line x1="350" y1="110" x2="350" y2="135" stroke="#8ecae6" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="360" y="128" fill="#8ecae6" font-size="10">1 : N</text>
+
+      <rect x="110" y="140" width="480" height="130" rx="10" fill="#1b4332" stroke="#40c057" stroke-width="1.5"/>
+      <text x="350" y="162" text-anchor="middle" fill="#69db7c" font-size="14" font-weight="bold" font-family="system-ui">CK_PART_ITERATION · 版本+迭代层</text>
+      <line x1="120" y1="170" x2="580" y2="170" stroke="#2a5a3a" stroke-width="0.5"/>
+      <text x="130" y="188" fill="#a3e5b5" font-size="11" font-family="monospace">id  (PK)  ← 每行独立ID，可被BOM精确引用</text>
+      <text x="130" y="204" fill="#a3e5b5" font-size="11" font-family="monospace">part_id  (FK → CK_PART)</text>
+      <text x="130" y="220" fill="#a3e5b5" font-size="11" font-family="monospace">version (A/B/C), iteration_number (.1/.2/.3)</text>
+      <text x="130" y="236" fill="#69db7c" font-size="11" font-family="monospace">view (design/mfg/null)  ← 视图属性在此</text>
+      <text x="130" y="252" fill="#a3e5b5" font-size="11" font-family="monospace">is_checked_out, checkout_user, lifecycle_state</text>
+
+      <line x1="350" y1="270" x2="350" y2="295" stroke="#8ecae6" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="360" y="288" fill="#8ecae6" font-size="10">1 : N</text>
+
+      <rect x="80" y="300" width="540" height="110" rx="10" fill="#4a1942" stroke="#e64980" stroke-width="1.5"/>
+      <text x="350" y="322" text-anchor="middle" fill="#f783ac" font-size="14" font-weight="bold" font-family="system-ui">CK_BOM_LINKS · BOM 行</text>
+      <line x1="90" y1="330" x2="610" y2="330" stroke="#6b1a5a" stroke-width="0.5"/>
+      <text x="100" y="348" fill="#e8a5c5" font-size="11" font-family="monospace">id, parent_iteration_id (FK), child_part_id (FK)</text>
+      <text x="100" y="364" fill="#f783ac" font-size="11" font-family="monospace">child_iteration_id (FK, nullable) + resolved_iteration_id (FK)</text>
+      <text x="100" y="380" fill="#e8a5c5" font-size="11" font-family="monospace">quantity, unit, line_number</text>
+      <text x="350" y="402" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="system-ui">resolved_iteration_id：非精确引用的解析缓存</text>
+
+      <rect x="620" y="140" width="225" height="130" rx="10" fill="#3f2e05" stroke="#f59e0b" stroke-width="1.5"/>
+      <text x="732" y="162" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="bold" font-family="system-ui">CK_BOM_SNAPSHOT</text>
+      <line x1="630" y1="170" x2="835" y2="170" stroke="#5c4006" stroke-width="0.5"/>
+      <text x="640" y="188" fill="#fde68a" font-size="10" font-family="monospace">iteration_id (PK, FK)</text>
+      <text x="640" y="204" fill="#fde68a" font-size="10" font-family="monospace">snapshot_json (JSONB)</text>
+      <text x="640" y="220" fill="#fde68a" font-size="10" font-family="monospace">node_count, max_depth</text>
+      <text x="640" y="240" fill="#fbbf24" font-size="10" font-family="monospace">Released BOM O(1) 读取</text>
+
+      <rect x="620" y="300" width="225" height="110" rx="10" fill="#2e1065" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="732" y="322" text-anchor="middle" fill="#c4b5fd" font-size="13" font-weight="bold" font-family="system-ui">CK_BOM_DIFF</text>
+      <line x1="630" y1="330" x2="835" y2="330" stroke="#4c1d95" stroke-width="0.5"/>
+      <text x="640" y="348" fill="#ddd6fe" font-size="10" font-family="monospace">from_iteration_id (PK, FK)</text>
+      <text x="640" y="364" fill="#ddd6fe" font-size="10" font-family="monospace">to_iteration_id (PK, FK)</text>
+      <text x="640" y="380" fill="#ddd6fe" font-size="10" font-family="monospace">diff_json (JSONB)</text>
+      <text x="640" y="400" fill="#c4b5fd" font-size="10" font-family="monospace">检入时预计算 Diff</text>
+
+      <line x1="620" y1="205" x2="590" y2="205" stroke="#64748b" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr-dashed)"/>
+      <line x1="620" y1="355" x2="590" y2="240" stroke="#64748b" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr-dashed)"/>
+    </svg>
+    <p class="diagram-caption">核心三表 + BOM 效率扩展：快照表、解析列、Diff 表按需引入，不改动基础结构</p>
+  </div>
+
+  <h3>建表 DDL</h3>
+
+  <p><span class="code-label">CK_PART</span> 身份层——管理"这是哪个部件"，对应 Windchill 的 WTPartMaster</p>
+
+  <pre><span class="comment">-- CK_PART：身份层，一个 number 一条记录，跨版本不变</span>
+<span class="keyword">CREATE TABLE</span> ck_part (
+    id               <span class="type">BIGSERIAL</span> <span class="keyword">PRIMARY KEY</span>,
+    number           <span class="type">VARCHAR</span>(50)  <span class="keyword">NOT NULL</span>,        <span class="comment">-- 部件编号，全局唯一</span>
+    name             <span class="type">VARCHAR</span>(200) <span class="keyword">NOT NULL</span>,        <span class="comment">-- 显示名称</span>
+    source           <span class="type">VARCHAR</span>(10),                      <span class="comment">-- MAKE / BUY</span>
+    part_type        <span class="type">VARCHAR</span>(20)  <span class="keyword">DEFAULT</span> <span class="string">'SEPARABLE'</span>,   <span class="comment">-- SEPARABLE/INSEPARABLE/PHANTOM</span>
+    default_unit     <span class="type">VARCHAR</span>(20)  <span class="keyword">DEFAULT</span> <span class="string">'ea'</span>,
+    created_by       <span class="type">VARCHAR</span>(50),
+    created_at       <span class="type">TIMESTAMP</span> <span class="keyword">DEFAULT</span> <span class="type">CURRENT_TIMESTAMP</span>,
+    <span class="keyword">UNIQUE</span>(number)                               <span class="comment">-- 编号全局唯一</span>
+);</pre>
+
+  <p><span class="code-label">CK_PART_ITERATION</span> 版本+迭代层——同时管理 Version(A/B/C)、Iteration(.1/.2/.3) 和 View，对应 Windchill 的 WTPart</p>
+
+  <pre><span class="comment">-- CK_PART_ITERATION：版本+迭代+视图层，检出时 INSERT 新行</span>
+<span class="keyword">CREATE TABLE</span> ck_part_iteration (
+    id                <span class="type">BIGSERIAL</span> <span class="keyword">PRIMARY KEY</span>,
+    part_id           <span class="type">BIGINT</span> <span class="keyword">NOT NULL REFERENCES</span> ck_part(id) <span class="keyword">ON DELETE CASCADE</span>,
+    version           <span class="type">VARCHAR</span>(10) <span class="keyword">NOT NULL DEFAULT</span> <span class="string">'A'</span>,    <span class="comment">-- A/B/C，发布时递增</span>
+    iteration_number  <span class="type">INTEGER</span> <span class="keyword">NOT NULL DEFAULT</span> 1,          <span class="comment">-- 1, 2, 3...（显示为 .1 .2 .3）</span>
+    view              <span class="type">VARCHAR</span>(30),                        <span class="comment">-- 视图：design/mfg/null（与WTPart一致）</span>
+    is_checked_out    <span class="type">BOOLEAN</span> <span class="keyword">NOT NULL DEFAULT</span> <span class="keyword">false</span>,
+    checkout_user     <span class="type">VARCHAR</span>(50),                      <span class="comment">-- 检出人</span>
+    checkout_at       <span class="type">TIMESTAMP</span>,                        <span class="comment">-- 检出时间</span>
+    checkin_note      <span class="type">TEXT</span>,                             <span class="comment">-- 检入备注</span>
+    lifecycle_state   <span class="type">VARCHAR</span>(30) <span class="keyword">DEFAULT</span> <span class="string">'INWORK'</span>,    <span class="comment">-- 迭代级状态</span>
+    created_by        <span class="type">VARCHAR</span>(50),
+    created_at        <span class="type">TIMESTAMP</span> <span class="keyword">DEFAULT</span> <span class="type">CURRENT_TIMESTAMP</span>,
+    <span class="keyword">UNIQUE</span>(part_id, view, version, iteration_number)
+);</pre>
+
+  <p><span class="code-label">CK_BOM_LINKS</span> BOM 行——管理"某次迭代的 BOM 结构"</p>
+
+  <pre><span class="comment">-- CK_BOM_LINKS：BOM 行，挂在迭代级别上（迭代本身已携带view）</span>
+<span class="keyword">CREATE TABLE</span> ck_bom_links (
+    id                    <span class="type">BIGSERIAL</span> <span class="keyword">PRIMARY KEY</span>,
+    parent_iteration_id   <span class="type">BIGINT</span> <span class="keyword">NOT NULL REFERENCES</span> ck_part_iteration(id),
+    child_part_id         <span class="type">BIGINT</span> <span class="keyword">NOT NULL REFERENCES</span> ck_part(id),  <span class="comment">-- 子件：身份级</span>
+    child_iteration_id    <span class="type">BIGINT</span> <span class="keyword">REFERENCES</span> ck_part_iteration(id),  <span class="comment">-- 精确引用：null=跟最新</span>
+    resolved_iteration_id <span class="type">BIGINT</span> <span class="keyword">REFERENCES</span> ck_part_iteration(id),  <span class="comment">-- 非精确引用解析缓存</span>
+    quantity              <span class="type">NUMERIC</span>(18,6) <span class="keyword">NOT NULL DEFAULT</span> 1,
+    unit                  <span class="type">VARCHAR</span>(20),                          <span class="comment">-- 用量单位</span>
+    line_number           <span class="type">INTEGER</span>                               <span class="comment">-- 行号</span>
+);</pre>
+
+  <p><span class="code-label">CK_BOM_SNAPSHOT</span> Released BOM 快照——已发布 BOM 的整树物化</p>
+
+  <pre><span class="comment">-- CK_BOM_SNAPSHOT：RELEASED 迭代检入时预计算，O(1) 读取整棵 BOM 树</span>
+<span class="keyword">CREATE TABLE</span> ck_bom_snapshot (
+    iteration_id   <span class="type">BIGINT</span> <span class="keyword">PRIMARY KEY REFERENCES</span> ck_part_iteration(id),
+    snapshot_json  <span class="type">JSONB</span> <span class="keyword">NOT NULL</span>,           <span class="comment">-- 完整 BOM 树（含所有层级）</span>
+    node_count     <span class="type">INTEGER</span> <span class="keyword">NOT NULL</span>,         <span class="comment">-- 节点总数</span>
+    max_depth      <span class="type">INTEGER</span> <span class="keyword">NOT NULL</span>,         <span class="comment">-- 最大层级</span>
+    computed_at    <span class="type">TIMESTAMP</span> <span class="keyword">DEFAULT</span> <span class="type">CURRENT_TIMESTAMP</span>
+);</pre>
+
+  <p><span class="code-label">CK_BOM_DIFF</span> BOM Diff 预计算——检入时算好，对比时直接读</p>
+
+  <pre><span class="comment">-- CK_BOM_DIFF：任意两个迭代之间的新增/删除/变更行，检入时预计算</span>
+<span class="keyword">CREATE TABLE</span> ck_bom_diff (
+    from_iteration_id  <span class="type">BIGINT</span> <span class="keyword">REFERENCES</span> ck_part_iteration(id),
+    to_iteration_id    <span class="type">BIGINT</span> <span class="keyword">REFERENCES</span> ck_part_iteration(id),
+    diff_json          <span class="type">JSONB</span> <span class="keyword">NOT NULL</span>,       <span class="comment">-- {added:[], removed:[], changed:[]}</span>
+    <span class="keyword">PRIMARY KEY</span> (from_iteration_id, to_iteration_id)
+);</pre>
+
+  <div class="callout">
+    <div class="callout-title">BOM 效率扩展：按需引入，不改动基础结构</div>
+    <p>核心三表解决的是"对不对"的问题，BOM 效率扩展解决的是"快不快"的问题。<code>resolved_iteration_id</code> 消灭非精确引用的子查询；<code>CK_BOM_SNAPSHOT</code> 让已发布 BOM 零递归读取；<code>CK_BOM_DIFF</code> 让版本对比不再两次全量查树。三者都是加列或加表实现，不破坏原有 CK_PART / CK_PART_ITERATION / CK_BOM_LINKS 结构，符合"复杂度按需生长"的原则。</p>
+  </div>
+
+  <!-- ===== Section 3 ===== -->
+  <div class="divider"><span>场景实战</span></div>
+
+  <h2>三、场景一：检出 → 修改 → 检入</h2>
+
+  <p>这是 PLM 最核心的操作。以一个编号为 <code>100-001</code> 的电机部件为例，当前 Design 视图版本 A 已发布到第 3 次迭代（Design A.3）。</p>
+
+  <div class="scenario-card">
+    <span class="scenario-tag">检出</span>
+    <h3>Step 1：工程师张三检出 Design A.3</h3>
+    <p>检出不是"锁住"已有行，而是 <strong>INSERT 一个新的迭代行 Design A.4</strong>，从 A.3 深拷贝所有属性。原 A.3 行完全不动。</p>
+
+    <pre><span class="comment">-- 检出 = INSERT 新迭代行，拷贝 A.3 的属性</span>
+<span class="keyword">INSERT INTO</span> ck_part_iteration (part_id, version, iteration_number, view,
+                            is_checked_out, checkout_user, checkout_at,
+                            lifecycle_state, created_by)
+<span class="keyword">VALUES</span> (
+    (筛选 part number=<span class="string">'100-001'</span> 的 id),
+    <span class="string">'A'</span>,                                  <span class="comment">-- 版本号不变，仍在 A 版本下</span>
+    4,                                    <span class="comment">-- A.3 的 iteration_number=3，新迭代=4</span>
+    <span class="string">'design'</span>,                              <span class="comment">-- 视图不变</span>
+    <span class="keyword">true</span>,                                 <span class="comment">-- 标记为检出状态</span>
+    <span class="string">'zhangsan'</span>,
+    <span class="type">CURRENT_TIMESTAMP</span>,
+    <span class="string">'INWORK'</span>,                            <span class="comment">-- 强制重置为 INWORK</span>
+    <span class="string">'zhangsan'</span>
+);</pre>
+
+    <p>此时数据库中的迭代链：</p>
+    <table>
+      <tr><th>视图</th><th>版本</th><th>迭代</th><th>状态</th><th>检出人</th><th>说明</th></tr>
+      <tr><td>design</td><td>A</td><td>.1</td><td>RELEASED</td><td>—</td><td>历史迭代</td></tr>
+      <tr><td>design</td><td>A</td><td>.2</td><td>RELEASED</td><td>—</td><td>历史迭代</td></tr>
+      <tr><td>design</td><td>A</td><td>.3</td><td>RELEASED</td><td>—</td><td>上一个发布版本（原行不动）</td></tr>
+      <tr class="highlight-row"><td><strong>design</strong></td><td><strong>A</strong></td><td><strong>.4</strong></td><td><strong>INWORK</strong></td><td><strong>zhangsan</strong></td><td><strong>工作副本（检出中）</strong></td></tr>
+    </table>
+
+    <p>版本升级（A→B）发生在正式发布时：当 A.4 通过审批后，可以发布为 A.4（RELEASED），或者升版本为 B.1。版本号在 CK_PART_ITERATION 表的 <code>version</code> 列上管理，不是独立的一张表。</p>
+  </div>
+
+  <div class="scenario-card">
+    <span class="scenario-tag">修改</span>
+    <h3>Step 2：张三在 A.4 上修改 BOM</h3>
+    <p>张三在 A.4 的迭代上直接修改 BOM 行——新增子件、修改数量、删除行。所有操作直接写入 A.4 关联的 <code>ck_bom_links</code> 行，不需要任何中间表。</p>
+
+    <pre><span class="comment">-- 张三在 Design A.4 上新增一个子件</span>
+<span class="keyword">INSERT INTO</span> ck_bom_links (parent_iteration_id, child_part_id, quantity, unit)
+<span class="keyword">VALUES</span> (
+    (筛选 Design A.4 的 iteration id),
+    (筛选子件 number=<span class="string">'200-003'</span> 的 part id),
+    4.0,
+    <span class="string">'ea'</span>
+);
+
+<span class="comment">-- 修改某个子件的数量</span>
+<span class="keyword">UPDATE</span> ck_bom_links <span class="keyword">SET</span> quantity = 6.0
+<span class="keyword">WHERE</span> parent_iteration_id = (Design A.4 id) <span class="keyword">AND</span> child_part_id = (某子件 id);</pre>
+  </div>
+
+  <div class="scenario-card">
+    <span class="scenario-tag">检入</span>
+    <h3>Step 3：张三检入 Design A.4</h3>
+    <p>检入只需 <strong>两条 UPDATE 语句</strong>——关闭检出标记 + 触发状态流转。不需要"合并工作副本"——A.4 本身就是最终数据载体。</p>
+
+    <pre><span class="comment">-- 检入 = 关闭检出标记 + 记录检入备注</span>
+<span class="keyword">UPDATE</span> ck_part_iteration
+<span class="keyword">SET</span> is_checked_out = <span class="keyword">false</span>,
+    checkout_user = <span class="keyword">NULL</span>,
+    checkin_note = <span class="string">'增加紧固件子件 200-003，数量4个'</span>,
+    lifecycle_state = <span class="string">'REVIEW'</span>            <span class="comment">-- 进入评审状态</span>
+<span class="keyword">WHERE</span> id = (Design A.4 的 iteration id);</pre>
+  </div>
+
+  <div class="scenario-card">
+    <span class="scenario-tag">撤销检出</span>
+    <h3>替代路径：撤销检出（DELETE）</h3>
+    <p>如果张三改到一半发现问题不想检入了，撤销检出就是 <strong>DELETE 掉 A.4 这行</strong>。原 A.3 纹丝不动，自动恢复为最新迭代。</p>
+
+    <pre><span class="comment">-- 撤销检出 = DELETE 工作副本</span>
+<span class="keyword">DELETE FROM</span> ck_part_iteration
+<span class="keyword">WHERE</span> id = (Design A.4 的 iteration id);
+<span class="comment">-- ck_bom_links 中的 A.4 BOM 行通过 ON DELETE CASCADE 自动清理</span></pre>
+
+    <div class="tip">三种结果路径的 SQL 语义：检入=UPDATE，撤销检出=DELETE，取消检出=DELETE。核心原因是检出时 INSERT 了独立的工作副本行——这是"乐观检出"模型的精髓。</div>
+  </div>
+
+  <!-- ===== Section 4 ===== -->
+  <h2>四、场景二：EBOM 与 MBOM 的多视图管理</h2>
+
+  <p>同一个部件，设计工程师看到的是设计 BOM（EBOM），工艺工程师看到的是制造 BOM（MBOM），采购员看到的是采购 BOM。这三套 BOM 结构可以完全不同——它们属于同一个部件的不同视图迭代。</p>
+
+  <p>CK-PLM 的做法和 Windchill 完全一致：<strong>View 放在 CK_PART_ITERATION 上</strong>。同一 number 不同 View 就是不同的迭代行——Design A.3 和 Mfg A.2 是 ck_part_iteration 表中的两条独立记录，各自有独立的版本链和 BOM 结构。</p>
+
+  <div class="diagram-box">
+    <svg viewBox="0 0 620 300" xmlns="http://www.w3.org/2000/svg">
+      <!-- Parent Master -->
+      <rect x="220" y="10" width="180" height="40" rx="8" fill="#1b3a5b" stroke="#3da9fc" stroke-width="1.5"/>
+      <text x="310" y="35" text-anchor="middle" fill="#8ecae6" font-size="12" font-weight="bold" font-family="system-ui">CK_PART: 100-001 电机</text>
+
+      <!-- Design iteration -->
+      <rect x="20" y="80" width="270" height="200" rx="8" fill="#1b3a5b" stroke="#3da9fc" stroke-width="1" stroke-dasharray="4,2" opacity="0.7"/>
+      <text x="155" y="100" text-anchor="middle" fill="#5b9bd5" font-size="11" font-weight="bold" font-family="system-ui">Iteration: view='design' A.4</text>
+
+      <rect x="40" y="115" width="100" height="36" rx="6" fill="#2a4a6b" stroke="#3da9fc" stroke-width="0.8"/>
+      <text x="90" y="138" text-anchor="middle" fill="#c4daf5" font-size="11" font-family="system-ui">转子 100-002</text>
+
+      <rect x="160" y="115" width="100" height="36" rx="6" fill="#2a4a6b" stroke="#3da9fc" stroke-width="0.8"/>
+      <text x="210" y="138" text-anchor="middle" fill="#c4daf5" font-size="11" font-family="system-ui">定子 100-003</text>
+
+      <rect x="40" y="165" width="100" height="36" rx="6" fill="#2a4a6b" stroke="#3da9fc" stroke-width="0.8"/>
+      <text x="90" y="188" text-anchor="middle" fill="#c4daf5" font-size="11" font-family="system-ui">端盖 100-004</text>
+
+      <rect x="160" y="165" width="100" height="36" rx="6" fill="#2a4a6b" stroke="#3da9fc" stroke-width="0.8"/>
+      <text x="210" y="188" text-anchor="middle" fill="#c4daf5" font-size="11" font-family="system-ui">轴承 100-005</text>
+
+      <text x="155" y="230" text-anchor="middle" fill="#5b9bd5" font-size="10" font-family="system-ui">4个子件 · 设计视角</text>
+      <text x="155" y="248" text-anchor="middle" fill="#4a6a8b" font-size="9" font-family="system-ui" font-style="italic">独立的迭代行 · 独立的BOM</text>
+
+      <line x1="310" y1="50" x2="155" y2="80" stroke="#3da9fc" stroke-width="1" stroke-dasharray="3,2"/>
+
+      <!-- Mfg iteration -->
+      <rect x="330" y="80" width="270" height="200" rx="8" fill="#1b4332" stroke="#40c057" stroke-width="1" stroke-dasharray="4,2" opacity="0.7"/>
+      <text x="465" y="100" text-anchor="middle" fill="#40c057" font-size="11" font-weight="bold" font-family="system-ui">Iteration: view='mfg' A.2</text>
+
+      <rect x="350" y="115" width="100" height="36" rx="6" fill="#2a5a3a" stroke="#40c057" stroke-width="0.8"/>
+      <text x="400" y="138" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">转子 100-002</text>
+
+      <rect x="470" y="115" width="100" height="36" rx="6" fill="#2a5a3a" stroke="#40c057" stroke-width="0.8"/>
+      <text x="520" y="138" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">定子 100-003</text>
+
+      <rect x="350" y="165" width="100" height="36" rx="6" fill="#2a5a3a" stroke="#40c057" stroke-width="0.8"/>
+      <text x="400" y="188" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">端盖 100-004</text>
+
+      <rect x="470" y="165" width="100" height="36" rx="6" fill="#2a5a3a" stroke="#40c057" stroke-width="0.8"/>
+      <text x="520" y="188" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">轴承 100-005</text>
+
+      <rect x="410" y="215" width="100" height="36" rx="6" fill="#2a5a3a" stroke="#40c057" stroke-width="0.8"/>
+      <text x="460" y="238" text-anchor="middle" fill="#a3e5b5" font-size="11" font-family="system-ui">螺栓M6 200-010</text>
+
+      <text x="465" y="265" text-anchor="middle" fill="#40c057" font-size="10" font-family="system-ui">5个子件 · 制造视角</text>
+
+      <line x1="310" y1="50" x2="465" y2="80" stroke="#40c057" stroke-width="1" stroke-dasharray="3,2"/>
+    </svg>
+    <p class="diagram-caption">同一个部件的 Design A.4（4子件）vs Mfg A.2（5子件，多了紧固件）——独立的迭代行</p>
+  </div>
+
+  <p>查询某个视图的 BOM 时，先找到该视图的最新迭代，再查 BOM 行：</p>
+
+  <pre><span class="comment">-- 查 EBOM（设计 BOM）：先找 Design 视图的最新迭代</span>
+<span class="keyword">SELECT</span> p.number, p.name, b.quantity, b.unit
+<span class="keyword">FROM</span> ck_bom_links b
+<span class="keyword">JOIN</span> ck_part p <span class="keyword">ON</span> p.id = b.child_part_id
+<span class="keyword">WHERE</span> b.parent_iteration_id = (
+    <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> ck_part_iteration
+    <span class="keyword">WHERE</span> part_id = (100-001 的 part id)
+      <span class="keyword">AND</span> view = <span class="string">'design'</span>
+    <span class="keyword">ORDER BY</span> version <span class="keyword">DESC</span>, iteration_number <span class="keyword">DESC</span>
+    <span class="keyword">LIMIT</span> 1
+);
+
+<span class="comment">-- 查 MBOM（制造 BOM）：找 Mfg 视图的最新迭代</span>
+<span class="keyword">SELECT</span> p.number, p.name, b.quantity, b.unit
+<span class="keyword">FROM</span> ck_bom_links b
+<span class="keyword">JOIN</span> ck_part p <span class="keyword">ON</span> p.id = b.child_part_id
+<span class="keyword">WHERE</span> b.parent_iteration_id = (
+    <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> ck_part_iteration
+    <span class="keyword">WHERE</span> part_id = (100-001 的 part id)
+      <span class="keyword">AND</span> view = <span class="string">'mfg'</span>
+    <span class="keyword">ORDER BY</span> version <span class="keyword">DESC</span>, iteration_number <span class="keyword">DESC</span>
+    <span class="keyword">LIMIT</span> 1
+);</pre>
+
+  <blockquote>
+    <p>因为 View 在迭代对象上，不同视图天然是不同的迭代行——Design 可以走 A.4 而 Mfg 停在 A.2，两条迭代链完全独立。这和 Windchill 的行为完全一致，BOM 结构天然按视图隔离，无需额外过滤。</p>
+  </blockquote>
+
+  <!-- ===== Section 5 ===== -->
+  <h2>五、场景三：BOM 精确引用与版本追溯</h2>
+
+  <p>这是迭代作为"一等公民"的核心价值——<strong>每个迭代都有独立 ID，可以被 BOM 行精确引用</strong>。</p>
+
+  <p>想象一个场景：产品 A 的 BOM 引用了部件 100-005（轴承）。有两种引用方式：</p>
+
+  <h3>精确引用（Exact Reference）</h3>
+  <p><code>child_iteration_id</code> 不为空，指向 100-005 的某个具体迭代（如 Design A.3）。意味着"我就用 A.3 这个版本，即使后面 100-005 升到了 A.4、A.5，我的 BOM 不变"。</p>
+
+  <pre><span class="comment">-- 精确引用：BOM 行锁定到子件的 Design A.3 迭代</span>
+<span class="keyword">INSERT INTO</span> ck_bom_links (parent_iteration_id, child_part_id, child_iteration_id,
+                          quantity, unit)
+<span class="keyword">VALUES</span> (
+    (父件 Design A.4 的 iteration id),
+    (子件 100-005 的 part id),
+    (子件 100-005 的 Design A.3 iteration id),   <span class="comment">-- 精确锁定</span>
+    2.0, <span class="string">'ea'</span>
+);</pre>
+
+  <h3>非精确引用（Non-Exact Reference）</h3>
+  <p><code>child_iteration_id</code> 为空，只指向 <code>child_part_id</code>（身份级）。意味着"始终用 100-005 的最新版本"。子件升级到 A.4 后，BOM 自动跟随。</p>
+
+  <pre><span class="comment">-- 非精确引用：BOM 行跟随子件最新版本</span>
+<span class="keyword">INSERT INTO</span> ck_bom_links (parent_iteration_id, child_part_id, child_iteration_id,
+                          quantity, unit)
+<span class="keyword">VALUES</span> (
+    (父件 Design A.4 的 iteration id),
+    (子件 100-005 的 part id),
+    <span class="keyword">NULL</span>,                                <span class="comment">-- 非精确：跟最新</span>
+    2.0, <span class="string">'ea'</span>
+);</pre>
+
+  <table>
+    <tr><th>引用方式</th><th>child_iteration_id</th><th>语义</th><th>适用场景</th></tr>
+    <tr><td><strong>精确引用</strong></td><td>NOT NULL</td><td>锁定到子件某个迭代版本</td><td>已发布基线 BOM、合规追溯</td></tr>
+    <tr><td><strong>非精确引用</strong></td><td>NULL</td><td>始终取子件最新版本</td><td>设计阶段 BOM、快速迭代</td></tr>
+  </table>
+
+  <p>查询 BOM 时自动展开：</p>
+
+  <pre><span class="comment">-- 展开 BOM，自动解析精确/非精确引用</span>
+<span class="keyword">SELECT</span>
+    child_p.number,
+    child_i.version,
+    <span class="keyword">CASE</span>
+        <span class="keyword">WHEN</span> b.child_iteration_id <span class="keyword">IS NOT NULL</span> <span class="keyword">THEN</span>
+            child_i.iteration_number                  <span class="comment">-- 精确引用：取锁定的迭代号</span>
+        <span class="keyword">ELSE</span>
+            latest_i.iteration_number                  <span class="comment">-- 非精确引用：取最新迭代号</span>
+    <span class="keyword">END</span> <span class="keyword">AS</span> iteration,
+    b.quantity,
+    b.unit
+<span class="keyword">FROM</span> ck_bom_links b
+<span class="keyword">JOIN</span> ck_part child_p <span class="keyword">ON</span> child_p.id = b.child_part_id
+<span class="keyword">LEFT JOIN</span> ck_part_iteration child_i
+    <span class="keyword">ON</span> child_i.id = b.child_iteration_id                    <span class="comment">-- 精确引用的 JOIN</span>
+<span class="keyword">LEFT JOIN</span> ck_part_iteration latest_i
+    <span class="keyword">ON</span> latest_i.part_id = child_p.id                       <span class="comment">-- 非精确引用：取该 part 的最新迭代</span>
+    <span class="keyword">AND</span> latest_i.id = (
+        <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> ck_part_iteration
+        <span class="keyword">WHERE</span> part_id = child_p.id
+        <span class="keyword">ORDER BY</span> version <span class="keyword">DESC</span>, iteration_number <span class="keyword">DESC</span> <span class="keyword">LIMIT</span> 1
+    )
+<span class="keyword">WHERE</span> b.parent_iteration_id = ?;</pre>
+
+  <!-- ===== Section 6 ===== -->
+  <h2>六、场景四：并行设计与版本回退</h2>
+
+  <h3>并行设计（含跨视图并行）</h3>
+  <p>因为 View 在迭代对象上，不同视图的迭代天然隔离。张三可以检出 Design A.4 改设计 BOM，同时李四检出 Mfg A.3 改制造 BOM——两人操作不同的迭代行，互不影响：</p>
+
+  <table>
+    <tr><th>工程师</th><th>操作</th><th>数据库变化</th></tr>
+    <tr><td>张三</td><td>检出 100-001 的 Design A.3</td><td>INSERT 100-001 的 Design A.4 迭代行</td></tr>
+    <tr><td>李四</td><td>检出 100-001 的 Mfg A.2</td><td>INSERT 100-001 的 Mfg A.3 迭代行</td></tr>
+    <tr><td>张三</td><td>修改 Design A.4 的 BOM</td><td>INSERT/UPDATE ck_bom_links (parent=Design A.4)</td></tr>
+    <tr><td>李四</td><td>修改 Mfg A.3 的 BOM</td><td>INSERT/UPDATE ck_bom_links (parent=Mfg A.3)</td></tr>
+    <tr><td>张三</td><td>检入 Design A.4</td><td>UPDATE Design A.4 关闭检出标记</td></tr>
+    <tr><td>李四</td><td>撤销检出 Mfg A.3</td><td>DELETE Mfg A.3 迭代行（含级联 BOM）</td></tr>
+  </table>
+
+  <p>同一部件不同视图的并行操作完全隔离——不同的 iteration_id，不会有任何锁竞争。这是 View 放在迭代对象上的天然优势：跨视图并行和同视图串行一样简单。</p>
+
+  <h3>版本回退与对比</h3>
+  <p>因为每个迭代都有独立 ID 和记录，可以轻松对比任意两个迭代的 BOM 差异，也可以"回退"到某个历史迭代的 BOM 结构：</p>
+
+  <pre><span class="comment">-- 对比 Design A.3 和 Design A.4 的 BOM 差异</span>
+<span class="keyword">SELECT</span>
+    <span class="keyword">CASE</span>
+        <span class="keyword">WHEN</span> old.child_part_id <span class="keyword">IS NULL</span> <span class="keyword">THEN</span> <span class="string">'新增'</span>
+        <span class="keyword">WHEN</span> new.child_part_id <span class="keyword">IS NULL</span> <span class="keyword">THEN</span> <span class="string">'删除'</span>
+        <span class="keyword">WHEN</span> old.quantity != new.quantity <span class="keyword">THEN</span> <span class="string">'数量变更'</span>
+        <span class="keyword">ELSE</span> <span class="string">'未变'</span>
+    <span class="keyword">END</span> <span class="keyword">AS</span> action,
+    <span class="keyword">COALESCE</span>(new_p.number, old_p.number) <span class="keyword">AS</span> part_number,
+    old.quantity <span class="keyword">AS</span> old_qty,
+    new.quantity <span class="keyword">AS</span> new_qty
+<span class="keyword">FROM</span> ck_bom_links old
+<span class="keyword">FULL OUTER JOIN</span> ck_bom_links new
+    <span class="keyword">ON</span> old.child_part_id = new.child_part_id
+<span class="keyword">LEFT JOIN</span> ck_part old_p <span class="keyword">ON</span> old_p.id = old.child_part_id
+<span class="keyword">LEFT JOIN</span> ck_part new_p <span class="keyword">ON</span> new_p.id = new.child_part_id
+<span class="keyword">WHERE</span> old.parent_iteration_id = (Design A.3 id)
+  <span class="keyword">AND</span> new.parent_iteration_id = (Design A.4 id);</pre>
+
+  <pre><span class="comment">-- 回退：把 Design A.4 的 BOM 恢复成 A.3 的结构</span>
+<span class="keyword">DELETE FROM</span> ck_bom_links <span class="keyword">WHERE</span> parent_iteration_id = (Design A.4 id);
+<span class="keyword">INSERT INTO</span> ck_bom_links (parent_iteration_id, child_part_id, child_iteration_id, quantity, unit, line_number)
+<span class="keyword">SELECT</span> (Design A.4 id), child_part_id, child_iteration_id, quantity, unit, line_number
+<span class="keyword">FROM</span> ck_bom_links <span class="keyword">WHERE</span> parent_iteration_id = (Design A.3 id);</pre>
+
+  <!-- ===== Section 7: Branch ===== -->
+  <h2>七、场景五：并行分支与客户定制</h2>
+
+  <p>当产品版本 A 已经发布，但需要同时走多条开发线时——比如标准产品继续迭代，同时为客户做一个定制变型——就需要 Branch（分支）。</p>
+
+  <p>Branch 是按需扩展的维度，基础三表不含 <code>branch_id</code> 列。当业务真正需要并行分支时，加一列即可：</p>
+
+  <pre><span class="comment">-- 按需扩展：加 branch_id 列，默认 0 表示主线</span>
+<span class="keyword">ALTER TABLE</span> ck_part_iteration <span class="keyword">ADD COLUMN</span> branch_id <span class="type\">VARCHAR</span>(64) <span class="keyword">DEFAULT</span> <span class="string">'0'</span>;</pre>
+
+  <h3>典型场景：标准产品 + 客户定制并行</h3>
+
+  <p>100-001 电机的 Design A.3 已发布。客户要求定制版本：更换轴承型号，但标准产品的 A.4 迭代也在同步进行。</p>
+
+  <table>
+    <tr><th>工程师</th><th>操作</th><th>数据库变化</th></tr>
+    <tr><td>张三</td><td>主线检出 Design A.3</td><td>INSERT Design A.4，branch_id = '0'（主线）</td></tr>
+    <tr><td>李四</td><td>定制分支检出</td><td>INSERT Design A.4，branch_id = 'custom_001'（定制分支）</td></tr>
+    <tr><td>张三</td><td>修改主线 BOM</td><td>INSERT/UPDATE ck_bom_links (parent=主线 A.4)</td></tr>
+    <tr><td>李四</td><td>替换定制分支的轴承</td><td>INSERT/UPDATE ck_bom_links (parent=定制 A.4)</td></tr>
+    <tr><td>张三</td><td>检入主线 A.4</td><td>UPDATE 关闭检出标记</td></tr>
+    <tr><td>李四</td><td>检入定制 A.4</td><td>UPDATE 关闭检出标记</td></tr>
+  </table>
+
+  <p>同一个 version（A）、同一个 iteration（4）、同一个 view（Design），但 branch_id 不同——两条线完全独立，互不影响。最终可以各自发布，也可以将定制分支的修改合并回主线后递增版本到 B。</p>
+
+  <pre><span class="comment">-- 查询某部件所有分支的最新迭代</span>
+<span class="keyword">SELECT DISTINCT ON</span> (branch_id, view, version)
+    branch_id, version, iteration_number, view, lifecycle_state
+<span class="keyword">FROM</span> ck_part_iteration
+<span class="keyword">WHERE</span> part_id = (100-001 <span class="keyword">id</span>)
+<span class="keyword">ORDER BY</span> branch_id, view, version <span class="keyword">DESC</span>, iteration_number <span class="keyword">DESC</span>;</pre>
+
+  <pre><span class="comment">-- 分支合并：把定制分支的 BOM 差异同步到主线新版本 B.1</span>
+<span class="keyword">INSERT INTO</span> ck_bom_links (parent_iteration_id, child_part_id, child_iteration_id, quantity, unit, line_number)
+<span class="keyword">SELECT</span> (主线 B.1 <span class="keyword">id</span>), child_part_id, child_iteration_id, quantity, unit, line_number
+<span class="keyword">FROM</span> ck_bom_links
+<span class="keyword">WHERE</span> parent_iteration_id = (定制分支 A.4 <span class="keyword">id</span>);</pre>
+
+  <div class="callout">
+    <div class="callout-title">Branch 的按需哲学</div>
+    <p>大多数 PLM 实施项目用不到分支——单线版本迭代就够用了。Windchill 虽然支持 branchId，但实际项目中极少启用。CK-PLM 把 Branch 设计成按需扩展：<strong>不需要时没有 branch_id 列，需要时加一列，不影响任何已有数据和查询逻辑</strong>。默认值 '0' 让所有已有数据自动归入主线，零迁移成本。</p>
+  </div>
+
+  <!-- ===== Section 8 ===== -->
+  <h2>八、和 Windchill / Teamcenter 的对比</h2>
+
+  <div class="compare-grid">
+    <div class="compare-col wc">
+      <h4>Windchill</h4>
+      <p>Master + WTPart（Version+Iteration）</p>
+      <p>View 在 WTPart 对象上</p>
+      <p>不同视图 = 不同对象</p>
+      <p>迭代按视图独立（per-view）</p>
+      <p>属性冗余高、同步成本大</p>
+      <p><strong>核心 3 张表</strong></p>
+    </div>
+    <div class="compare-col tc">
+      <h4>Teamcenter</h4>
+      <p>Item + ItemRevision + BVR</p>
+      <p>View 在 BVR 容器层</p>
+      <p>不同视图 = 不同 BOM 容器</p>
+      <p>迭代隐式（不可寻址）</p>
+      <p>模型简洁但架构复杂</p>
+      <p><strong>核心 3+ 张表</strong></p>
+    </div>
+    <div class="compare-col ck">
+      <h4>CK-PLM</h4>
+      <p>Part + Iteration（Version+Iteration）</p>
+      <p>View 在 Iteration 对象上</p>
+      <p>不同视图 = 不同迭代行</p>
+      <p>迭代按视图独立 + 可寻址</p>
+      <p>命名更贴切 + 按需扩展</p>
+      <p><strong>核心 3 张表</strong></p>
+    </div>
+  </div>
+
+  <p>关键认知：<strong>CK-PLM 和 Windchill 的架构基本一致</strong>——都是"身份层 + 版本迭代合并层 + BOM行层"三张表，View 都放在迭代对象上。差异仅在命名和概念表述：</p>
+
+  <table>
+    <tr><th>维度</th><th>Windchill</th><th>CK-PLM</th></tr>
+    <tr><td>身份层</td><td>WTPartMaster（number, name）</td><td>CK_PART（number, name）</td></tr>
+    <tr><td>版本+迭代+视图层</td><td>WTPart（version + iteration + view 合并）</td><td>CK_PART_ITERATION（version + iteration + view 合并）</td></tr>
+    <tr><td>BOM 行</td><td>WTPartUsageLink</td><td>CK_BOM_LINKS</td></tr>
+    <tr><td><strong>View 放在哪</strong></td><td><strong>WTPart 对象上</strong>（不同视图=不同对象）</td><td><strong>CK_PART_ITERATION 上</strong>（不同视图=不同迭代行）</td></tr>
+    <tr><td><strong>核心差异</strong></td><td>命名偏技术（Master/WTPart/UsageLink）</td><td><strong>命名贴业务（Part/Iteration/Bom_links）</strong></td></tr>
+  </table>
+
+  <p>CK-PLM 的取舍逻辑：</p>
+  <table>
+    <tr><th>能力</th><th>来源</th><th>CK-PLM 如何实现</th></tr>
+    <tr><td>身份与版本分离</td><td>Windchill</td><td>CK_PART 管身份，CK_PART_ITERATION 管 version+iteration+view（同构 WTPartMaster + WTPart）</td></tr>
+    <tr><td>版本+迭代合并管理</td><td>Windchill</td><td>CK_PART_ITERATION 同时管 version(A/B/C)、iteration(.1/.2/.3) 和 view</td></tr>
+    <tr><td>迭代可寻址</td><td>Windchill</td><td>每行有独立 ID，可被 BOM 精确引用</td></tr>
+    <tr><td>Per-view 独立迭代</td><td>Windchill</td><td>不同 view = 不同迭代行，Design 可走 A.4 而 Mfg 停 A.2</td></tr>
+    <tr><td>乐观检出</td><td>Windchill</td><td>检出=INSERT，检入=UPDATE，撤销=DELETE</td></tr>
+    <tr><td>精确/非精确引用</td><td>TC</td><td>child_iteration_id 可空设计，null=跟最新</td></tr>
+    <tr><td>已发布数据不可变</td><td>Windchill</td><td>RELEASED 状态的迭代不允许检出</td></tr>
+    <tr><td>业务概念命名</td><td>CK-PLM</td><td>Part / PartIteration / Bom_links 比 WTPartMaster / WTPart / UsageLink 更直观</td></tr>
+  </table>
+
+  <div class="callout">
+    <div class="callout-title">CK-PLM 与 Windchill 的真正差异</div>
+    <p>不是架构差异，是<strong>命名和概念表述差异</strong>。Windchill 的 WTPartMaster、WTPart、WTPartUsageLink 带着浓厚的 PTC 技术风格，对非 Windchill 用户不友好。CK-PLM 用 Part、PartIteration、Bom_links——任何有制造业背景的人一眼就能看懂。架构上完全一致，降低了理解和贡献的门槛。</p>
+  </div>
+
+  <!-- ===== Section 9 ===== -->
+  <h2>九、复杂度按需生长</h2>
+
+  <p>三张表是起点，不是终点。每个新需求来了，加一个列或加一张表就解决，<strong>不动已有结构</strong>。</p>
+
+  <table>
+    <tr><th>新需求</th><th>怎么加</th><th>影响已有结构吗</th></tr>
+    <tr><td>版本分支（并行研发）</td><td>ck_part_iteration 加 <code>branch_id</code> 列</td><td>否，默认 0</td></tr>
+    <tr><td>视图层级关系</td><td>新建 <code>ck_view_def</code> 表（含 parent_view_id）</td><td>否，纯新增</td></tr>
+    <tr><td>替代件关系</td><td>新建 <code>ck_part_alternate</code> 表</td><td>否，纯新增</td></tr>
+    <tr><td>文档关联</td><td>新建 <code>ck_part_doc_link</code> 表</td><td>否，纯新增</td></tr>
+    <tr><td>IBA 软类型属性</td><td>新建 <code>ck_part_attr_value</code> 表（EAV 模式）</td><td>否，纯新增</td></tr>
+  </table>
+
+  <p>这就是"复杂度按需生长"的核心理念——<strong>三张表能跑就先跑，真有需求再加</strong>。每个需求只动一个点，不碰其他东西。已部署的系统升级时，只需要 <code>ALTER TABLE ADD COLUMN</code> 或 <code>CREATE TABLE</code>，不需要停机迁移。</p>
+
+  <!-- ===== Section 10 ===== -->
+  <h2>十、总结</h2>
+
+  <div class="lead">
+    CK-PLM 的三表迭代模型，核心理念就一句话：<strong>Part、PartIteration、Bom_links。迭代是一等公民，View 在迭代对象上，复杂度按需求生长。</strong>
+  </div>
+
+  <ul>
+    <li><strong>CK_PART</strong> 管"这是哪个部件"——身份层，number 全局唯一，对应 Windchill 的 WTPartMaster</li>
+    <li><strong>CK_PART_ITERATION</strong> 管"这个部件的哪个视图的哪个版本的哪次迭代"——同时管理 version(A/B/C) + iteration(.1/.2/.3) + view，对应 Windchill 的 WTPart。乐观检出模型，INSERT/UPDATE/DELETE 三态切换</li>
+    <li><strong>CK_BOM_LINKS</strong> 管"某次迭代的 BOM 结构"——挂在迭代级别（迭代本身已携带 view），child_iteration_id 区分精确/非精确引用</li>
+  </ul>
+
+  <p>对开源 PLM 产品来说，简单本身就是竞争力。用户能看懂、能改、能贡献——这比架构完美重要得多。Windchill 和 Teamcenter 用了二十年积累出复杂的对象模型，CK-PLM 不需要从头复制它们。三张表起步，与 Windchill 一致的架构 + 更贴切的业务命名，让真实需求驱动复杂度的生长，才是开源产品的正确姿势。</p>
+
+  <div class="footer">
+    <p>CK-PLM · 国内首个开源 PLM 产品</p>
+    <p>Open Core 商业模式 · Spring Boot 2.7 + Vue 3 + PostgreSQL + Activiti 7</p>
+  </div>
+
+</div>
+
+</body>
+</html>
