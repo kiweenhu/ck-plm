@@ -1351,5 +1351,91 @@ CREATE INDEX IF NOT EXISTS idx_cpl_tenant ON ck_cls_page_layout(tenant_oid);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_cpl_cls_op_tenant ON ck_cls_page_layout(cls_oid, operation_code, tenant_oid);
 
 
+-- ==================== BOM 行项 (BomLinks) ====================
+-- 参考 Windchill WTPartUsageLink，描述部件的 BOM 构成关系
+-- parent_iteration_oid: 父部件迭代 oid（关联 ck_part_iteration.oid，迭代本身已携带 view）
+-- child_part_oid: 子部件主对象 oid（关联 ck_part.oid）
+-- child_iteration_oid: 子部件精确迭代 oid（关联 ck_part_iteration.oid，可空。NULL = 非精确引用，跟随最新）
+-- resolved_iteration_oid: 非精确引用的解析缓存（child_iteration_oid 为 NULL 时，缓存解析到的最新迭代 oid）
+-- line_number: BOM 行号，同一父迭代下唯一
+--
+-- 精确引用 vs 非精确引用：
+--   精确引用：child_iteration_oid NOT NULL → 锁定到子件某个迭代，适用已发布基线、合规追溯
+--   非精确引用：child_iteration_oid NULL → 始终取子件最新迭代，适用设计阶段、快速迭代
+CREATE TABLE IF NOT EXISTS ck_bom_links (
+    oid                   CHAR(36)     PRIMARY KEY,
+    code                  VARCHAR(50),
+    name                  VARCHAR(200),
+    description           VARCHAR(1000),
+    parent_iteration_oid  CHAR(36)     NOT NULL,
+    child_part_oid        CHAR(36)     NOT NULL,
+    child_iteration_oid   CHAR(36),
+    resolved_iteration_oid CHAR(36),
+    quantity              DOUBLE PRECISION,
+    unit                  VARCHAR(50),
+    line_number           INTEGER,
+    tenant_oid            CHAR(36),
+    creator               VARCHAR(100),
+    created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater               VARCHAR(100),
+    updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_bom_links_parent_iteration   FOREIGN KEY (parent_iteration_oid)   REFERENCES ck_part_iteration(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_bom_links_child_part         FOREIGN KEY (child_part_oid)         REFERENCES ck_part(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_bom_links_child_iteration    FOREIGN KEY (child_iteration_oid)    REFERENCES ck_part_iteration(oid) ON DELETE SET NULL,
+    CONSTRAINT fk_bom_links_resolved_iteration FOREIGN KEY (resolved_iteration_oid) REFERENCES ck_part_iteration(oid) ON DELETE SET NULL
+);
 
+CREATE INDEX IF NOT EXISTS idx_bom_links_parent           ON ck_bom_links(parent_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_links_child_part       ON ck_bom_links(child_part_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_links_child_iteration  ON ck_bom_links(child_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_links_resolved         ON ck_bom_links(resolved_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_links_tenant           ON ck_bom_links(tenant_oid);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_bom_links_line       ON ck_bom_links(parent_iteration_oid, line_number);
+
+-- ==================== BOM 快照 (BomSnapshot) ====================
+-- 为 RELEASED 迭代预计算整棵 BOM 树的 JSONB 快照
+-- iteration_oid 唯一（一个迭代一个快照），同时作为主键
+-- 已发布 BOM 的渲染 = 一行读取，零递归
+CREATE TABLE IF NOT EXISTS ck_bom_snapshot (
+    oid           CHAR(36)     PRIMARY KEY,
+    iteration_oid CHAR(36)     NOT NULL,
+    snapshot_json JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    node_count    INTEGER,
+    max_depth     INTEGER,
+    tenant_oid    CHAR(36),
+    creator       VARCHAR(100),
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater       VARCHAR(100),
+    updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_bom_snapshot_iteration FOREIGN KEY (iteration_oid) REFERENCES ck_part_iteration(oid) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_bom_snapshot_iteration ON ck_bom_snapshot(iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_snapshot_tenant ON ck_bom_snapshot(tenant_oid);
+
+-- ==================== BOM 差异 (BomDiff) ====================
+-- 预计算相邻迭代之间的 BOM 结构差异
+-- (from_iteration_oid, to_iteration_oid) 联合唯一
+-- diff_json 格式：{"added": [...], "removed": [...], "changed": [...]}
+CREATE TABLE IF NOT EXISTS ck_bom_diff (
+    oid                CHAR(36)     PRIMARY KEY,
+    from_iteration_oid CHAR(36)     NOT NULL,
+    to_iteration_oid   CHAR(36)     NOT NULL,
+    diff_json          JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    added_count        INTEGER      DEFAULT 0,
+    removed_count      INTEGER      DEFAULT 0,
+    changed_count      INTEGER      DEFAULT 0,
+    tenant_oid         CHAR(36),
+    creator            VARCHAR(100),
+    created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater            VARCHAR(100),
+    updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_bom_diff_from_iteration FOREIGN KEY (from_iteration_oid) REFERENCES ck_part_iteration(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_bom_diff_to_iteration   FOREIGN KEY (to_iteration_oid)   REFERENCES ck_part_iteration(oid) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_bom_diff_from_to ON ck_bom_diff(from_iteration_oid, to_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_diff_from ON ck_bom_diff(from_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_diff_to   ON ck_bom_diff(to_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_diff_tenant ON ck_bom_diff(tenant_oid);
 
