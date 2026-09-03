@@ -14,11 +14,10 @@ import cn.ck.plm.product.entity.ProductModel;
 import cn.ck.plm.product.entity.Team;
 import cn.ck.plm.product.service.api.ProductLineService;
 import cn.ck.plm.product.service.api.ProductModelService;
-import cn.ck.plm.softtype.service.api.IBADataService;
+import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,16 +31,16 @@ public class ProductLineController {
 
     private final ProductLineService productLineService;
     private final ProductModelService productModelService;
-    private final IBADataService ibaDataService;
+    private final IbaDataSupport ibaDataSupport;
     private final ObjectMapper objectMapper;
 
     private static final String IBA_ENTITY_TYPE = "PRODUCT_LINE";
 
     public ProductLineController(ProductLineService productLineService, ProductModelService productModelService,
-                                  IBADataService ibaDataService, ObjectMapper objectMapper) {
+                                  IbaDataSupport ibaDataSupport, ObjectMapper objectMapper) {
         this.productLineService = productLineService;
         this.productModelService = productModelService;
-        this.ibaDataService = ibaDataService;
+        this.ibaDataSupport = ibaDataSupport;
         this.objectMapper = objectMapper;
     }
 
@@ -52,7 +51,7 @@ public class ProductLineController {
             ProductLine productLine = objectMapper.convertValue(body, ProductLine.class);
             ProductLine created = productLineService.create(productLine);
             // 新建：全量保存 IBA（无旧数据，delete-all 无副作用）
-            saveIbaValues(IBA_ENTITY_TYPE, created.getOid(), body);
+            ibaDataSupport.saveIbaValues(IBA_ENTITY_TYPE, created.getOid(), body);
             return ApiResponse.ok(created);
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
@@ -67,52 +66,11 @@ public class ProductLineController {
             productLine.setOid(oid);
             ProductLine updated = productLineService.update(productLine);
             // 更新：合并保存 IBA（保留已持久化但本次未提交的字段）
-            mergeIbaValues(IBA_ENTITY_TYPE, oid, body);
+            ibaDataSupport.mergeIbaValues(IBA_ENTITY_TYPE, oid, body);
             return ApiResponse.ok(updated);
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
         }
-    }
-
-    /** 提取请求体中的 IBA 值 */
-    private Map<String, Object> extractIbaFromBody(Map<String, Object> body) {
-        Map<String, Object> ibaValues = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : body.entrySet()) {
-            String key = entry.getKey();
-            Object val = entry.getValue();
-            if (val == null || "".equals(val)) continue;
-            if (isEntityField(key)) continue;
-            ibaValues.put(key, val);
-        }
-        return ibaValues;
-    }
-
-    /** 新建时全量保存 IBA 属性（delete-all + insert-all） */
-    private void saveIbaValues(String entityType, String entityOid, Map<String, Object> body) {
-        Map<String, Object> ibaValues = extractIbaFromBody(body);
-        if (!ibaValues.isEmpty()) {
-            ibaDataService.saveValues(entityType, entityOid, ibaValues);
-        }
-    }
-
-    /** 更新时合并保存 IBA 属性（与已有数据合并，避免误删未提交字段） */
-    private void mergeIbaValues(String entityType, String entityOid, Map<String, Object> body) {
-        Map<String, Object> ibaValues = extractIbaFromBody(body);
-        if (!ibaValues.isEmpty()) {
-            ibaDataService.mergeValues(entityType, entityOid, ibaValues);
-        }
-    }
-
-    /** 判断字段名是否为 ProductLine 实体的已知属性（含 Jackson 可能序列化的布尔 getter） */
-    private boolean isEntityField(String key) {
-        return "oid".equals(key) || "code".equals(key) || "name".equals(key)
-                || "description".equals(key) || "thumbnail".equals(key)
-                || "teamOid".equals(key) || "parentOid".equals(key)
-                || "creator".equals(key) || "createdAt".equals(key)
-                || "updater".equals(key) || "updatedAt".equals(key)
-                || "children".equals(key) || "nodeType".equals(key)
-                || "icon".equals(key)
-                || "new".equals(key) || "persisted".equals(key); // BaseEntity.isNew()/isPersisted() 的 Jackson 序列化产物
     }
 
     /** 删除产品线 */

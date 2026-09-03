@@ -16,7 +16,7 @@ public class PartVO {
     private String containerType;
     private String folderOid;
     private String stageOid;
-    private String classificationOid;
+    private String clsOid;
     private String creator;
     private String createdAt;
     private String updater;
@@ -69,8 +69,8 @@ public class PartVO {
     public String getStageOid() { return stageOid; }
     public void setStageOid(String stageOid) { this.stageOid = stageOid; }
 
-    public String getClassificationOid() { return classificationOid; }
-    public void setClassificationOid(String classificationOid) { this.classificationOid = classificationOid; }
+    public String getClsOid() { return clsOid; }
+    public void setClsOid(String clsOid) { this.clsOid = clsOid; }
 
     public String getCreator() { return creator; }
     public void setCreator(String creator) { this.creator = creator; }

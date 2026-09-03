@@ -10,7 +10,6 @@ package cn.ck.plm.document.mapper.impl.postgresql;
 import cn.ck.plm.document.entity.DocumentIteration;
 import cn.ck.plm.document.mapper.DocumentIterationMapper;
 import cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler;
-import cn.ck.plm.base.typehandler.ViewTypeHandler;
 import org.apache.ibatis.annotations.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
@@ -26,14 +25,13 @@ public interface PostgreSqlDocumentIterationMapper extends DocumentIterationMapp
     @Override
     @Insert("INSERT INTO ck_document_iteration (oid, master_oid, revision, iteration, " +
             "display_version, checked_out, checked_out_by, checked_out_comment, latest, " +
-            "derived_from_oid, derived_at, view, status, " +
+            "derived_from_oid, derived_at, status, " +
             "ckfile_oid, lifecycle_template_iteration_oid, version_sort, branch_id, delete_mark, " +
             "creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{masterOid}, #{revision}, #{iteration}, " +
             "#{displayVersion}, " +
             "#{checkedOut}, #{checkedOutBy}, #{checkedOutComment}, #{latest}, " +
             "#{derivedFromOid}, #{derivedAt}, " +
-            "#{view, typeHandler=cn.ck.plm.base.typehandler.ViewTypeHandler}, " +
             "#{status, typeHandler=cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler}, " +
             "#{ckfileOid}, #{lifecycleTemplateIterationOid}, #{versionSort}, #{branchId}, #{deleteMark}, " +
             "#{creator}, #{createdAt}, #{updater}, #{updatedAt})")
@@ -45,7 +43,6 @@ public interface PostgreSqlDocumentIterationMapper extends DocumentIterationMapp
             "checked_out = #{checkedOut}, checked_out_by = #{checkedOutBy}, " +
             "checked_out_comment = #{checkedOutComment}, latest = #{latest}, " +
             "derived_from_oid = #{derivedFromOid}, derived_at = #{derivedAt}, " +
-            "view = #{view, typeHandler=cn.ck.plm.base.typehandler.ViewTypeHandler}, " +
             "status = #{status, typeHandler=cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler}, " +
             "ckfile_oid = #{ckfileOid}, " +
             "lifecycle_template_iteration_oid = #{lifecycleTemplateIterationOid}, " +
@@ -60,7 +57,7 @@ public interface PostgreSqlDocumentIterationMapper extends DocumentIterationMapp
     // ==================== 查询映射 ====================
     String SELECT_COLUMNS = "SELECT oid, master_oid, revision, iteration, " +
             "display_version, checked_out, checked_out_by, checked_out_comment, latest, " +
-            "derived_from_oid, derived_at, view, status, " +
+            "derived_from_oid, derived_at, status, " +
             "ckfile_oid, lifecycle_template_iteration_oid, version_sort, branch_id, delete_mark, " +
             "creator, created_at, updater, updated_at FROM ck_document_iteration ";
 
@@ -77,7 +74,6 @@ public interface PostgreSqlDocumentIterationMapper extends DocumentIterationMapp
             @Result(property = "latest",            column = "latest"),
             @Result(property = "derivedFromOid",    column = "derived_from_oid"),
             @Result(property = "derivedAt",         column = "derived_at"),
-            @Result(property = "view",              column = "view", typeHandler = ViewTypeHandler.class),
             @Result(property = "status",            column = "status", typeHandler = LifecycleStatusTypeHandler.class),
             @Result(property = "ckfileOid",         column = "ckfile_oid"),
             @Result(property = "lifecycleTemplateIterationOid", column = "lifecycle_template_iteration_oid"),
@@ -120,7 +116,6 @@ public interface PostgreSqlDocumentIterationMapper extends DocumentIterationMapp
         @Result(property = "versionSort", column = "version_sort"),
         @Result(property = "branchId", column = "branch_id"),
         @Result(property = "deleteMark", column = "delete_mark"),
-        @Result(property = "view", column = "view", typeHandler = cn.ck.plm.base.typehandler.ViewTypeHandler.class),
         @Result(property = "status", column = "status", typeHandler = cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler.class),
         @Result(property = "creator", column = "creator"),
         @Result(property = "createdAt", column = "created_at"),

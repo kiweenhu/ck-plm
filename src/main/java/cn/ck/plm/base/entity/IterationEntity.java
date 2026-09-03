@@ -24,11 +24,10 @@ import java.time.LocalDateTime;
  * <h3>继承链条（贫血模型）</h3>
  * <pre>
  * BaseEntity (oid, creator, createdAt, updater, updatedAt)
- *   └── IterationEntity (masterOid, revision, iteration, checkedOut, latest, view, status)
+ *   └── IterationEntity (masterOid, revision, iteration, checkedOut, latest, status)
  *         └── DocumentIteration / PartIteration / ...
  *
  * MasterEntity  1 ── N  IterationEntity  (通过 masterOid 关联)
- *   View  1 ── N  IterationEntity
  * </pre>
  */
 public class IterationEntity extends BaseEntity {
@@ -62,9 +61,6 @@ public class IterationEntity extends BaseEntity {
 
     /** 副本创建时间 */
     private LocalDateTime derivedAt;
-
-    /** 所属视图 */
-    private View view;
 
     /** 当前生命周期状态 */
     private LifecycleStatus status;
@@ -139,9 +135,6 @@ public class IterationEntity extends BaseEntity {
     public LocalDateTime getDerivedAt() { return derivedAt; }
     public void setDerivedAt(LocalDateTime derivedAt) { this.derivedAt = derivedAt; }
 
-    public View getView() { return view; }
-    public void setView(View view) { this.view = view; }
-
     public LifecycleStatus getStatus() { return status; }
     public void setStatus(LifecycleStatus status) { this.status = status; }
 
@@ -159,7 +152,6 @@ public class IterationEntity extends BaseEntity {
 
     @Override
     public String toString() {
-        return "IterationEntity{masterOid='" + masterOid + "', version=" + getVersion()
-                + ", view=" + (view != null ? view.getCode() : "null") + "}";
+        return "IterationEntity{masterOid='" + masterOid + "', version=" + getVersion() + "}";
     }
 }

@@ -238,6 +238,63 @@ export function renderWidgetPreview(type, mode = 'design', options = {}) {
         allowClear: true
       })
 
+    case 'classification-bound-select':
+      return h(TreeSelect, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        placeholder: '请选择分类（受类型绑定限制）',
+        treeDefaultExpandAll: true,
+        showSearch: true,
+        treeNodeFilterProp: 'title',
+        treeData: options.classificationTree || [],
+        allowClear: true
+      })
+
+    case 'unit-select':
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        placeholder: '请选择单位',
+        showSearch: true,
+        options: options.unitOptions || [
+          { label: '个', value: 'ea' },
+          { label: '米', value: 'm' },
+          { label: '千克', value: 'kg' }
+        ]
+      })
+
+    case 'source-select':
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        placeholder: '请选择来源',
+        options: [
+          { label: '自制', value: '自制' },
+          { label: '委外', value: '委外' },
+          { label: '采购', value: '采购' }
+        ]
+      })
+
+    case 'lifecycle-display':
+      return h('div', {
+        style: 'display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:4px 11px;border:1px solid #d9d9d9;border-radius:6px;background:#f5f5f5;color:#8c8c8c;font-size:12px'
+      }, [
+        h('span', { style: 'color:#333;font-weight:500' }, '标准流程'),
+        h('span', { style: 'color:#bfbfbf' }, '|'),
+        h('span', {}, '初始状态'),
+        h('span', { style: 'color:#1677ff' }, '草稿')
+      ])
+
+    case 'number-preview':
+      return h('div', {
+        style: 'display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:4px 11px;border:1px solid #d9d9d9;border-radius:6px;background:#f5f5f5;color:#8c8c8c;font-size:12px'
+      }, [
+        h('span', { style: 'color:#1677ff;font-weight:600;letter-spacing:0.5px' }, 'PART-2026-****')
+      ])
+
     default:
       return h(Input, {
         size: 'small',

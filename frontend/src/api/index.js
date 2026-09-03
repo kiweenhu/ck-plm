@@ -352,6 +352,16 @@ export function unbindTypeClassification(typeOid) {
   return request.delete(`/type-definitions/${typeOid}/classification`)
 }
 
+/** 获取某类型绑定的分类子树（仅包含绑定节点及其后代，用于限制选择范围） */
+export function getTypeClassificationSubtree(typeOid) {
+  return request.get(`/type-definitions/${typeOid}/classification-subtree`)
+}
+
+/** 获取以指定 oid 为根的子树 */
+export function getClassificationSubtree(rootOid) {
+  return request.get(`/classifications/subtree/${rootOid}`)
+}
+
 // ==================== 属性定义 API ====================
 
 /** 获取实体的属性定义列表（系统 + IBA），可选传入 entityOid/entityType 以动态合并 type_iba 关联 */
@@ -489,6 +499,8 @@ const ENTITY_API_PATH = {
   PRODUCT_LINE: 'product-lines',
   PRODUCT_MODEL: 'product-models',
   DOCUMENT: 'documents',
+  PART: 'parts',
+  FUNCTIONAL: 'parts',
 }
 
 /** 创建产品线 */
@@ -847,9 +859,39 @@ export function deletePart(oid) {
   return request.delete(`/parts/${oid}`)
 }
 
+/** 删除零组件的最新小版本 */
+export function deletePartLatestIteration(oid) {
+  return request.delete(`/parts/${oid}/latest-iteration`)
+}
+
+/** 新建零组件视图版本（新的大版本） */
+export function newViewVersionPart(oid) {
+  return request.post(`/parts/${oid}/new-view-version`)
+}
+
+/** 重命名零组件 */
+export function renamePart(oid, name) {
+  return request.put(`/parts/${oid}/rename`, { name })
+}
+
+/** 另存为零组件（复制为新对象） */
+export function saveAsPart(oid, name) {
+  return request.post(`/parts/${oid}/save-as`, { name })
+}
+
+/** 移动零组件到新的容器/阶段/文件夹 */
+export function movePart(oid, data) {
+  return request.put(`/parts/${oid}/move`, data)
+}
+
 /** 按文件夹查询零组件 VO */
 export function getPartsByFolder(folderOid) {
   return request.get('/parts/by-folder', { params: { folderOid } })
+}
+
+/** 查询零组件历史版本 */
+export function getPartIterations(oid) {
+  return request.get(`/parts/${oid}/iterations`)
 }
 
 // ==================== 文档 API ====================
@@ -869,6 +911,26 @@ export function deleteDocument(oid) {
   return request.delete(`/documents/${oid}`)
 }
 
+/** 删除文档的最新小版本 */
+export function deleteDocumentLatestIteration(oid) {
+  return request.delete(`/documents/${oid}/latest-iteration`)
+}
+
+/** 新建文档视图版本（新的大版本） */
+export function newViewVersionDocument(oid) {
+  return request.post(`/documents/${oid}/new-view-version`)
+}
+
+/** 重命名文档 */
+export function renameDocument(oid, name) {
+  return request.put(`/documents/${oid}/rename`, { name })
+}
+
+/** 移动文档到新的容器/阶段/文件夹 */
+export function moveDocumentApi(oid, data) {
+  return request.put(`/documents/${oid}/move`, data)
+}
+
 /** 检出文档（通用入口，传 entityType） */
 export function checkoutDocument(oid, comment) {
   return request.post('/checkout/checkout', { entityType: 'DOCUMENT', entityOid: oid, comment })
@@ -877,6 +939,26 @@ export function checkoutDocument(oid, comment) {
 /** 取消检出文档 */
 export function undoCheckoutDocument(oid) {
   return request.post('/checkout/undo-checkout', { entityType: 'DOCUMENT', entityOid: oid })
+}
+
+/** 检出零组件（通用入口，entityType=PART） */
+export function checkoutPart(oid, comment) {
+  return request.post('/checkout/checkout', { entityType: 'PART', entityOid: oid, comment })
+}
+
+/** 取消检出零组件 */
+export function undoCheckoutPart(oid) {
+  return request.post('/checkout/undo-checkout', { entityType: 'PART', entityOid: oid })
+}
+
+/** 检入零组件（解除检出，将副本保存为新版本） */
+export function checkinPart(oid) {
+  return request.post('/checkout/checkin', { entityType: 'PART', entityOid: oid })
+}
+
+/** 检入文档（解除检出，将副本保存为新版本） */
+export function checkinDocument(oid) {
+  return request.post('/checkout/checkin', { entityType: 'DOCUMENT', entityOid: oid })
 }
 
 /** 获取文档下载链接 */
@@ -902,6 +984,11 @@ export function getDocuments(params = {}) {
  */
 export function getFolderDocumentDetails(folderOid) {
   return request.get('/documents/folder-details', { params: { folderOid } })
+}
+
+/** 查询文档历史版本 */
+export function getDocumentIterations(oid) {
+  return request.get(`/documents/${oid}/iterations`)
 }
 
 // ==================== 文件存储配置 API ====================
@@ -1201,6 +1288,7 @@ export function deleteViewTransition(oid) {
 export function getClassificationTree() {
   return request.get('/classifications/tree')
 }
+
 export function getClassificationList() {
   return request.get('/classifications')
 }

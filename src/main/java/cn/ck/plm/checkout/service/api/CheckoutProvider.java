@@ -28,6 +28,9 @@ public interface CheckoutProvider {
     /** 执行检出操作 */
     void checkout(String entityOid, String comment, String user);
 
+    /** 检入（解除检出锁定，将检出的工作副本保存为新的正式版本） */
+    void checkin(String entityOid, String user);
+
     /** 取消检出（撤销检出，不保留修改） */
     void undoCheckout(String entityOid, String user);
 }

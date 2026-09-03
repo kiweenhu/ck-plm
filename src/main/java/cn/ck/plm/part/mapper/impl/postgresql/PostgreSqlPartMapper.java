@@ -13,10 +13,10 @@ public interface PostgreSqlPartMapper extends PartMapper {
 
     @Override
     @Insert("INSERT INTO ck_part (oid, name, number, description, type_definition_code, " +
-            "container_oid, container_type, folder_oid, stage_oid, classification_oid, " +
+            "container_oid, container_type, folder_oid, stage_oid, cls_oid, " +
             "creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{name}, #{number}, #{description}, #{typeDefinitionCode}, " +
-            "#{containerOid}, #{containerType}, #{folderOid}, #{stageOid}, #{classificationOid}, " +
+            "#{containerOid}, #{containerType}, #{folderOid}, #{stageOid}, #{clsOid}, " +
             "#{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(Part part);
 
@@ -24,7 +24,7 @@ public interface PostgreSqlPartMapper extends PartMapper {
     @Update("UPDATE ck_part SET name = #{name}, number = #{number}, description = #{description}, " +
             "type_definition_code = #{typeDefinitionCode}, " +
             "container_oid = #{containerOid}, container_type = #{containerType}, folder_oid = #{folderOid}, stage_oid = #{stageOid}, " +
-            "classification_oid = #{classificationOid}, " +
+            "cls_oid = #{clsOid}, " +
             "updater = #{updater}, updated_at = #{updatedAt} " +
             "WHERE oid = #{oid}")
     int update(Part part);
@@ -34,7 +34,7 @@ public interface PostgreSqlPartMapper extends PartMapper {
     int deleteByOid(@Param("oid") String oid);
 
     String SELECT_COLUMNS = "SELECT oid, name, number, description, type_definition_code, " +
-            "container_oid, container_type, folder_oid, stage_oid, classification_oid, " +
+            "container_oid, container_type, folder_oid, stage_oid, cls_oid, " +
             "creator, created_at, updater, updated_at FROM ck_part ";
 
     @Select(SELECT_COLUMNS + "WHERE oid = #{oid}")
@@ -48,7 +48,7 @@ public interface PostgreSqlPartMapper extends PartMapper {
             @Result(property = "containerType",     column = "container_type"),
             @Result(property = "folderOid",         column = "folder_oid"),
             @Result(property = "stageOid",          column = "stage_oid"),
-            @Result(property = "classificationOid", column = "classification_oid"),
+            @Result(property = "clsOid",            column = "cls_oid"),
             @Result(property = "creator",           column = "creator"),
             @Result(property = "createdAt",         column = "created_at"),
             @Result(property = "updater",           column = "updater"),
@@ -74,9 +74,9 @@ public interface PostgreSqlPartMapper extends PartMapper {
     List<Part> selectByFolderOid(@Param("folderOid") String folderOid);
 
     @Override
-    @Select(SELECT_COLUMNS + "WHERE classification_oid = #{classificationOid} ORDER BY created_at DESC")
+    @Select(SELECT_COLUMNS + "WHERE cls_oid = #{clsOid} ORDER BY created_at DESC")
     @ResultMap("partResult")
-    List<Part> selectByClassificationOid(@Param("classificationOid") String classificationOid);
+    List<Part> selectByClassificationOid(@Param("clsOid") String clsOid);
 
     @Override
     @Select(SELECT_COLUMNS + "ORDER BY created_at DESC")

@@ -33,6 +33,30 @@ CREATE TABLE IF NOT EXISTS ck_lifecycle_template (
     updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ==================== 生命周期模板子版本 ====================
+CREATE TABLE IF NOT EXISTS ck_lifecycle_template_iteration (
+    oid                  CHAR(36)     PRIMARY KEY,
+    master_oid           CHAR(36)     NOT NULL REFERENCES ck_lifecycle_template(oid) ON DELETE CASCADE,
+    revision             VARCHAR(10)  NOT NULL DEFAULT 'A',
+    iteration            INTEGER      NOT NULL DEFAULT 1,
+    display_version      VARCHAR(20),
+    checked_out          BOOLEAN      NOT NULL DEFAULT FALSE,
+    checked_out_by       VARCHAR(100),
+    checked_out_comment  VARCHAR(500),
+    latest               BOOLEAN      NOT NULL DEFAULT TRUE,
+    derived_from_oid     CHAR(36),
+    derived_at           TIMESTAMP,
+    status               VARCHAR(50),
+    tenant_oid           CHAR(36),
+    creator              VARCHAR(100),
+    created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater              VARCHAR(100),
+    updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_lti_master  ON ck_lifecycle_template_iteration(master_oid);
+CREATE INDEX IF NOT EXISTS idx_lti_latest  ON ck_lifecycle_template_iteration(master_oid, latest);
+
 -- 生命周期模板子版本 → 状态关联
 CREATE TABLE IF NOT EXISTS ck_lifecycle_template_state (
     oid                 CHAR(36)     PRIMARY KEY,
@@ -53,31 +77,6 @@ CREATE TABLE IF NOT EXISTS ck_lifecycle_template_transition (
     tenant_oid       CHAR(36),
     FOREIGN KEY (iteration_oid) REFERENCES ck_lifecycle_template_iteration(oid) ON DELETE CASCADE
 );
-
--- ==================== 生命周期模板子版本 ====================
-CREATE TABLE IF NOT EXISTS ck_lifecycle_template_iteration (
-    oid                  CHAR(36)     PRIMARY KEY,
-    master_oid           CHAR(36)     NOT NULL REFERENCES ck_lifecycle_template(oid) ON DELETE CASCADE,
-    revision             VARCHAR(10)  NOT NULL DEFAULT 'A',
-    iteration            INTEGER      NOT NULL DEFAULT 1,
-    display_version      VARCHAR(20),
-    checked_out          BOOLEAN      NOT NULL DEFAULT FALSE,
-    checked_out_by       VARCHAR(100),
-    checked_out_comment  VARCHAR(500),
-    latest               BOOLEAN      NOT NULL DEFAULT TRUE,
-    derived_from_oid     CHAR(36),
-    derived_at           TIMESTAMP,
-    view                 VARCHAR(50),
-    status               VARCHAR(50),
-    tenant_oid           CHAR(36),
-    creator              VARCHAR(100),
-    created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updater              VARCHAR(100),
-    updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_lti_master  ON ck_lifecycle_template_iteration(master_oid);
-CREATE INDEX IF NOT EXISTS idx_lti_latest  ON ck_lifecycle_template_iteration(master_oid, latest);
 
 -- ==================== 编码规则主表 ====================
 -- oid 为全局唯一主键，code 为业务唯一键
@@ -257,11 +256,12 @@ CREATE INDEX IF NOT EXISTS idx_vt_from_to ON ck_view_transition(from_view_code, 
 -- oid 为全局唯一主键，code 为业务唯一键，parent_oid 自引用实现树形结构
 CREATE TABLE IF NOT EXISTS ck_organization (
     oid          CHAR(36)     PRIMARY KEY,
-    code         VARCHAR(50)  NOT NULL UNIQUE,
+    code         VARCHAR(50)  NOT NULL,
     name         VARCHAR(100) NOT NULL,
     parent_oid   CHAR(36),
     description  VARCHAR(500),
     enabled      BOOLEAN      NOT NULL DEFAULT TRUE,
+    tenant_oid   CHAR(36),
     creator      VARCHAR(100),
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater      VARCHAR(100),
@@ -269,10 +269,6 @@ CREATE TABLE IF NOT EXISTS ck_organization (
 );
 
 CREATE INDEX IF NOT EXISTS idx_org_parent ON ck_organization(parent_oid);
-
--- 多租户迁移：将 code 唯一约束改为 (code, tenant_oid) 联合唯一
--- 注意：执行前需确保所有记录的 tenant_oid 已填充
-ALTER TABLE ck_organization DROP CONSTRAINT IF EXISTS ck_organization_code_key;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_org_code_tenant ON ck_organization(code, tenant_oid);
 
 -- ==================== 用户 ====================
@@ -287,6 +283,7 @@ CREATE TABLE IF NOT EXISTS ck_user (
     org_oid      CHAR(36)     REFERENCES ck_organization(oid) ON DELETE SET NULL,
     enabled      BOOLEAN      NOT NULL DEFAULT TRUE,
     locked       BOOLEAN      NOT NULL DEFAULT FALSE,
+    tenant_oid   CHAR(36),
     creator      VARCHAR(100),
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater      VARCHAR(100),
@@ -304,6 +301,7 @@ CREATE TABLE IF NOT EXISTS ck_role (
     name         VARCHAR(100) NOT NULL,
     description  VARCHAR(500),
     role_type    VARCHAR(20)  NOT NULL DEFAULT 'BUSINESS',
+    tenant_oid   CHAR(36),
     creator      VARCHAR(100),
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater      VARCHAR(100),
@@ -316,6 +314,7 @@ CREATE TABLE IF NOT EXISTS ck_role_member (
     oid          CHAR(36)     PRIMARY KEY,
     user_oid     CHAR(36)     NOT NULL REFERENCES ck_user(oid) ON DELETE CASCADE,
     role_oid     CHAR(36)     NOT NULL REFERENCES ck_role(oid) ON DELETE CASCADE,
+    tenant_oid   CHAR(36),
     creator      VARCHAR(100),
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater      VARCHAR(100),
@@ -330,6 +329,7 @@ CREATE TABLE IF NOT EXISTS ck_workflow_category (
     oid         CHAR(36)     PRIMARY KEY,
     name        VARCHAR(100) NOT NULL UNIQUE,
     sort_order  INTEGER      NOT NULL DEFAULT 0,
+    tenant_oid  CHAR(36),
     creator     VARCHAR(100),
     created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater     VARCHAR(100),
@@ -464,12 +464,6 @@ CREATE TABLE IF NOT EXISTS ck_type_iba (
     UNIQUE (type_oid, iba_oid)
 );
 
--- 迁移：owner_type → entity_code（兼容新旧数据库）
-ALTER TABLE ck_type_iba ADD COLUMN IF NOT EXISTS owner_type VARCHAR(50);
-ALTER TABLE ck_type_iba ADD COLUMN IF NOT EXISTS entity_code VARCHAR(50) NOT NULL DEFAULT '';
-UPDATE ck_type_iba SET entity_code = owner_type WHERE entity_code = '' AND owner_type IS NOT NULL;
-ALTER TABLE ck_type_iba DROP COLUMN IF EXISTS owner_type;
-
 CREATE INDEX IF NOT EXISTS idx_ti_type ON ck_type_iba(type_oid);
 CREATE INDEX IF NOT EXISTS idx_ti_iba ON ck_type_iba(iba_oid);
 CREATE INDEX IF NOT EXISTS idx_ti_entity_code ON ck_type_iba(entity_code);
@@ -549,14 +543,6 @@ CREATE TABLE IF NOT EXISTS ck_tenant (
     updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 迁移：已有 ck_tenant 表存量数据升级
-ALTER TABLE ck_tenant ADD COLUMN IF NOT EXISTS admin_username VARCHAR(50);
-ALTER TABLE ck_tenant ADD COLUMN IF NOT EXISTS admin_password VARCHAR(200);
-ALTER TABLE ck_tenant ADD COLUMN IF NOT EXISTS admin_display_name VARCHAR(100);
-ALTER TABLE ck_tenant ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
-ALTER TABLE ck_tenant ADD COLUMN IF NOT EXISTS approved_by VARCHAR(100);
-ALTER TABLE ck_tenant ADD COLUMN IF NOT EXISTS reject_reason VARCHAR(500);
-
 -- 初始化平台层租户（所有租户共享的系统配置数据归属）
 INSERT INTO ck_tenant (oid, tenant_id, name, status)
 VALUES ('00000000-0000-0000-0000-000000000000', 'platform', '平台层（系统配置共享）', 'ACTIVE')
@@ -566,131 +552,6 @@ ON CONFLICT (oid) DO NOTHING;
 INSERT INTO ck_tenant (oid, tenant_id, name, status)
 VALUES ('00000000-0000-0000-0000-000000000001', 'default', '默认租户', 'ACTIVE')
 ON CONFLICT (oid) DO NOTHING;
-
--- ==================== 多租户：业务表添加 tenant_oid 列 ====================
--- 隔离列使用 tenant_oid CHAR(36) 引用 ck_tenant.oid（而非 tenant_id VARCHAR）
--- 原因：tenant_id 是业务标识，可能随企业更名而修改；oid 是主键，永不改变
--- 以下系统配置表不加 tenant_oid（所有租户共享）:
---   ck_lifecycle_status, ck_lifecycle_template, ck_lifecycle_template_*
---   ck_number, ck_number_segment, ck_version_rule
---   ck_type_definition, ck_iba, ck_type_iba
---   ck_attribute_definition, ck_type_page_layout
---   ck_view, ck_view_transition
---   ck_type_version_rule_link, ck_type_number_rule_link, ck_type_lifecycle_template_link
---   ck_token, ck_file_storage_config
-
--- Token 表增加租户信息缓存（tenant_oid 引用 ck_tenant.oid）
-ALTER TABLE ck_token ADD COLUMN tenant_oid VARCHAR(50);
-ALTER TABLE ck_token ADD COLUMN tenant_name VARCHAR(100);
-
--- 为所有业务表添加 tenant_oid 列
-ALTER TABLE ck_organization ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_user ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_role ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_role_member ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_product_line ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_product_model ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_stage ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_folder ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_team ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_team_member ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_document ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_document_iteration ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_file ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_attachment ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_media ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_workflow_category ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_user_activity ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_type_iba_data ADD COLUMN tenant_oid CHAR(36);
--- 平台共享表
-ALTER TABLE ck_number ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_version_rule ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_lifecycle_status ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_lifecycle_template ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_lifecycle_template_iteration ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_lifecycle_template_iteration ADD COLUMN IF NOT EXISTS display_version VARCHAR(20);
-ALTER TABLE ck_lifecycle_template_state ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_lifecycle_template_transition ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_view ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_view_transition ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_type_page_layout ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_type_definition ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_stage_template ADD COLUMN tenant_oid CHAR(36);
-ALTER TABLE ck_cls_page_layout ADD COLUMN tenant_oid CHAR(36);
-
--- ==================== 租户 oid 索引 ====================
-CREATE INDEX IF NOT EXISTS idx_org_tenant ON ck_organization(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_user_tenant ON ck_user(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_role_tenant ON ck_role(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_role_member_tenant ON ck_role_member(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_pl_tenant ON ck_product_line(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_pm_tenant ON ck_product_model(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_stage_tenant ON ck_stage(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_folder_tenant ON ck_folder(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_team_tenant ON ck_team(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_team_member_tenant ON ck_team_member(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_doc_tenant ON ck_document(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_di_tenant ON ck_document_iteration(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_file_tenant ON ck_file(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_att_tenant ON ck_attachment(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_media_tenant ON ck_media(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_wfc_tenant ON ck_workflow_category(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_ua_tenant ON ck_user_activity(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_eid_tenant ON ck_type_iba_data(tenant_oid);
-
--- ===== 删除旧 tenant_id 列（确认迁移无误后执行） =====
--- ALTER TABLE ck_organization          DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_user                  DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_role                  DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_role_member           DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_product_line          DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_product_model         DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_stage                 DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_folder                DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_team                  DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_team_member           DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_document              DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_document_iteration    DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_file                  DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_attachment            DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_media                 DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_workflow_category     DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_user_activity         DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_type_iba_data       DROP COLUMN IF EXISTS tenant_id;
--- ALTER TABLE ck_token                 DROP COLUMN IF EXISTS tenant_id;
-
--- ==================== 租户 oid 索引 ====================
-CREATE INDEX IF NOT EXISTS idx_org_tenant            ON ck_organization(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_user_tenant           ON ck_user(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_role_tenant           ON ck_role(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_role_member_tenant    ON ck_role_member(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_pl_tenant             ON ck_product_line(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_pm_tenant             ON ck_product_model(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_stage_tenant          ON ck_stage(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_folder_tenant         ON ck_folder(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_team_tenant           ON ck_team(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_team_member_tenant    ON ck_team_member(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_doc_tenant            ON ck_document(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_di_tenant             ON ck_document_iteration(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_file_tenant           ON ck_file(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_att_tenant            ON ck_attachment(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_media_tenant          ON ck_media(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_wfc_tenant            ON ck_workflow_category(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_ua_tenant             ON ck_user_activity(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_eid_tenant            ON ck_type_iba_data(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_number_tenant          ON ck_number(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_vr_tenant              ON ck_version_rule(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_ls_tenant              ON ck_lifecycle_status(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_lt_tenant              ON ck_lifecycle_template(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_lti_tenant             ON ck_lifecycle_template_iteration(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_lts_tenant             ON ck_lifecycle_template_state(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_ltt_tenant             ON ck_lifecycle_template_transition(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_view_tenant            ON ck_view(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_vt_tenant              ON ck_view_transition(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_pl_tenant2             ON ck_type_page_layout(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_td_tenant              ON ck_type_definition(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_st_tenant              ON ck_stage_template(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_cpl_tenant2            ON ck_cls_page_layout(tenant_oid);
 
 -- ==================== 系统通知 ====================
 -- 共享表，所有管理员可见系统级通知
@@ -744,6 +605,7 @@ CREATE TABLE IF NOT EXISTS ck_product_line (
     team_oid         CHAR(36),
     parent_oid       CHAR(36)     REFERENCES ck_product_line(oid) ON DELETE SET NULL,
     ext_attrs        JSONB        NOT NULL DEFAULT '{}',
+    tenant_oid       CHAR(36),
     creator          VARCHAR(100),
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater          VARCHAR(100),
@@ -765,24 +627,12 @@ CREATE TABLE IF NOT EXISTS ck_product_model (
     team_oid         CHAR(36),
     parent_oid       CHAR(36)     NOT NULL,
     ext_attrs        JSONB        NOT NULL DEFAULT '{}',
+    tenant_oid       CHAR(36),
     creator          VARCHAR(100),
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater          VARCHAR(100),
     updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
--- 迁移：product_line_oid → parent_oid
--- 1. 确保 parent_oid 列存在
-ALTER TABLE ck_product_model ADD COLUMN IF NOT EXISTS parent_oid CHAR(36);
--- 2. 确保 product_line_oid 列存在（若已误删则加回）
-ALTER TABLE ck_product_model ADD COLUMN IF NOT EXISTS product_line_oid CHAR(36);
--- 3. 将 product_line_oid 值复制到 parent_oid（parent_oid 为空时）
-UPDATE ck_product_model SET parent_oid = product_line_oid WHERE parent_oid IS NULL AND product_line_oid IS NOT NULL;
--- 4. 清理约束和索引
-ALTER TABLE ck_product_model DROP CONSTRAINT IF EXISTS ck_product_model_product_line_oid_fkey;
-DROP INDEX IF EXISTS idx_model_product_line;
--- 5. 删除冗余列
-ALTER TABLE ck_product_model DROP COLUMN IF EXISTS product_line_oid;
 
 CREATE INDEX IF NOT EXISTS idx_model_parent_oid ON ck_product_model(parent_oid);
 
@@ -804,6 +654,7 @@ CREATE TABLE IF NOT EXISTS ck_stage (
     owner_type       VARCHAR(10)  NOT NULL DEFAULT 'LINE',
     show_on_dashboard BOOLEAN     NOT NULL DEFAULT TRUE,
     default_folders  VARCHAR(2000),
+    tenant_oid       CHAR(36),
     creator          VARCHAR(100),
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater          VARCHAR(100),
@@ -811,26 +662,7 @@ CREATE TABLE IF NOT EXISTS ck_stage (
     UNIQUE (owner_oid, owner_type, code)
 );
 
--- ===== 存量数据库迁移：product_line_oid → owner_oid + 新增 owner_type =====
--- 为旧表补齐 owner_oid 和 owner_type 列（新表 CREATE TABLE 已含这些列，此处幂等）
-ALTER TABLE ck_stage ADD COLUMN IF NOT EXISTS owner_oid CHAR(36);
-ALTER TABLE ck_stage ADD COLUMN IF NOT EXISTS owner_type VARCHAR(10) NOT NULL DEFAULT 'LINE';
-
--- 为已有数据库添加 show_on_dashboard 列
-ALTER TABLE ck_stage ADD COLUMN IF NOT EXISTS show_on_dashboard BOOLEAN NOT NULL DEFAULT TRUE;
-
--- 重建唯一约束（若旧约束仍在）
-ALTER TABLE ck_stage DROP CONSTRAINT IF EXISTS ck_stage_product_line_oid_code_key;
-ALTER TABLE ck_stage DROP CONSTRAINT IF EXISTS ck_stage_owner_code_unique;
-ALTER TABLE ck_stage ADD CONSTRAINT ck_stage_owner_code_unique UNIQUE (owner_oid, owner_type, code);
-
--- 迁移索引
-DROP INDEX IF EXISTS idx_stage_product_line;
 CREATE INDEX IF NOT EXISTS idx_stage_owner ON ck_stage(owner_oid, owner_type);
-
--- ===== 提示：旧列 product_line_oid 仍保留在表中，需手动执行以下迁移 =====
--- UPDATE ck_stage SET owner_oid = product_line_oid WHERE owner_oid IS NULL;
--- ALTER TABLE ck_stage DROP COLUMN IF EXISTS product_line_oid;
 
 
 
@@ -841,6 +673,7 @@ CREATE TABLE IF NOT EXISTS ck_team (
     code         VARCHAR(50)  NOT NULL UNIQUE,
     name         VARCHAR(100) NOT NULL,
     description  VARCHAR(500),
+    tenant_oid   CHAR(36),
     creator      VARCHAR(100),
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater      VARCHAR(100),
@@ -854,6 +687,7 @@ CREATE TABLE IF NOT EXISTS ck_team_member (
     team_oid     CHAR(36)     NOT NULL REFERENCES ck_team(oid) ON DELETE CASCADE,
     user_id      VARCHAR(50)  NOT NULL,
     role_name    VARCHAR(100),
+    tenant_oid   CHAR(36),
     creator      VARCHAR(100),
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater      VARCHAR(100),
@@ -875,6 +709,7 @@ CREATE TABLE IF NOT EXISTS ck_media (
     description   VARCHAR(500),
     width         INT,
     height        INT,
+    tenant_oid    CHAR(36),
     creator       VARCHAR(100),
     created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater       VARCHAR(100),
@@ -890,15 +725,7 @@ CREATE INDEX IF NOT EXISTS idx_media_created ON ck_media(created_at DESC);
 -- 注意：由于去掉了 type_oid 对外键约束，任何 TypeDefinition 的 oid 都可以存入
 
 -- ==================== 文件夹 ====================
--- owner_oid 关联业务对象（产品线、产品型号等），通过 owner_type（未来扩展）区分
-
--- 迁移脚本：先尝试删除旧索引
-DROP INDEX IF EXISTS idx_folder_product_stage;
-
--- 为已有数据库添加 type 字段
-ALTER TABLE ck_folder ADD COLUMN IF NOT EXISTS type VARCHAR(10) NOT NULL DEFAULT 'USER';
-
--- 创建文件夹表（如果表不存在则创建，使用新的 owner_oid 和 stage_oid 字段）
+-- owner_oid 关联业务对象（产品线、产品型号等）
 CREATE TABLE IF NOT EXISTS ck_folder (
     oid               CHAR(36)     PRIMARY KEY,
     owner_oid         CHAR(36),
@@ -907,18 +734,13 @@ CREATE TABLE IF NOT EXISTS ck_folder (
     name              VARCHAR(200) NOT NULL,
     type              VARCHAR(10)  NOT NULL DEFAULT 'USER',
     sort_order        INTEGER      NOT NULL DEFAULT 0,
+    tenant_oid        CHAR(36),
     creator           VARCHAR(100),
     created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater           VARCHAR(100),
     updated_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 为已有数据库添加缺失的列（如果表已存在但缺少这些列）
-ALTER TABLE ck_folder ADD COLUMN IF NOT EXISTS owner_oid CHAR(36);
-ALTER TABLE ck_folder ADD COLUMN IF NOT EXISTS stage_oid CHAR(36);
-ALTER TABLE ck_folder ADD COLUMN IF NOT EXISTS parent_folder_oid CHAR(36);
-
--- 创建索引
 CREATE INDEX IF NOT EXISTS idx_folder_owner_stage  ON ck_folder(owner_oid, stage_oid);
 CREATE INDEX IF NOT EXISTS idx_folder_parent       ON ck_folder(parent_folder_oid);
 
@@ -930,18 +752,6 @@ CREATE INDEX IF NOT EXISTS idx_folder_parent       ON ck_folder(parent_folder_oi
 -- folder_oid 关联所属文件夹，stage_oid 标记所处研发阶段
 -- 主文档文件通过 ck_document_iteration.ckfile_oid 关联（不同版本可关联不同主文档文件）
 
--- 为已有数据库添加缺失的字段
-ALTER TABLE ck_document ADD COLUMN IF NOT EXISTS type_definition_code VARCHAR(50);
-
--- 迁移：product_line_oid → container_oid + container_type
-ALTER TABLE ck_document ADD COLUMN IF NOT EXISTS container_oid CHAR(36);
-ALTER TABLE ck_document ADD COLUMN IF NOT EXISTS container_type VARCHAR(20) NOT NULL DEFAULT 'PRODUCT_LINE';
--- 迁移已有数据：product_line_oid → container_oid
--- 注意：CREATE TABLE IF NOT EXISTS 不会覆盖已有表，此处迁移针对存量数据
--- 如果 container_oid 为空且 product_line_oid 有值，则复制
-ALTER TABLE ck_document DROP CONSTRAINT IF EXISTS fk_doc_product_line;
-DROP INDEX IF EXISTS idx_doc_product_line;
-
 CREATE TABLE IF NOT EXISTS ck_document (
     oid               CHAR(36)     PRIMARY KEY,
     name              VARCHAR(200) NOT NULL,
@@ -952,6 +762,8 @@ CREATE TABLE IF NOT EXISTS ck_document (
     container_type    VARCHAR(20)  NOT NULL DEFAULT 'PRODUCT_LINE',
     folder_oid        CHAR(36),
     stage_oid         VARCHAR(50)  NOT NULL,
+    cls_oid           CHAR(36),
+    tenant_oid        CHAR(36),
     creator           VARCHAR(100),
     created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater           VARCHAR(100),
@@ -962,6 +774,29 @@ CREATE TABLE IF NOT EXISTS ck_document (
 CREATE INDEX IF NOT EXISTS idx_doc_container ON ck_document(container_oid);
 CREATE INDEX IF NOT EXISTS idx_doc_folder ON ck_document(folder_oid);
 CREATE INDEX IF NOT EXISTS idx_doc_stage  ON ck_document(stage_oid);
+
+-- ==================== 分类管理 ====================
+-- 树形层级结构，通过 parent_oid 自引用，identifier 为 API 路由标识
+CREATE TABLE IF NOT EXISTS ck_classification (
+    oid           CHAR(36)     PRIMARY KEY,
+    code          VARCHAR(50)  NOT NULL,
+    name          VARCHAR(100) NOT NULL,
+    display_name  VARCHAR(200),
+    description   VARCHAR(500),
+    identifier    VARCHAR(100),
+    thumbnail     VARCHAR(500),
+    parent_oid    CHAR(36),
+    tenant_oid    CHAR(36),
+    sort_order    INTEGER      NOT NULL DEFAULT 0,
+    creator       VARCHAR(100),
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater       VARCHAR(100),
+    updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_cls_parent   ON ck_classification(parent_oid);
+CREATE INDEX IF NOT EXISTS idx_cls_tenant   ON ck_classification(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_cls_identifier ON ck_classification(identifier);
 
 -- ==================== 分类-IBA属性关联 (Classification IBA Mapping) ====================
 -- 为分类分配 IBA 属性，类似 ck_type_iba 的类型-属性关联
@@ -995,19 +830,20 @@ CREATE TABLE IF NOT EXISTS ck_part (
     container_type        VARCHAR(20),
     folder_oid            CHAR(36),
     stage_oid             VARCHAR(50)  NOT NULL,
-    classification_oid    CHAR(36),
+    cls_oid               CHAR(36),
+    tenant_oid            CHAR(36),
     creator               VARCHAR(100),
     created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater               VARCHAR(100),
     updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_part_folder         FOREIGN KEY (folder_oid)         REFERENCES ck_folder(oid) ON DELETE SET NULL,
-    CONSTRAINT fk_part_classification FOREIGN KEY (classification_oid) REFERENCES ck_classification(oid) ON DELETE SET NULL
+    CONSTRAINT fk_part_folder FOREIGN KEY (folder_oid) REFERENCES ck_folder(oid) ON DELETE SET NULL,
+    CONSTRAINT fk_part_classification FOREIGN KEY (cls_oid) REFERENCES ck_classification(oid) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_part_container  ON ck_part(container_oid);
 CREATE INDEX IF NOT EXISTS idx_part_folder    ON ck_part(folder_oid);
 CREATE INDEX IF NOT EXISTS idx_part_stage     ON ck_part(stage_oid);
-CREATE INDEX IF NOT EXISTS idx_part_cls       ON ck_part(classification_oid);
+CREATE INDEX IF NOT EXISTS idx_part_cls       ON ck_part(cls_oid);
 
 -- ==================== 部件子版本 (Part Iteration) ====================
 -- 参考 Windchill WTPart，与 Part 为 1:N 版本历史关系
@@ -1016,6 +852,7 @@ CREATE TABLE IF NOT EXISTS ck_part_iteration (
     master_oid                       CHAR(36)     NOT NULL REFERENCES ck_part(oid) ON DELETE CASCADE,
     revision                         VARCHAR(10)  NOT NULL DEFAULT 'A',
     iteration                        INTEGER      NOT NULL DEFAULT 1,
+    display_version                  VARCHAR(20),
     checked_out                      BOOLEAN      NOT NULL DEFAULT FALSE,
     checked_out_by                   VARCHAR(100),
     checked_out_comment              VARCHAR(500),
@@ -1029,6 +866,7 @@ CREATE TABLE IF NOT EXISTS ck_part_iteration (
     version_sort                     INTEGER      NOT NULL DEFAULT 0,
     branch_id                        VARCHAR(50),
     delete_mark                      BOOLEAN      NOT NULL DEFAULT FALSE,
+    tenant_oid                       CHAR(36),
     creator                          VARCHAR(100),
     created_at                       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater                          VARCHAR(100),
@@ -1037,10 +875,6 @@ CREATE TABLE IF NOT EXISTS ck_part_iteration (
 
 CREATE INDEX IF NOT EXISTS idx_pi_master  ON ck_part_iteration(master_oid);
 CREATE INDEX IF NOT EXISTS idx_pi_latest  ON ck_part_iteration(master_oid, latest);
-
--- 数据库迁移：添加 tenant_oid 列
-ALTER TABLE ck_part ADD COLUMN IF NOT EXISTS tenant_oid CHAR(36);
-ALTER TABLE ck_part_iteration ADD COLUMN IF NOT EXISTS tenant_oid CHAR(36);
 
 -- ==================== 功能架构主数据 (Functional Master) ====================
 -- 继承 Part 复合实体结构，面向军工功能系统（装备级功能系统 / 车型功能域） & 汽车车型功能域
@@ -1079,7 +913,6 @@ CREATE TABLE IF NOT EXISTS ck_functional_iteration (
     latest                           BOOLEAN      NOT NULL DEFAULT TRUE,
     derived_from_oid                 CHAR(36),
     derived_at                       TIMESTAMP,
-    view                             VARCHAR(50),
     status                           VARCHAR(50),
     lifecycle_template_iteration_oid CHAR(36),
     version_sort                     INTEGER      NOT NULL DEFAULT 0,
@@ -1095,12 +928,6 @@ CREATE TABLE IF NOT EXISTS ck_functional_iteration (
 CREATE INDEX IF NOT EXISTS idx_fi_master  ON ck_functional_iteration(master_oid);
 CREATE INDEX IF NOT EXISTS idx_fi_latest  ON ck_functional_iteration(master_oid, latest);
 
--- 数据库迁移：添加 IterationEntity 新增字段
-ALTER TABLE ck_part_iteration ADD COLUMN IF NOT EXISTS version_sort INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE ck_part_iteration ADD COLUMN IF NOT EXISTS branch_id VARCHAR(50);
-ALTER TABLE ck_part_iteration ADD COLUMN IF NOT EXISTS delete_mark BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE ck_part_iteration ADD COLUMN IF NOT EXISTS display_version VARCHAR(20);
-
 -- ==================== 文件存储实体 (CKFile) ====================
 -- 主文档文件，通过 ck_document_iteration.ckfile_oid 关联
 -- source_type: LOCAL(本地上传) / URL(网络资源)
@@ -1112,21 +939,15 @@ CREATE TABLE IF NOT EXISTS ck_file (
     file_size          BIGINT,
     storage_path       VARCHAR(500),
     mime_type          VARCHAR(100),
+    tenant_oid         CHAR(36),
     creator            VARCHAR(100),
     created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater            VARCHAR(100),
     updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 数据库迁移：为已有 ck_file 表添加 source_type / source_url（兼容旧数据）
-ALTER TABLE ck_file ADD COLUMN IF NOT EXISTS source_type VARCHAR(10) DEFAULT 'LOCAL';
-ALTER TABLE ck_file ADD COLUMN IF NOT EXISTS source_url VARCHAR(2000);
-
 -- ==================== 附件存储实体 (CKAttachment) ====================
 -- 通用附件实体，通过 owner_oid 关联其所属业务对象（可被 DocumentIteration、Part、CR 等多种实体复用），1:N
--- 兼容旧表结构：确保 owner_oid 字段存在
-ALTER TABLE IF EXISTS ck_attachment ADD COLUMN IF NOT EXISTS owner_oid CHAR(36);
-
 CREATE TABLE IF NOT EXISTS ck_attachment (
     oid                CHAR(36)     PRIMARY KEY,
     owner_oid          CHAR(36)     NOT NULL,
@@ -1134,6 +955,7 @@ CREATE TABLE IF NOT EXISTS ck_attachment (
     file_size          BIGINT,
     storage_path       VARCHAR(500),
     mime_type          VARCHAR(100),
+    tenant_oid         CHAR(36),
     creator            VARCHAR(100),
     created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater            VARCHAR(100),
@@ -1153,40 +975,60 @@ CREATE TABLE IF NOT EXISTS ck_document_iteration (
     master_oid         CHAR(36)     NOT NULL REFERENCES ck_document(oid) ON DELETE CASCADE,
     revision           VARCHAR(10)  NOT NULL DEFAULT 'A',
     iteration          INTEGER      NOT NULL DEFAULT 1,
+    display_version    VARCHAR(20),
     checked_out        BOOLEAN      NOT NULL DEFAULT FALSE,
     checked_out_by     VARCHAR(100),
     checked_out_comment VARCHAR(500),
     latest             BOOLEAN      NOT NULL DEFAULT TRUE,
     derived_from_oid   CHAR(36),
     derived_at         TIMESTAMP,
-    view               VARCHAR(50),
     status             VARCHAR(50),
+    lifecycle_template_iteration_oid CHAR(36),
     ckfile_oid         CHAR(36)     REFERENCES ck_file(oid) ON DELETE SET NULL,
     version_sort       INTEGER      NOT NULL DEFAULT 0,
     branch_id          VARCHAR(50),
     delete_mark        BOOLEAN      NOT NULL DEFAULT FALSE,
+    tenant_oid         CHAR(36),
     creator            VARCHAR(100),
     created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater            VARCHAR(100),
     updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 数据库迁移：为已有表添加 ckfile_oid 列（若表已存在但缺少该字段）
-ALTER TABLE ck_document_iteration ADD COLUMN IF NOT EXISTS ckfile_oid CHAR(36);
-
--- 数据库迁移：添加 lifecycle_template_iteration_oid（记录绑定的生命周期模板迭代版本）
-ALTER TABLE ck_document_iteration ADD COLUMN IF NOT EXISTS lifecycle_template_iteration_oid CHAR(36);
-
--- 数据库迁移：添加 IterationEntity 新增字段
-ALTER TABLE ck_document_iteration ADD COLUMN IF NOT EXISTS version_sort INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE ck_document_iteration ADD COLUMN IF NOT EXISTS branch_id VARCHAR(50);
-ALTER TABLE ck_document_iteration ADD COLUMN IF NOT EXISTS delete_mark BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE ck_document_iteration ADD COLUMN IF NOT EXISTS display_version VARCHAR(20);
-
 CREATE INDEX IF NOT EXISTS idx_di_master   ON ck_document_iteration(master_oid);
 CREATE INDEX IF NOT EXISTS idx_di_latest   ON ck_document_iteration(master_oid, latest);
 CREATE INDEX IF NOT EXISTS idx_di_ckfile   ON ck_document_iteration(ckfile_oid);
-  
+
+-- ==================== 零件-文档关系 (Part-Document Link) ====================
+-- 描述一份文档对某个零件构成「定义（DESCRIBES）」还是「参考（REFERENCE）」的关系。
+-- 判定准则：不看文档是什么，看它变了会怎样——文档变更后果 = 零件变更后果 时为 DESCRIBES，否则 REFERENCE。
+-- 分界线画在「挂」的动作上（link_type），而非文档类型属性：同一份文档对 A 零件是定义、对 B 零件是参考。
+-- 挂接粒度：part_iteration_oid 挂零件迭代（对齐 BOM 的挂法）。
+-- doc_iteration_oid 为 NULL 表示「跟随最新」；resolved_iteration_oid 为解析缓存，渲染直接 JOIN。
+CREATE TABLE IF NOT EXISTS ck_doc_part_link (
+    oid                    CHAR(36)     PRIMARY KEY,
+    link_type              VARCHAR(32)  NOT NULL,                -- DESCRIBES / REFERENCE
+    part_iteration_oid     CHAR(36)     NOT NULL,                -- 挂零件迭代（对齐 BOM 的挂法）
+    doc_master_oid         CHAR(36)     NOT NULL,                -- 文档主对象
+    doc_iteration_oid      CHAR(36),                            -- NULL = 跟随最新
+    resolved_iteration_oid CHAR(36),                            -- 解析缓存，渲染直接 JOIN
+    category               VARCHAR(64),                         -- 图纸/规格书/报告（软类型驱动）
+    tenant_oid             CHAR(36)     NOT NULL,
+    creator                VARCHAR(100),
+    created_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                VARCHAR(100),
+    updated_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_doc_part_link_part_iteration   FOREIGN KEY (part_iteration_oid)     REFERENCES ck_part_iteration(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_doc_part_link_doc_master       FOREIGN KEY (doc_master_oid)         REFERENCES ck_document(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_doc_part_link_doc_iteration    FOREIGN KEY (doc_iteration_oid)      REFERENCES ck_document_iteration(oid) ON DELETE SET NULL,
+    CONSTRAINT fk_doc_part_link_resolved_iteration FOREIGN KEY (resolved_iteration_oid) REFERENCES ck_document_iteration(oid) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_dpl_part_iteration ON ck_doc_part_link(part_iteration_oid, link_type);
+CREATE INDEX IF NOT EXISTS idx_dpl_doc_master     ON ck_doc_part_link(doc_master_oid, link_type);
+CREATE INDEX IF NOT EXISTS idx_dpl_doc_iteration  ON ck_doc_part_link(doc_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_dpl_tenant         ON ck_doc_part_link(tenant_oid);
+
 CREATE TABLE IF NOT EXISTS ck_user_activity (
     oid            VARCHAR(64)  PRIMARY KEY,
     user_oid       VARCHAR(64)  NOT NULL,
@@ -1201,18 +1043,12 @@ CREATE TABLE IF NOT EXISTS ck_user_activity (
     duration_ms    INTEGER,
     error_message  VARCHAR(500),
     detail_json    TEXT,
+    tenant_oid     CHAR(36),
     creator        VARCHAR(64),
     created_at     TIMESTAMP,
     updater        VARCHAR(64),
     updated_at     TIMESTAMP
 );
--- 扩展字段兼容（已存在表时安全追加）
-ALTER TABLE ck_user_activity ADD COLUMN IF NOT EXISTS operator_ip VARCHAR(64);
-ALTER TABLE ck_user_activity ADD COLUMN IF NOT EXISTS user_agent VARCHAR(512);
-ALTER TABLE ck_user_activity ADD COLUMN IF NOT EXISTS result VARCHAR(20);
-ALTER TABLE ck_user_activity ADD COLUMN IF NOT EXISTS duration_ms INTEGER;
-ALTER TABLE ck_user_activity ADD COLUMN IF NOT EXISTS error_message VARCHAR(500);
-ALTER TABLE ck_user_activity ADD COLUMN IF NOT EXISTS detail_json TEXT;
   
 CREATE TABLE IF NOT EXISTS ck_file_storage_config (
     oid              VARCHAR(64)  PRIMARY KEY,
@@ -1231,20 +1067,12 @@ CREATE TABLE IF NOT EXISTS ck_file_storage_config (
     secret_key       VARCHAR(256),
     bucket_name      VARCHAR(128),
     base_url         VARCHAR(512),
+    tenant_oid       CHAR(36),
     creator          VARCHAR(64),
     created_at       TIMESTAMP,
     updater          VARCHAR(64),
     updated_at       TIMESTAMP
 );
--- MinIO/跨平台字段兼容（已存在表时安全追加）
-ALTER TABLE ck_file_storage_config ADD COLUMN IF NOT EXISTS endpoint VARCHAR(512);
-ALTER TABLE ck_file_storage_config ADD COLUMN IF NOT EXISTS access_key VARCHAR(256);
-ALTER TABLE ck_file_storage_config ADD COLUMN IF NOT EXISTS secret_key VARCHAR(256);
-ALTER TABLE ck_file_storage_config ADD COLUMN IF NOT EXISTS bucket_name VARCHAR(128);
-ALTER TABLE ck_file_storage_config ADD COLUMN IF NOT EXISTS base_url VARCHAR(512);
-ALTER TABLE ck_file_storage_config ADD COLUMN IF NOT EXISTS max_capacity_mb INTEGER;
-ALTER TABLE ck_file_storage_config ADD COLUMN IF NOT EXISTS alert_threshold_percent INTEGER DEFAULT 80;
-ALTER TABLE ck_file_storage_config ADD COLUMN IF NOT EXISTS tenant_oid CHAR(36);
 
 -- ==================== 研发阶段模板 ====================
 CREATE TABLE IF NOT EXISTS ck_stage_template (
@@ -1289,32 +1117,12 @@ CREATE TABLE IF NOT EXISTS ck_unit (
 CREATE INDEX IF NOT EXISTS idx_unit_qtype ON ck_unit(quantity_type);
 CREATE INDEX IF NOT EXISTS idx_unit_base  ON ck_unit(base_unit_name);
 
--- ==================== 分类管理 ====================
--- 树形层级结构，通过 parent_oid 自引用，identifier 为 API 路由标识
-CREATE TABLE IF NOT EXISTS ck_classification (
-    oid          CHAR(36)     PRIMARY KEY,
-    code         VARCHAR(50)  NOT NULL,
-    name         VARCHAR(100) NOT NULL,
-    display_name VARCHAR(200),
-    description  VARCHAR(500),
-    identifier   VARCHAR(100),
-    thumbnail    VARCHAR(500),
-    parent_oid   CHAR(36),
-    tenant_oid   CHAR(36),
-    sort_order   INTEGER      NOT NULL DEFAULT 0,
-    creator      VARCHAR(100),
-    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updater      VARCHAR(100),
-    updated_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_cls_parent   ON ck_classification(parent_oid);
-CREATE INDEX IF NOT EXISTS idx_cls_tenant   ON ck_classification(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_cls_identifier ON ck_classification(identifier);
-
 -- ==================== 分类 IBA 数据 ====================
--- 存储分类节点对应的 IBA 属性值，一个分类节点的每个 IBA 属性对应一条记录
+-- 存储分类节点对应的 IBA 属性值，一个分类节点的每个 IBA 属性对应一条记录。
+-- entity_oid 为空字符串表示「分类节点默认值」（分类管理界面配置），
+-- 非空表示具体对象实例（Part/Document）的分类 IBA 属性值。
 CREATE TABLE IF NOT EXISTS ck_cls_iba_data (
+    entity_oid         CHAR(36)     NOT NULL DEFAULT '',
     classification_oid CHAR(36)     NOT NULL,
     attr_code          VARCHAR(100) NOT NULL,
     attr_value         JSONB        NOT NULL DEFAULT 'null'::jsonb,
@@ -1323,12 +1131,13 @@ CREATE TABLE IF NOT EXISTS ck_cls_iba_data (
     created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater            VARCHAR(100),
     updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (classification_oid, attr_code)
+    PRIMARY KEY (entity_oid, classification_oid, attr_code)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cid_cls    ON ck_cls_iba_data(classification_oid);
 CREATE INDEX IF NOT EXISTS idx_cid_attr   ON ck_cls_iba_data(attr_code);
 CREATE INDEX IF NOT EXISTS idx_cid_tenant ON ck_cls_iba_data(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_cid_entity ON ck_cls_iba_data(entity_oid, classification_oid);
 
 -- ==================== 分类 IBA 页面布局 ====================
 -- 为分类节点的 IBA 属性集存储表单布局配置（create / update / detail）
@@ -1438,4 +1247,171 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_bom_diff_from_to ON ck_bom_diff(from_iterat
 CREATE INDEX IF NOT EXISTS idx_bom_diff_from ON ck_bom_diff(from_iteration_oid);
 CREATE INDEX IF NOT EXISTS idx_bom_diff_to   ON ck_bom_diff(to_iteration_oid);
 CREATE INDEX IF NOT EXISTS idx_bom_diff_tenant ON ck_bom_diff(tenant_oid);
+
+-- ==================== 部件双向替代关系 (PartAlternateLink) ====================
+-- 参考 Windchill WTPartAlternateLink，描述部件之间全局可用的双向替代关系
+-- 挂在部件主数据（Master）级别（非迭代），不限定于某个 BOM，任意 BOM 中遇到任一部件均可引用
+-- role_a_part_oid / role_b_part_oid: 对称双向的两个角色端（roleA / roleB），有序对唯一约束防重复
+-- alternate_type: 替代类型 EQUIVALENT/COMPLETE/PARTIAL/SUBSTITUTE
+-- effectivity_json: 生效性配置 JSONB 预留（日期/批次/序列号生效性）
+CREATE TABLE IF NOT EXISTS ck_part_alternate_link (
+    oid                 CHAR(36)     PRIMARY KEY,
+    code                VARCHAR(50),
+    name                VARCHAR(200),
+    description         VARCHAR(1000),
+    role_a_part_oid     CHAR(36)     NOT NULL,
+    role_b_part_oid     CHAR(36)     NOT NULL,
+    alternate_type      VARCHAR(20),
+    alternate_quantity  DOUBLE PRECISION DEFAULT 1.0,
+    alternate_unit      VARCHAR(50),
+    enabled             BOOLEAN      NOT NULL DEFAULT TRUE,
+    effectivity_json    JSONB,
+    tenant_oid          CHAR(36),
+    creator             VARCHAR(100),
+    created_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater             VARCHAR(100),
+    updated_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_part_alternate_link_role_a FOREIGN KEY (role_a_part_oid) REFERENCES ck_part(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_part_alternate_link_role_b FOREIGN KEY (role_b_part_oid) REFERENCES ck_part(oid) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_part_alternate_link_pair ON ck_part_alternate_link(role_a_part_oid, role_b_part_oid);
+CREATE INDEX IF NOT EXISTS idx_part_alternate_link_role_a ON ck_part_alternate_link(role_a_part_oid);
+CREATE INDEX IF NOT EXISTS idx_part_alternate_link_role_b ON ck_part_alternate_link(role_b_part_oid);
+CREATE INDEX IF NOT EXISTS idx_part_alternate_link_tenant ON ck_part_alternate_link(tenant_oid);
+
+-- ==================== BOM 行替代件 (BomSubstituteLink) ====================
+-- 参考 Windchill WTPartSubstituteLink，描述某个 BOM 行内子部件的局部替代件
+-- 挂在 BOM 行级别，随父件迭代受控，仅在父部件该 BOM 行的上下文内生效
+-- bom_link_oid: 父 BOM 行 oid（关联 ck_bom_links.oid，局部替代挂载点）
+-- source_part_oid: 原子部件主对象 oid（被替代方）
+-- substitute_part_oid: 替代件主对象 oid
+-- substitute_type: 替代类型 EQUIVALENT/COMPLETE/PARTIAL/SUBSTITUTE
+-- priority: 同 BOM 行多个替代件时的优先顺序，越小越优先
+-- effectivity_json: 生效性配置 JSONB 预留（日期/批次/序列号生效性）
+-- (bom_link_oid, substitute_part_oid) 联合唯一，避免同一 BOM 行重复替代件
+CREATE TABLE IF NOT EXISTS ck_bom_substitute_link (
+    oid                  CHAR(36)     PRIMARY KEY,
+    code                 VARCHAR(50),
+    name                 VARCHAR(200),
+    description          VARCHAR(1000),
+    bom_link_oid         CHAR(36)     NOT NULL,
+    source_part_oid      CHAR(36)     NOT NULL,
+    substitute_part_oid  CHAR(36)     NOT NULL,
+    substitute_type      VARCHAR(20),
+    substitute_quantity  DOUBLE PRECISION DEFAULT 1.0,
+    substitute_unit      VARCHAR(50),
+    priority             INTEGER,
+    enabled              BOOLEAN      NOT NULL DEFAULT TRUE,
+    effectivity_json     JSONB,
+    tenant_oid           CHAR(36),
+    creator              VARCHAR(100),
+    created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater              VARCHAR(100),
+    updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_bom_substitute_link_link       FOREIGN KEY (bom_link_oid)        REFERENCES ck_bom_links(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_bom_substitute_link_source     FOREIGN KEY (source_part_oid)     REFERENCES ck_part(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_bom_substitute_link_substitute FOREIGN KEY (substitute_part_oid) REFERENCES ck_part(oid) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_bom_substitute_link_pair ON ck_bom_substitute_link(bom_link_oid, substitute_part_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_link_link       ON ck_bom_substitute_link(bom_link_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_link_source     ON ck_bom_substitute_link(source_part_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_link_substitute ON ck_bom_substitute_link(substitute_part_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_link_tenant     ON ck_bom_substitute_link(tenant_oid);
+
+-- ==================== 成组替代组头 (BomSubstituteGroup) ====================
+-- 描述"多个 BOM 行成员被一组替代物料整组替换"的成组替代关系
+-- 组头挂父件迭代（parent_iteration_oid），随父件变更流程受控
+-- 原料侧挂多个 BOM 行成员，替代侧挂一组替代物料（见 ck_bom_substitute_group_member）
+-- atomic_replace: 整组替换约束（true = 必须整组替换，不允许拆开换）
+-- status: 组状态 DRAFT/APPROVED/OBSOLETE，仅 APPROVED 参与下游解析
+-- effectivity_json: 生效性配置 JSONB 预留（日期/批次/序列号生效性）
+CREATE TABLE IF NOT EXISTS ck_bom_substitute_group (
+    oid                   CHAR(36)     PRIMARY KEY,
+    code                  VARCHAR(50),
+    name                  VARCHAR(200),
+    description           VARCHAR(1000),
+    parent_iteration_oid  CHAR(36)     NOT NULL,
+    status                VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
+    atomic_replace        BOOLEAN      NOT NULL DEFAULT TRUE,
+    enabled               BOOLEAN      NOT NULL DEFAULT TRUE,
+    effectivity_json      JSONB,
+    tenant_oid            CHAR(36),
+    creator               VARCHAR(100),
+    created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater               VARCHAR(100),
+    updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_bom_substitute_group_parent FOREIGN KEY (parent_iteration_oid) REFERENCES ck_part_iteration(oid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_group_parent ON ck_bom_substitute_group(parent_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_group_status ON ck_bom_substitute_group(status);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_group_tenant ON ck_bom_substitute_group(tenant_oid);
+
+-- ==================== 成组替代成员 (BomSubstituteGroupMember) ====================
+-- 表达成组替代的 N:M 成员关系：原料侧挂多个 BOM 行成员，替代侧挂一组替代物料
+-- member_side: SOURCE（原料侧，bom_link_oid 有值）/ SUBSTITUTE（替代侧，part_oid 有值）
+-- quantity: 成员级数量因子（如 1 个原子件 = 3 个替代件）
+-- CHECK 约束保证成员侧的字段一致性
+CREATE TABLE IF NOT EXISTS ck_bom_substitute_group_member (
+    oid           CHAR(36)     PRIMARY KEY,
+    group_oid     CHAR(36)     NOT NULL,
+    member_side   VARCHAR(20)  NOT NULL,
+    bom_link_oid  CHAR(36),
+    part_oid      CHAR(36),
+    quantity      DOUBLE PRECISION DEFAULT 1.0,
+    unit          VARCHAR(50),
+    sort_order    INTEGER,
+    tenant_oid    CHAR(36),
+    creator       VARCHAR(100),
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater       VARCHAR(100),
+    updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_bom_substitute_group_member_group FOREIGN KEY (group_oid) REFERENCES ck_bom_substitute_group(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_bom_substitute_group_member_link  FOREIGN KEY (bom_link_oid) REFERENCES ck_bom_links(oid) ON DELETE CASCADE,
+    CONSTRAINT fk_bom_substitute_group_member_part  FOREIGN KEY (part_oid) REFERENCES ck_part(oid) ON DELETE CASCADE,
+    CONSTRAINT chk_bom_substitute_group_member_side CHECK (
+        (member_side = 'SOURCE' AND bom_link_oid IS NOT NULL AND part_oid IS NULL) OR
+        (member_side = 'SUBSTITUTE' AND part_oid IS NOT NULL AND bom_link_oid IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_group_member_group ON ck_bom_substitute_group_member(group_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_group_member_link  ON ck_bom_substitute_group_member(bom_link_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_group_member_part  ON ck_bom_substitute_group_member(part_oid);
+CREATE INDEX IF NOT EXISTS idx_bom_substitute_group_member_tenant ON ck_bom_substitute_group_member(tenant_oid);
+
+-- ==================== 租户 oid 索引 ====================
+CREATE INDEX IF NOT EXISTS idx_org_tenant            ON ck_organization(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_user_tenant           ON ck_user(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_role_tenant           ON ck_role(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_role_member_tenant    ON ck_role_member(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_pl_tenant             ON ck_product_line(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_pm_tenant             ON ck_product_model(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_stage_tenant          ON ck_stage(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_folder_tenant         ON ck_folder(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_team_tenant           ON ck_team(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_team_member_tenant    ON ck_team_member(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_doc_tenant            ON ck_document(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_di_tenant             ON ck_document_iteration(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_file_tenant           ON ck_file(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_att_tenant            ON ck_attachment(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_media_tenant          ON ck_media(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_wfc_tenant            ON ck_workflow_category(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_ua_tenant             ON ck_user_activity(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_eid_tenant            ON ck_type_iba_data(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_number_tenant          ON ck_number(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_vr_tenant              ON ck_version_rule(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_ls_tenant              ON ck_lifecycle_status(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_lt_tenant              ON ck_lifecycle_template(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_lti_tenant             ON ck_lifecycle_template_iteration(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_lts_tenant             ON ck_lifecycle_template_state(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_ltt_tenant             ON ck_lifecycle_template_transition(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_view_tenant            ON ck_view(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_vt_tenant              ON ck_view_transition(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_pl_tenant2             ON ck_type_page_layout(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_td_tenant              ON ck_type_definition(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_st_tenant              ON ck_stage_template(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_cpl_tenant2            ON ck_cls_page_layout(tenant_oid);
 

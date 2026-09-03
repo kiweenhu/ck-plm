@@ -112,7 +112,6 @@ public class DocumentCheckoutProvider implements CheckoutProvider {
         copy.setDerivedFromOid(currentIter.getOid());      // 记录来源版本
         copy.setDerivedAt(LocalDateTime.now());
         copy.setCkfileOid(currentIter.getCkfileOid());
-        copy.setView(currentIter.getView());
         copy.setStatus(currentIter.getStatus());
         copy.setLifecycleTemplateIterationOid(currentIter.getLifecycleTemplateIterationOid());
         iterationMapper.insert(copy);
@@ -165,6 +164,44 @@ public class DocumentCheckoutProvider implements CheckoutProvider {
 
         // 记录操作日志
         recordActivity(user, "取消检出", doc);
+    }
+
+    @Override
+    @Transactional
+    public void checkin(String entityOid, String user) {
+        Document doc = documentMapper.selectByOid(entityOid);
+        if (doc == null) {
+            throw new IllegalArgumentException("文档不存在: " + entityOid);
+        }
+
+        // 找到检出版本（checkedOut=true, latest=true, derivedFromOid 指向源版本）
+        List<DocumentIteration> allIters = iterationMapper.selectByMasterOid(entityOid);
+        DocumentIteration checkedOutIter = null;
+        for (DocumentIteration iter : allIters) {
+            if (iter.isCheckedOut() && iter.isLatest() && iter.getDerivedFromOid() != null) {
+                checkedOutIter = iter;
+            }
+        }
+
+        if (checkedOutIter == null) {
+            throw new IllegalStateException("该文档未被检出: " + entityOid);
+        }
+        if (!user.equals(checkedOutIter.getCheckedOutBy())) {
+            throw new IllegalStateException("只有检出人 " + checkedOutIter.getCheckedOutBy() + " 才能检入");
+        }
+
+        // 解除检出锁定，将工作副本保存为正式的新版本
+        checkedOutIter.setCheckedOut(false);
+        checkedOutIter.setCheckedOutBy(null);
+        checkedOutIter.setCheckedOutComment(null);
+        checkedOutIter.setUpdatedAt(LocalDateTime.now());
+        iterationMapper.update(checkedOutIter);
+
+        log.info("检入成功: docOid={}, version={}.{}, user={}", entityOid,
+                checkedOutIter.getRevision(), checkedOutIter.getIteration(), user);
+
+        // 记录操作日志
+        recordActivity(user, "检入文档", doc);
     }
 
     /** 记录操作日志 */

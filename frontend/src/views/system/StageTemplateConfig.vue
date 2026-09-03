@@ -1,11 +1,13 @@
 <template>
   <div class="st-page">
-    <div class="st-header">
-      <div class="st-header-left">
-        <h3 class="st-title">研发阶段模板</h3>
-        <span class="st-subtitle">定义研发阶段元数据，创建产品线/型号时从此模板生成阶段实例</span>
-      </div>
-    </div>
+    <a-tabs v-model:activeKey="activeTab" class="st-tabs">
+      <a-tab-pane key="stage" tab="研发阶段模板">
+        <div class="st-header">
+          <div class="st-header-left">
+            <h3 class="st-title">研发阶段模板</h3>
+            <span class="st-subtitle">定义研发阶段模板，创建产品线/型号时从此模板生成阶段实例</span>
+          </div>
+        </div>
 
     <div class="st-stats-bar">
       <div class="st-stat-item">
@@ -104,6 +106,8 @@
         </a-form-item>
       </a-form>
     </a-modal>
+      </a-tab-pane>
+    </a-tabs>
   </div>
 </template>
 
@@ -114,6 +118,9 @@ import { PlusOutlined, RocketOutlined, CopyOutlined } from '@ant-design/icons-vu
 import DataTable from '@/components/DataTable.vue'
 import { useUserStore } from '@/stores/user'
 import axios from 'axios'
+
+// 当前激活的模板 Tab
+const activeTab = ref('stage')
 
 const request = axios.create({ baseURL: '/api' })
 request.interceptors.request.use(config => {

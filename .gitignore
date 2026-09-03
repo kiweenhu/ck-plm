@@ -20,6 +20,7 @@ Thumbs.db
 # ===== Logs =====
 logs/
 *.log
+*.err
 
 # ===== Uploads & Generated =====
 uploads/
@@ -39,3 +40,6 @@ frontend/.env.local
 .codebuddy/
 .playwright-cli/
 .workbuddy/
+
+# ===== Docs =====
+docs/

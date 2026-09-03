@@ -9,6 +9,7 @@ package cn.ck.plm.part.entity;
 
 import cn.ck.plm.base.entity.IterationEntity;
 import cn.ck.plm.base.entity.TenantEntity;
+import cn.ck.plm.base.entity.View;
 
 /**
  * 部件子版本数据对象（Part Iteration），参考 Windchill WTPart 模型。
@@ -37,6 +38,9 @@ public class PartIteration extends IterationEntity implements TenantEntity {
     /** 来源（如：自制、采购） */
     private String source;
 
+    /** 所属视图（如 Design / Manufacturing），部件特有，文档无视图概念 */
+    private View view;
+
     /** 租户 oid（引用 ck_tenant.oid） */
     private String tenantOid;
 
@@ -53,6 +57,9 @@ public class PartIteration extends IterationEntity implements TenantEntity {
 
     public String getSource() { return source; }
     public void setSource(String source) { this.source = source; }
+
+    public View getView() { return view; }
+    public void setView(View view) { this.view = view; }
 
     @Override
     public String getTenantOid() { return tenantOid; }

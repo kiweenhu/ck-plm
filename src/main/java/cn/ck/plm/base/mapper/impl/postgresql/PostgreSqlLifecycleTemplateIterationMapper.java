@@ -10,7 +10,6 @@ package cn.ck.plm.base.mapper.impl.postgresql;
 import cn.ck.plm.base.entity.LifecycleTemplateIteration;
 import cn.ck.plm.base.mapper.LifecycleTemplateIterationMapper;
 import cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler;
-import cn.ck.plm.base.typehandler.ViewTypeHandler;
 import org.apache.ibatis.annotations.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
@@ -26,13 +25,12 @@ public interface PostgreSqlLifecycleTemplateIterationMapper extends LifecycleTem
     @Override
     @Insert("INSERT INTO ck_lifecycle_template_iteration (oid, master_oid, revision, iteration, " +
             "display_version, checked_out, checked_out_by, checked_out_comment, latest, " +
-            "derived_from_oid, derived_at, view, status, " +
+            "derived_from_oid, derived_at, status, " +
             "creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{masterOid}, #{revision}, #{iteration}, " +
             "#{displayVersion}, " +
             "#{checkedOut}, #{checkedOutBy}, #{checkedOutComment}, #{latest}, " +
             "#{derivedFromOid}, #{derivedAt}, " +
-            "#{view, typeHandler=cn.ck.plm.base.typehandler.ViewTypeHandler}, " +
             "#{status, typeHandler=cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler}, " +
             "#{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(LifecycleTemplateIteration iteration);
@@ -43,7 +41,6 @@ public interface PostgreSqlLifecycleTemplateIterationMapper extends LifecycleTem
             "checked_out = #{checkedOut}, checked_out_by = #{checkedOutBy}, " +
             "checked_out_comment = #{checkedOutComment}, latest = #{latest}, " +
             "derived_from_oid = #{derivedFromOid}, derived_at = #{derivedAt}, " +
-            "view = #{view, typeHandler=cn.ck.plm.base.typehandler.ViewTypeHandler}, " +
             "status = #{status, typeHandler=cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler}, " +
             "updater = #{updater}, updated_at = #{updatedAt} " +
             "WHERE oid = #{oid}")
@@ -56,7 +53,7 @@ public interface PostgreSqlLifecycleTemplateIterationMapper extends LifecycleTem
     // ==================== 查询映射 ====================
     String SELECT_COLUMNS = "SELECT oid, master_oid, revision, iteration, " +
             "display_version, checked_out, checked_out_by, checked_out_comment, latest, " +
-            "derived_from_oid, derived_at, view, status, " +
+            "derived_from_oid, derived_at, status, " +
             "creator, created_at, updater, updated_at FROM ck_lifecycle_template_iteration ";
 
     @Select(SELECT_COLUMNS + "WHERE oid = #{oid}")
@@ -72,7 +69,6 @@ public interface PostgreSqlLifecycleTemplateIterationMapper extends LifecycleTem
             @Result(property = "latest",            column = "latest"),
             @Result(property = "derivedFromOid",    column = "derived_from_oid"),
             @Result(property = "derivedAt",         column = "derived_at"),
-            @Result(property = "view",              column = "view", typeHandler = ViewTypeHandler.class),
             @Result(property = "status",            column = "status", typeHandler = LifecycleStatusTypeHandler.class),
             @Result(property = "creator",           column = "creator"),
             @Result(property = "createdAt",         column = "created_at"),

@@ -190,45 +190,62 @@
           <!-- IBA属性 -->
           <div v-if="detailTab === 'iba'">
             <a-tabs v-model:activeKey="ibaSubTab" size="small" class="cls-iba-subtabs">
-              <!-- 编辑表单（使用布局渲染） -->
-              <a-tab-pane key="update" tab="编辑表单">
-                <ClsIbaFormPage
-                  :key="'update_' + detail.oid"
-                  :classification-oid="detail.oid"
-                  operation-code="update"
-                  @saved="onIbaFormSaved"
-                  @design-layout="openLayoutDesigner"
-                />
-              </a-tab-pane>
-
-              <!-- 新建表单（使用布局渲染） -->
-              <a-tab-pane key="create" tab="新建表单">
-                <ClsIbaFormPage
-                  :key="'create_' + detail.oid"
-                  :classification-oid="detail.oid"
-                  operation-code="create"
-                  @saved="onIbaFormSaved"
-                  @design-layout="openLayoutDesigner"
-                />
-              </a-tab-pane>
-
-              <!-- 详情表单（只读） -->
-              <a-tab-pane key="detail" tab="详情表单">
-                <ClsIbaFormPage
-                  :key="'detail_' + detail.oid"
-                  :classification-oid="detail.oid"
-                  operation-code="detail"
-                  @design-layout="openLayoutDesigner"
-                />
-              </a-tab-pane>
-
+              <!--
+                分类对应的 IBA 属性随业务对象创建/编辑/详情页一起渲染，不在分类管理页内置表单预览。
+                布局设计：保留作为元数据可视化配置入口；
+                关联IBA：管理分类所分配的 IBA 属性清单。
+              -->
               <!-- 布局设计 -->
               <a-tab-pane key="designer" tab="布局设计">
-                <div class="cls-iba-designer-placeholder">
-                  <a-empty description="为分类的 IBA 属性设计表单布局">
-                    <a-button type="primary" @click="openLayoutDesigner">打开布局设计器</a-button>
-                  </a-empty>
+                <div class="cls-layout-header">
+                  <span class="cls-layout-count">共 {{ layoutList.length }} 个布局（系统预置 {{ builtinCount }}，租户自定义 {{ customCount }}）</span>
+                  <a-button size="small" type="primary" @click="openCreateLayout">
+                    <template #icon><PlusOutlined /></template>
+                    新建布局
+                  </a-button>
                 </div>
+                <a-table
+                  :columns="layoutColumns"
+                  :data-source="layoutList"
+                  :loading="layoutLoading"
+                  row-key="code"
+                  size="small"
+                  :pagination="false"
+                >
+                  <template #bodyCell="{ column, record }">
+                    <template v-if="column.key === 'code'">
+                      <a-tag :color="record.builtin === 'true' ? 'blue' : 'purple'">
+                        {{ record.code }}
+                      </a-tag>
+                    </template>
+                    <template v-if="column.key === 'name'">
+                      {{ record.name }}
+                    </template>
+                    <template v-if="column.key === 'builtin'">
+                      <a-badge
+                        :status="record.builtin === 'true' ? 'processing' : 'success'"
+                        :text="record.builtin === 'true' ? '系统预置' : '租户自定义'"
+                      />
+                    </template>
+                    <template v-if="column.key === 'saved'">
+                      <a-tag v-if="record.saved === 'true'" color="green">已配置</a-tag>
+                      <a-tag v-else color="default">未配置</a-tag>
+                    </template>
+                    <template v-if="column.key === 'action'">
+                      <a-button type="link" size="small" @click="openEditLayout(record)">
+                        {{ record.saved === 'true' ? '编辑' : '设计' }}
+                      </a-button>
+                      <a-popconfirm
+                        v-if="record.builtin !== 'true' && record.saved === 'true'"
+                        title="确定删除此布局？"
+                        @confirm="handleDeleteLayout(record)"
+                      >
+                        <a-button type="link" size="small" danger>删除</a-button>
+                      </a-popconfirm>
+                    </template>
+                  </template>
+                </a-table>
+                <a-empty v-if="!layoutLoading && !layoutList.length" description="暂无可用布局" style="margin-top: 24px" />
               </a-tab-pane>
 
               <!-- IBA关联管理 -->
@@ -318,7 +335,9 @@
         v-if="layoutDesignerVisible && detail.oid"
         :classification-oid="detail.oid"
         :classification-name="detail.name || detail.identifier || ''"
-        @back="layoutDesignerVisible = false"
+        :initial-op-code="pendingLayoutOpCode"
+        :layout-operations="layoutList"
+        @back="onLayoutDesignerClose"
       />
     </a-drawer>
   </div>
@@ -330,12 +349,12 @@ import { message } from 'ant-design-vue'
 import { PlusOutlined, DeleteOutlined, ApartmentOutlined, FolderOutlined } from '@ant-design/icons-vue'
 import ImageUploader from '@/components/ImageUploader.vue'
 import IBAExtension from '@/components/IBAExtension.vue'
-import ClsIbaFormPage from '@/components/ClsIbaFormPage.vue'
 import ClsIbaLayoutDesigner from '@/views/system/ClsIbaLayoutDesigner.vue'
 import {
   getClassificationTree, getClassification,
   createClassification, updateClassification, deleteClassification,
-  getClassificationIBAs, getUnassignedClsIBAs, batchAssignClsIBAs, removeClsIBAMapping
+  getClassificationIBAs, getUnassignedClsIBAs, batchAssignClsIBAs, removeClsIBAMapping,
+  getClsIbaLayoutOperations, deleteClsIbaLayout
 } from '@/api'
 
 // ===== 状态 =====
@@ -366,6 +385,19 @@ const ibaColumns = [
   { title: '必填', key: 'required', dataIndex: 'required', width: 70 },
   { title: '操作', key: 'action', width: 70 },
 ]
+
+// 布局设计
+const layoutList = ref([])
+const layoutLoading = ref(false)
+const layoutColumns = [
+  { title: '操作编码', key: 'code', dataIndex: 'code', width: 120 },
+  { title: '布局名称', key: 'name', dataIndex: 'name' },
+  { title: '类型', key: 'builtin', dataIndex: 'builtin', width: 110 },
+  { title: '状态', key: 'saved', dataIndex: 'saved', width: 90 },
+  { title: '操作', key: 'action', width: 140 },
+]
+const builtinCount = computed(() => layoutList.value.filter(l => l.builtin === 'true').length)
+const customCount = computed(() => layoutList.value.filter(l => l.builtin !== 'true').length)
 
 const form = reactive({
   identifier: '',
@@ -582,6 +614,7 @@ function handleDelete() {
 function onDetailTabChange(key) {
   if (key === 'iba' && detail.oid) {
     loadIBAMappings(detail.oid)
+    loadLayoutList(detail.oid)
   }
 }
 
@@ -633,6 +666,38 @@ async function handleRemoveIBA(record) {
   }
 }
 
+// ===== 布局设计 =====
+async function loadLayoutList(classificationOid) {
+  layoutLoading.value = true
+  try {
+    const res = await getClsIbaLayoutOperations(classificationOid)
+    layoutList.value = res?.data || res || []
+  } catch { layoutList.value = [] }
+  finally { layoutLoading.value = false }
+}
+
+function openEditLayout(record) {
+  // 透传给布局设计器组件：编辑指定 code 的布局
+  pendingLayoutOpCode.value = record.code
+  layoutDesignerVisible.value = true
+}
+
+function openCreateLayout() {
+  // 进入设计器并提示用户选择自定义操作编码
+  pendingLayoutOpCode.value = ''
+  layoutDesignerVisible.value = true
+}
+
+async function handleDeleteLayout(record) {
+  try {
+    await deleteClsIbaLayout(detail.oid, record.code)
+    message.success('布局已删除')
+    loadLayoutList(detail.oid)
+  } catch (e) {
+    message.error(e?.response?.data?.message || '删除失败')
+  }
+}
+
 // ===== IBA 扩展 =====
 const ibaExtRef = ref(null)
 function openIBAExtension() {
@@ -641,14 +706,14 @@ function openIBAExtension() {
 
 // ===== IBA 布局设计器 =====
 const layoutDesignerVisible = ref(false)
+const pendingLayoutOpCode = ref('')
 function openLayoutDesigner() {
   layoutDesignerVisible.value = true
 }
-
-// ===== IBA 表单保存回调 =====
-function onIbaFormSaved() {
-  // 保存成功后刷新关联列表
-  if (detail.oid) loadIBAMappings(detail.oid)
+function onLayoutDesignerClose() {
+  layoutDesignerVisible.value = false
+  pendingLayoutOpCode.value = ''
+  if (detail.oid) loadLayoutList(detail.oid)
 }
 
 // ===== 初始化 =====

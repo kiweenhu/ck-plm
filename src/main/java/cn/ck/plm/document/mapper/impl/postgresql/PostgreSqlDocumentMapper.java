@@ -23,10 +23,10 @@ public interface PostgreSqlDocumentMapper extends DocumentMapper {
 
     @Override
     @Insert("INSERT INTO ck_document (oid, name, number, description, type_definition_code, " +
-            "container_oid, container_type, folder_oid, stage_oid, " +
+            "container_oid, container_type, folder_oid, stage_oid, cls_oid, " +
             "creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{name}, #{number}, #{description}, #{typeDefinitionCode}, " +
-            "#{containerOid}, #{containerType}, #{folderOid}, #{stageOid}, " +
+            "#{containerOid}, #{containerType}, #{folderOid}, #{stageOid}, #{clsOid}, " +
             "#{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(Document document);
 
@@ -34,6 +34,7 @@ public interface PostgreSqlDocumentMapper extends DocumentMapper {
     @Update("UPDATE ck_document SET name = #{name}, number = #{number}, description = #{description}, " +
             "type_definition_code = #{typeDefinitionCode}, " +
             "container_oid = #{containerOid}, container_type = #{containerType}, folder_oid = #{folderOid}, stage_oid = #{stageOid}, " +
+            "cls_oid = #{clsOid}, " +
             "updater = #{updater}, updated_at = #{updatedAt} " +
             "WHERE oid = #{oid}")
     int update(Document document);
@@ -44,7 +45,7 @@ public interface PostgreSqlDocumentMapper extends DocumentMapper {
 
     // ==================== 查询映射 ====================
     String SELECT_COLUMNS = "SELECT oid, name, number, description, type_definition_code, " +
-            "container_oid, container_type, folder_oid, stage_oid, " +
+            "container_oid, container_type, folder_oid, stage_oid, cls_oid, " +
             "creator, created_at, updater, updated_at FROM ck_document ";
 
     @Select(SELECT_COLUMNS + "WHERE oid = #{oid}")
@@ -58,6 +59,7 @@ public interface PostgreSqlDocumentMapper extends DocumentMapper {
             @Result(property = "containerType",     column = "container_type"),
             @Result(property = "folderOid",         column = "folder_oid"),
             @Result(property = "stageOid",          column = "stage_oid"),
+            @Result(property = "clsOid",            column = "cls_oid"),
             @Result(property = "creator",           column = "creator"),
             @Result(property = "createdAt",         column = "created_at"),
             @Result(property = "updater",           column = "updater"),

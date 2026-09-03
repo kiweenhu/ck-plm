@@ -42,7 +42,7 @@ public class Part extends MasterEntity implements TenantEntity {
     private String stageOid;
 
     /** 分类 oid（关联 ck_classification.oid） */
-    private String classificationOid;
+    private String clsOid;
 
     /** 租户 oid（引用 ck_tenant.oid） */
     private String tenantOid;
@@ -64,8 +64,8 @@ public class Part extends MasterEntity implements TenantEntity {
     public String getStageOid() { return stageOid; }
     public void setStageOid(String stageOid) { this.stageOid = stageOid; }
 
-    public String getClassificationOid() { return classificationOid; }
-    public void setClassificationOid(String classificationOid) { this.classificationOid = classificationOid; }
+    public String getClsOid() { return clsOid; }
+    public void setClsOid(String clsOid) { this.clsOid = clsOid; }
 
     @Override
     public String getTenantOid() { return tenantOid; }

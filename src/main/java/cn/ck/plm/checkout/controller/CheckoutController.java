@@ -68,6 +68,35 @@ public class CheckoutController {
     }
 
     /**
+     * 检入（解除检出锁定，将检出的工作副本保存为新的正式版本）。
+     *
+     * <pre>
+     * POST /api/checkout/checkin
+     * { "entityType": "PART", "entityOid": "uuid" }
+     * </pre>
+     */
+    @PostMapping("/checkin")
+    public ApiResponse<Void> doCheckin(@RequestBody Map<String, Object> body) {
+        try {
+            String entityType = (String) body.get("entityType");
+            String entityOid = (String) body.get("entityOid");
+            String user = UserContext.get();
+
+            if (entityType == null || entityOid == null) {
+                return ApiResponse.fail(400, "entityType 和 entityOid 不能为空");
+            }
+            operationService.checkin(entityType, entityOid, user);
+            return ApiResponse.ok();
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(404, e.getMessage());
+        } catch (IllegalStateException e) {
+            return ApiResponse.fail(409, e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "检入失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 取消检出（撤销检出，不保留修改）。
      *
      * <pre>

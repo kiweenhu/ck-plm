@@ -28,6 +28,9 @@ public interface ClassificationService {
 
     List<Classification> findTree();
 
+    /** 获取以 rootOid 为根的子树（包含该节点及其所有后代） */
+    Classification findSubtree(String rootOid);
+
     // ===== 分类-IBA 关联 =====
 
     /** 为分类分配 IBA 属性 */

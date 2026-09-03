@@ -7,6 +7,8 @@
 
 package cn.ck.plm.softtype.controller;
 
+import cn.ck.plm.cls.entity.Classification;
+import cn.ck.plm.cls.service.api.ClassificationService;
 import cn.ck.plm.iam.dto.ApiResponse;
 import cn.ck.plm.softtype.entity.TypeClassificationLink;
 import cn.ck.plm.softtype.service.api.TypeClassificationLinkService;
@@ -20,9 +22,12 @@ import org.springframework.web.bind.annotation.*;
 public class TypeClassificationLinkController {
 
     private final TypeClassificationLinkService service;
+    private final ClassificationService classificationService;
 
-    public TypeClassificationLinkController(TypeClassificationLinkService service) {
+    public TypeClassificationLinkController(TypeClassificationLinkService service,
+                                             ClassificationService classificationService) {
         this.service = service;
+        this.classificationService = classificationService;
     }
 
     /** 获取某类型绑定的分类 */
@@ -31,6 +36,26 @@ public class TypeClassificationLinkController {
         TypeClassificationLink link = service.getByTypeOid(typeOid);
         if (link == null) return ApiResponse.ok(null);
         return ApiResponse.ok(link);
+    }
+
+    /** 获取某类型绑定的分类子树（仅包含绑定节点及其后代） */
+    @GetMapping("/{typeOid}/classification-subtree")
+    public ApiResponse<Classification> getClassificationSubtree(@PathVariable String typeOid) {
+        TypeClassificationLink link = service.getByTypeOid(typeOid);
+        if (link == null || link.getClassificationOid() == null) {
+            return ApiResponse.ok(null);
+        }
+        Classification subtree = classificationService.findSubtree(link.getClassificationOid());
+        if (subtree == null) {
+            // 子树查不到时，回退到直接查该分类节点本身（不带子节点）
+            Classification cls = classificationService.findByOid(link.getClassificationOid());
+            if (cls != null) {
+                cls.setChildren(java.util.Collections.emptyList());
+                return ApiResponse.ok(cls);
+            }
+            return ApiResponse.fail(404, "分类不存在: " + link.getClassificationOid());
+        }
+        return ApiResponse.ok(subtree);
     }
 
     /** 为类型绑定分类 */

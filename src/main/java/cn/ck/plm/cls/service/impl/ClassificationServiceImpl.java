@@ -156,6 +156,63 @@ public class ClassificationServiceImpl implements ClassificationService {
         return roots;
     }
 
+    @Override
+    public Classification findSubtree(String rootOid) {
+        List<Classification> all = findAll();
+        if (all == null || all.isEmpty()) return null;
+
+        // 从全量列表中找目标节点
+        Classification root = all.stream()
+                .filter(c -> rootOid.equals(c.getOid()))
+                .findFirst().orElse(null);
+        if (root == null) return null;
+
+        // 收集 rootOid 的所有后代 oid
+        Set<String> descendantOids = new HashSet<>();
+        collectDescendants(all, rootOid, descendantOids);
+
+        if (descendantOids.isEmpty()) {
+            root.setChildren(Collections.emptyList());
+            return root;
+        }
+
+        // 过滤出后代节点
+        List<Classification> descendants = all.stream()
+                .filter(c -> descendantOids.contains(c.getOid()))
+                .collect(Collectors.toList());
+
+        // 在后代中构建父子关系
+        Map<String, List<Classification>> parentMap = descendants.stream()
+                .filter(c -> c.getParentOid() != null)
+                .collect(Collectors.groupingBy(Classification::getParentOid));
+
+        // 为每个后代装配 children
+        for (Classification node : descendants) {
+            List<Classification> children = parentMap.get(node.getOid());
+            if (children != null) {
+                children.sort(Comparator.comparingInt(c -> c.getSortOrder() != null ? c.getSortOrder() : 0));
+                node.setChildren(children);
+            }
+        }
+
+        // 装配 root 的直接 children
+        List<Classification> rootChildren = parentMap.getOrDefault(rootOid, Collections.emptyList());
+        rootChildren.sort(Comparator.comparingInt(c -> c.getSortOrder() != null ? c.getSortOrder() : 0));
+        root.setChildren(rootChildren);
+
+        return root;
+    }
+
+    /** 递归收集 rootOid 的所有后代 oid */
+    private void collectDescendants(List<Classification> all, String parentOid, Set<String> result) {
+        for (Classification c : all) {
+            if (parentOid.equals(c.getParentOid())) {
+                result.add(c.getOid());
+                collectDescendants(all, c.getOid(), result);
+            }
+        }
+    }
+
     // ==================== 分类-IBA 关联 ====================
 
     @Override

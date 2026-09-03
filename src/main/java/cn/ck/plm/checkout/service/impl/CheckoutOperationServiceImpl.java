@@ -47,4 +47,15 @@ public class CheckoutOperationServiceImpl {
         }
         provider.undoCheckout(entityOid, user);
     }
+
+    /**
+     * 按实体类型执行检入操作。
+     */
+    public void checkin(String entityType, String entityOid, String user) {
+        CheckoutProvider provider = providerMap.get(entityType);
+        if (provider == null) {
+            throw new IllegalArgumentException("不支持的实体类型: " + entityType);
+        }
+        provider.checkin(entityOid, user);
+    }
 }

@@ -177,7 +177,7 @@ public class AttributeInitializer implements CommandLineRunner {
         fm("ckfileOid",                     "主文档文件",           75, false, true,  true);
 
         // ---------- Part 特有字段 ----------
-        fm("classificationOid", "分类OID",   20, true,  true,  true);
+        fm("clsOid",  "分类OID",   20, true,  true,  true);
 
         // ---------- PartIteration 特有字段 ----------
         fm("unit",    "单位",   76, true,  true,  true);
@@ -480,6 +480,12 @@ public class AttributeInitializer implements CommandLineRunner {
         }
         if ("parentOid".equalsIgnoreCase(fieldName)) {
             return "tree-select";
+        }
+        if ("unit".equalsIgnoreCase(fieldName)) {
+            return "unit-select";
+        }
+        if ("source".equalsIgnoreCase(fieldName)) {
+            return "source-select";
         }
         if (fieldName.toLowerCase().endsWith("oid")) {
             return "select";

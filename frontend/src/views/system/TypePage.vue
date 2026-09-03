@@ -229,6 +229,10 @@
                             </a-tag>
                           </div>
                         </div>
+                        <div class="st-rule-detail-row st-rule-preview-row">
+                          <span class="st-rule-detail-label">预编码</span>
+                          <code class="st-rule-preview-code">{{ previewNumberCode }}</code>
+                        </div>
                       </div>
                     </a-spin>
                   </template>
@@ -1308,6 +1312,35 @@ function formatSegment(seg) {
   }
 }
 
+/** 预编码：遍历段拼装，流水码段用 * 代替，日期/分类用真实值 */
+const previewNumberCode = computed(() => {
+  const segs = nrDetail.value?.segments || []
+  if (!segs.length) return '—'
+  return segs.map(seg => {
+    switch (seg.segmentType) {
+      case 'CONST':
+      case 'SEPARATOR':
+        return seg.fixedValue || ''
+      case 'YEAR':
+        return String(new Date().getFullYear())
+      case 'MONTH':
+        return String(new Date().getMonth() + 1).padStart(2, '0')
+      case 'DAY':
+        return String(new Date().getDate()).padStart(2, '0')
+      case 'SERIAL':
+        return '*'.repeat(seg.serialLength || 4)
+      case 'CLASSIFICATION': {
+        try {
+          const cfg = typeof seg.config === 'string' ? JSON.parse(seg.config) : (seg.config || {})
+          return cfg.clsPreview || ''
+        } catch { return '' }
+      }
+      default:
+        return ''
+    }
+  }).join('')
+})
+
 // ============ IBA 已分配 ============
 const ibaMappings = ref([])
 const ibaLoading = ref(false)
@@ -1609,6 +1642,8 @@ onMounted(() => { loadTree() })
 .st-rule-def { font-size: 12px; background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }
 .st-segment-list { margin-top: 4px; }
 .st-state-list { margin-top: 4px; }
+.st-rule-preview-row { margin-top: 4px; padding-top: 6px; border-top: 1px dashed #f0f0f0; }
+.st-rule-preview-code { font-size: 13px; font-weight: 600; color: #1677ff; background: #e6f4ff; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; }
 
 /* IBA */
 .st-iba-subtabs { margin-top: -8px; }

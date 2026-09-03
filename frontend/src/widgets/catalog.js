@@ -21,7 +21,7 @@ import {
   BuildOutlined, InsertRowBelowOutlined, ClusterOutlined,
   PictureOutlined, HighlightOutlined, TableOutlined,
   FolderOutlined, PaperClipOutlined, ExperimentOutlined, CloudUploadOutlined,
-  TagOutlined
+  TagOutlined, NodeIndexOutlined, BarcodeOutlined
 } from '@ant-design/icons-vue'
 
 // ==================== 控件定义 ====================
@@ -219,9 +219,59 @@ export const WIDGETS = [
     category: 'system',
     icon: shallowRef(TagOutlined),
     dataType: 'STRING',
-    description: '分类树形选择器，选择分类节点后回传 oid 和 code',
+    description: '分类树形选择器，从全部分类树中选择节点，回传 oid 和 code。适用于类型管理中的分类绑定（classificationOid 字段）',
     bindFields: ['classificationOid'],
     defaults: { uiComponent: 'classification-select', required: false, placeholder: '请选择分类' }
+  },
+  {
+    type: 'classification-bound-select',
+    label: '分类选择(受限)',
+    category: 'system',
+    icon: shallowRef(TagOutlined),
+    dataType: 'STRING',
+    description: '受限分类选择器，仅可选择当前类型绑定的分类节点及其子节点。需配合类型管理中的分类绑定使用，适用于 Document/Part 实例的 clsOid 字段',
+    bindFields: ['clsOid'],
+    defaults: { uiComponent: 'classification-bound-select', required: false, placeholder: '请选择分类' }
+  },
+  {
+    type: 'unit-select',
+    label: '单位选择',
+    category: 'system',
+    icon: shallowRef(NumberOutlined),
+    dataType: 'STRING',
+    description: '计量单位下拉选择器，按量纲分组展示（个/米/千克等），适用于 Part 的 unit 字段',
+    bindFields: ['unit'],
+    defaults: { uiComponent: 'unit-select', required: false, placeholder: '请选择单位' }
+  },
+  {
+    type: 'source-select',
+    label: '来源选择',
+    category: 'system',
+    icon: shallowRef(ApartmentOutlined),
+    dataType: 'STRING',
+    description: '来源下拉选择器，固定选项（自制/委外/采购），适用于 Part 的 source 字段',
+    bindFields: ['source'],
+    defaults: { uiComponent: 'source-select', required: false, placeholder: '请选择来源' }
+  },
+  {
+    type: 'lifecycle-display',
+    label: '生命周期模板',
+    category: 'system',
+    icon: shallowRef(NodeIndexOutlined),
+    dataType: 'STRING',
+    description: '只读展示业务对象绑定的生命周期模板名称及级联的初始生命周期状态，自动根据类型绑定带出，无需手动填写',
+    bindFields: ['lifecycleTemplateCode'],
+    defaults: { uiComponent: 'lifecycle-display', required: false, readonly: true }
+  },
+  {
+    type: 'number-preview',
+    label: '编码预览',
+    category: 'system',
+    icon: shallowRef(BarcodeOutlined),
+    dataType: 'STRING',
+    description: '只读展示业务对象根据绑定编码规则生成的预编码，流水码段用 * 代替。创建实例时自动带出，无需手动填写',
+    bindFields: ['number'],
+    defaults: { uiComponent: 'number-preview', required: false, readonly: true }
   },
   {
     type: 'form-group',

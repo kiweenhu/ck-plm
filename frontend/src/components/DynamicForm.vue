@@ -22,9 +22,39 @@
           :user-options="userOptions"
           :folder-tree="folderTree"
           :stage-options="stageOptions"
+          :type-definition-oid="resolvedTypeOid || typeDefinitionOid"
           @update="onFieldUpdate"
           @table-action="onTableAction"
         />
+
+        <!-- 分类属性分区：选择分类后加载该分类的 IBA 布局/属性 -->
+        <div v-if="currentClsOid" class="df-cls-section">
+          <div class="df-cls-section-header">
+            <span class="df-cls-section-title">分类属性</span>
+            <code v-if="currentClsLabel" class="df-cls-section-code">{{ currentClsLabel }}</code>
+            <a-spin v-if="clsIbaLoading" size="small" />
+          </div>
+          <a-empty
+            v-if="!clsIbaLoading && clsIbaFields.length === 0"
+            description="该分类未配置 IBA 属性布局"
+            :image-style="{ height: '32px' }"
+          />
+          <RenderFields
+            v-else-if="clsIbaFields.length > 0"
+            :fields="clsIbaFields"
+            :form-data="localFormData"
+            :product-line-tree="productLineTree"
+            :product-owner-tree="productOwnerTree"
+            :node-type-map="nodeTypeMap"
+            :org-tree-data="orgTreeData"
+            :user-options="userOptions"
+            :folder-tree="folderTree"
+            :stage-options="stageOptions"
+            :type-definition-oid="resolvedTypeOid || typeDefinitionOid"
+            @update="onFieldUpdate"
+            @table-action="onTableAction"
+          />
+        </div>
       </a-form>
     </a-spin>
   </div>
@@ -33,7 +63,7 @@
 <script setup>
 import { ref, reactive, watch, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { getPageLayoutByCode, getProductLineTreeLinesOnly, getProductModels, getOrgTree, getAllUsers, getEntityByCode, getEntityIbaData, getAllFolderTree } from '@/api'
+import { getPageLayoutByCode, getProductLineTreeLinesOnly, getProductModels, getOrgTree, getAllUsers, getEntityByCode, getEntityIbaData, getAllFolderTree, getClsIbaLayout, getClassificationIBAs, getClassification } from '@/api'
 import RenderFields from './RenderFields.js'
 
 // ==================== Props & Emits ====================
@@ -70,6 +100,8 @@ const props = defineProps({
   currentStageOid: { type: String, default: null },
   /** 外部传入的阶段选项 [{label, value}]，用于 stage-select 控件 */
   stageOptions: { type: Array, default: () => [] },
+  /** 类型定义 oid，用于 classification-bound-select 组件加载绑定分类子树 */
+  typeDefinitionOid: { type: String, default: null },
 })
 
 const emit = defineEmits(['update:modelValue', 'table-action'])
@@ -82,6 +114,31 @@ const productLineTreeInternal = ref([])
 const orgTreeDataInternal = ref([])
 const userOptionsInternal = ref([])
 const folderTreeInternal = ref([])
+
+// typeDefinitionOid 兜底：外部未传入时，通过 entityCode 反查 oid
+const resolvedTypeOid = ref(null)
+
+async function resolveTypeDefinitionOid() {
+  if (props.typeDefinitionOid) {
+    resolvedTypeOid.value = props.typeDefinitionOid
+    return
+  }
+  if (!props.entityCode) {
+    resolvedTypeOid.value = null
+    return
+  }
+  try {
+    const { getTypeDefinitions } = await import('@/api')
+    const res = await getTypeDefinitions()
+    const list = res?.data || res || []
+    const found = Array.isArray(list) ? list.find(t => t.code === props.entityCode) : null
+    resolvedTypeOid.value = found?.oid || null
+  } catch {
+    resolvedTypeOid.value = null
+  }
+}
+
+watch(() => [props.typeDefinitionOid, props.entityCode], resolveTypeDefinitionOid, { immediate: true })
 
 // 优先使用外部传入的树数据
 const productLineTree = computed(() =>
@@ -107,6 +164,138 @@ const nodeTypeMap = ref({})
 
 /** 内部 stageOptions：优先使用外部传入的 prop */
 const stageOptions = computed(() => props.stageOptions || [])
+
+// ==================== 分类属性（cls IBA）联动加载 ====================
+
+/** 当前选中的分类 oid（clsOid 或 classificationOid） */
+const currentClsOid = ref(null)
+/** 当前分类的展示标签（用于分区标题） */
+const currentClsLabel = ref('')
+/** 分类 IBA 字段列表（布局字段或动态生成的属性字段） */
+const clsIbaFields = ref([])
+/** 分类属性加载中 */
+const clsIbaLoading = ref(false)
+
+/** 从表单数据中提取分类 oid，兼容 clsOid 与 classificationOid */
+function extractClsOid() {
+  return localFormData.clsOid || localFormData.classificationOid || null
+}
+
+/** 数据类型 → uiComponent 映射（动态生成字段时使用） */
+function dataTypeToUiComponent(dataType) {
+  const dt = (dataType || 'STRING').toUpperCase()
+  switch (dt) {
+    case 'INTEGER':
+    case 'DOUBLE':
+    case 'NUMBER':
+      return 'input-number'
+    case 'BOOLEAN':
+      return 'switch'
+    case 'DATE':
+      return 'datepicker'
+    case 'DATETIME':
+      return 'datepicker'
+    case 'LONGTEXT':
+      return 'textarea'
+    default:
+      return 'input'
+  }
+}
+
+/** 根据 IBA 列表动态生成字段 */
+function buildFieldsFromIBAs(ibaList) {
+  return (Array.isArray(ibaList) ? ibaList : []).map((iba) => {
+    const code = iba.ibaCode || iba.code
+    const name = iba.ibaName || iba.name
+    const displayName = iba.ibaDisplayName || iba.displayName || name || code
+    const dataType = iba.ibaDataType || iba.dataType || 'STRING'
+    return {
+      fieldName: code,
+      label: displayName,
+      uiComponent: dataTypeToUiComponent(dataType),
+      dataType,
+      required: false,
+      readonly: false,
+      placeholder: `请输入${displayName}`,
+    }
+  })
+}
+
+/** 递归归一化分类 IBA 布局字段的 fieldName 大小写（例如 iba_cap → IBA_CAP） */
+function normalizeClsFieldNames(fields, codeMap) {
+  return (fields || []).map(f => {
+    const copy = { ...f }
+    if (copy.children?.length) {
+      copy.children = normalizeClsFieldNames(copy.children, codeMap)
+    } else if (copy.fieldName && codeMap[String(copy.fieldName).toLowerCase()]) {
+      copy.fieldName = codeMap[String(copy.fieldName).toLowerCase()]
+    }
+    return copy
+  })
+}
+
+/** 加载分类 IBA 布局（无布局时回退到动态生成字段） */
+async function loadClsIba() {
+  const clsOid = extractClsOid()
+  currentClsOid.value = clsOid
+  if (!clsOid) {
+    clsIbaFields.value = []
+    currentClsLabel.value = ''
+    return
+  }
+
+  clsIbaLoading.value = true
+  try {
+    // 0. 加载分类名称（用于分区标题展示）
+    try {
+      const clsRes = await getClassification(clsOid)
+      const cls = clsRes?.data || clsRes
+      currentClsLabel.value = cls?.name || cls?.identifier || cls?.code || ''
+    } catch { currentClsLabel.value = '' }
+
+    // 1. 加载分类绑定的 IBA 列表，构建「小写 fieldName → 原始 IBA code」映射（用于归一化大小写）
+    let ibaList = []
+    const codeMap = {}
+    try {
+      const ibaRes = await getClassificationIBAs(clsOid)
+      ibaList = ibaRes?.data || ibaRes || []
+      ;(Array.isArray(ibaList) ? ibaList : []).forEach(iba => {
+        const code = iba.ibaCode || iba.code
+        if (code) codeMap[String(code).toLowerCase()] = code
+      })
+    } catch { /* 忽略，映射为空则不做归一化 */ }
+
+    // 2. 优先加载分类 IBA 布局
+    let fields = null
+    try {
+      const layoutRes = await getClsIbaLayout(clsOid, props.operationCode)
+      const layout = layoutRes?.data || layoutRes
+      if (layout?.layoutJson) {
+        let json = layout.layoutJson
+        if (typeof json === 'string') {
+          try { json = JSON.parse(json) } catch { json = null }
+        }
+        if (json?.form?.fields?.length) {
+          fields = json.form.fields
+        }
+      }
+    } catch { /* 忽略布局加载失败，回退到属性集 */ }
+
+    // 3. 无布局时，回退到分类关联的 IBA 属性集动态生成
+    if (!fields || fields.length === 0) {
+      fields = buildFieldsFromIBAs(ibaList)
+    } else {
+      // 有布局时，将布局 fieldName 归一化到 IBA 原始 code（例如 iba_cap → IBA_CAP）
+      fields = normalizeClsFieldNames(fields, codeMap)
+    }
+
+    clsIbaFields.value = fields || []
+  } catch {
+    clsIbaFields.value = []
+  } finally {
+    clsIbaLoading.value = false
+  }
+}
 
 // ==================== 表单数据双向绑定 ====================
 const localFormData = reactive({ ...props.modelValue })
@@ -150,6 +339,12 @@ function onFieldUpdate(key, val) {
 function onTableAction(payload) {
   emit('table-action', payload)
 }
+
+// 监听分类字段变化（clsOid / classificationOid），触发分类属性加载
+watch(
+  () => [localFormData.clsOid, localFormData.classificationOid],
+  () => loadClsIba()
+)
 
 // ==================== 加载布局 ====================
 async function loadLayout() {
@@ -390,6 +585,42 @@ function getFormData() {
   return { ...localFormData }
 }
 
+/** 递归收集分类 IBA 布局中的叶子字段（含 group/layout-row 容器的 children） */
+function collectClsLeafFields(fields) {
+  const result = []
+  for (const f of fields || []) {
+    if (f.children?.length) {
+      result.push(...collectClsLeafFields(f.children))
+    } else if (f.fieldName) {
+      result.push(f)
+    }
+  }
+  return result
+}
+
+/** 获取分类 IBA 字段名列表（用于父组件提交时区分实体 IBA 与分类 IBA） */
+function getClsIbaFieldNames() {
+  return collectClsLeafFields(clsIbaFields.value)
+    .map(f => f.fieldName)
+    .filter(Boolean)
+}
+
+/**
+ * 获取分类 IBA 字段值（用于提交到 ck_cls_iba_data）。
+ * 返回值格式：{ attrCode: value, ... }
+ */
+function getClsIbaValues() {
+  const result = {}
+  for (const f of collectClsLeafFields(clsIbaFields.value)) {
+    const k = f.fieldName
+    if (!k) continue
+    const v = localFormData[k]
+    if (v === undefined || v === null || v === '') continue
+    result[k] = v
+  }
+  return result
+}
+
 function validate() {
   const errors = []
   const fields = layoutData.value?.form?.fields || []
@@ -417,7 +648,7 @@ function entityCodeToLower(entityCode) {
   return entityCode || ''
 }
 
-defineExpose({ getFormData, validate, loading, entityLoading, layoutData })
+defineExpose({ getFormData, getClsIbaFieldNames, getClsIbaValues, validate, loading, entityLoading, layoutData })
 
 // ==================== 生命周期 ====================
 onMounted(async () => {
@@ -449,6 +680,33 @@ watch(
 <style scoped>
 .dynamic-form {
   min-height: 120px;
+}
+
+.df-cls-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.df-cls-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.df-cls-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.df-cls-section-code {
+  font-size: 12px;
+  color: #8c8c8c;
+  background: #f5f5f5;
+  padding: 1px 8px;
+  border-radius: 3px;
 }
 
 .df-form-title {

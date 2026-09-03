@@ -166,6 +166,43 @@ public class PartCheckoutProvider implements CheckoutProvider {
         recordActivity(user, "取消检出", part);
     }
 
+    @Override
+    @Transactional
+    public void checkin(String entityOid, String user) {
+        Part part = partMapper.selectByOid(entityOid);
+        if (part == null) {
+            throw new IllegalArgumentException("部件不存在: " + entityOid);
+        }
+
+        // 找到检出版本（checkedOut=true, latest=true, derivedFromOid 指向源版本）
+        List<PartIteration> allIters = iterationMapper.selectByMasterOid(entityOid);
+        PartIteration checkedOutIter = null;
+        for (PartIteration iter : allIters) {
+            if (iter.isCheckedOut() && iter.isLatest() && iter.getDerivedFromOid() != null) {
+                checkedOutIter = iter;
+            }
+        }
+
+        if (checkedOutIter == null) {
+            throw new IllegalStateException("该部件未被检出: " + entityOid);
+        }
+        if (!user.equals(checkedOutIter.getCheckedOutBy())) {
+            throw new IllegalStateException("只有检出人 " + checkedOutIter.getCheckedOutBy() + " 才能检入");
+        }
+
+        // 解除检出锁定，将工作副本保存为正式的新版本
+        checkedOutIter.setCheckedOut(false);
+        checkedOutIter.setCheckedOutBy(null);
+        checkedOutIter.setCheckedOutComment(null);
+        checkedOutIter.setUpdatedAt(LocalDateTime.now());
+        iterationMapper.update(checkedOutIter);
+
+        log.info("检入成功: partOid={}, version={}.{}, user={}", entityOid,
+                checkedOutIter.getRevision(), checkedOutIter.getIteration(), user);
+
+        recordActivity(user, "检入部件", part);
+    }
+
     private void recordActivity(String user, String actionDesc, Part part) {
         try {
             UserActivity activity = new UserActivity();

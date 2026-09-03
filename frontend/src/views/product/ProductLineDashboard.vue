@@ -184,6 +184,7 @@
                               <template #overlay>
                                 <a-menu @click="(e) => handleDocAction(e, record)">
                                   <a-menu-item key="view"><EyeOutlined /> 详情</a-menu-item>
+                                  <a-menu-item key="rename"><FormOutlined /> 重命名</a-menu-item>
                                   <a-menu-item v-if="!record.checkedOut" key="checkout"><LockOutlined /> 检出</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="edit"><EditOutlined /> 编辑</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="checkin"><CheckOutlined /> 检入</a-menu-item>
@@ -257,6 +258,7 @@
                               <template #overlay>
                                 <a-menu @click="(e) => handleDocAction(e, record)">
                                   <a-menu-item key="view"><EyeOutlined /> 详情</a-menu-item>
+                                  <a-menu-item key="rename"><FormOutlined /> 重命名</a-menu-item>
                                   <a-menu-item v-if="!record.checkedOut" key="checkout"><LockOutlined /> 检出</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="edit"><EditOutlined /> 编辑</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="checkin"><CheckOutlined /> 检入</a-menu-item>
@@ -264,11 +266,12 @@
                                   <a-menu-item v-if="record.ckfileOid" key="download"><DownloadOutlined /> 下载主文件</a-menu-item>
                                   <a-menu-divider />
                                   <a-menu-item key="move"><SwapOutlined /> 移动</a-menu-item>
+                                  <a-menu-item key="newViewVersion"><BranchesOutlined /> 新建视图版本</a-menu-item>
                                   <a-menu-divider />
-                                  <a-menu-item key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
-                                  <a-menu-item key="workflow"><SendOutlined /> 发起流程</a-menu-item>
+                                  <a-menu-item v-if="!record.checkedOut" key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
+                                  <a-menu-item v-if="!record.checkedOut" key="workflow"><SendOutlined /> 发起流程</a-menu-item>
                                   <a-menu-divider />
-                                  <a-menu-item key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
+                                  <a-menu-item v-if="!record.checkedOut" key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
                                 </a-menu>
                               </template>
                             </a-dropdown>
@@ -297,18 +300,18 @@
                     <p class="pl-folders-content-hint">点击「克隆到本产品」可创建同名可写文件夹</p>
                   </div>
                 </template>
-                <!-- 自有文件夹：文档列表 -->
+                <!-- 自有文件夹：零组件 + 文档合并列表 -->
                 <template v-else>
                   <div class="pl-folders-content-files">
                     <DataTable
-                      :columns="docColumns"
-                      :data-source="filteredDocuments"
-                      :loading="docLoading"
+                      :columns="mixedColumns"
+                      :data-source="filteredMixed"
+                      :loading="docLoading || partLoading"
                       :pagination="false"
                       row-key="oid"
                       size="small"
                       :searchable="true"
-                      search-placeholder="搜索文档..."
+                      search-placeholder="搜索零组件/文档..."
                       :search-fields="['code', 'name', 'typeDefinitionName']"
                     >
                       <template #toolbar-left>
@@ -344,7 +347,9 @@
                           <a-tag color="blue" size="small">{{ record.code || '-' }}</a-tag>
                         </template>
                         <template v-else-if="column.key === 'typeDefinitionName'">
-                          <a-tag color="default" size="small">{{ record.typeDefinitionName || record.typeDefinitionCode || '-' }}</a-tag>
+                          <a-tag :color="record.entityType === 'PART' ? 'geekblue' : 'default'" size="small">
+                            {{ record.typeDefinitionName || record.typeDefinitionCode || '-' }}
+                          </a-tag>
                         </template>
                         <template v-else-if="column.key === 'status'">
                           <a-tag :color="statusColor(record.statusCode)" size="small">{{ record.statusName || record.statusCode || '-' }}</a-tag>
@@ -354,28 +359,32 @@
                           <a-tag v-else color="green" size="small">已检入</a-tag>
                         </template>
                         <template v-else-if="column.key === 'action'">
-                                                        <a-dropdown :trigger="['click']">
-                                <a-button type="link" size="small">
-                                  操作 <DownOutlined style="font-size:10px;margin-left:2px" />
-                                </a-button>
-                                <template #overlay>
-                                  <a-menu @click="(e) => handleDocAction(e, record)">
-                                    <a-menu-item key="view"><EyeOutlined /> 详情</a-menu-item>
-                                    <a-menu-item v-if="!record.checkedOut" key="checkout"><LockOutlined /> 检出</a-menu-item>
-                                    <a-menu-item v-if="canUndoCheckout(record)" key="edit"><EditOutlined /> 编辑</a-menu-item>
-                                    <a-menu-item v-if="canUndoCheckout(record)" key="checkin"><CheckOutlined /> 检入</a-menu-item>
-                                    <a-menu-item v-if="canUndoCheckout(record)" key="undoCheckout"><RollbackOutlined /> 取消检出</a-menu-item>
-                                    <a-menu-item v-if="record.ckfileOid" key="download"><DownloadOutlined /> 下载主文件</a-menu-item>
-                                    <a-menu-divider />
-                                    <a-menu-item key="move"><SwapOutlined /> 移动</a-menu-item>
-                                    <a-menu-divider />
-                                    <a-menu-item key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
-                                    <a-menu-item key="workflow"><SendOutlined /> 发起流程</a-menu-item>
-                                    <a-menu-divider />
-                                    <a-menu-item key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
-                                  </a-menu>
-                                </template>
-                              </a-dropdown>
+                          <a-dropdown :trigger="['click']">
+                            <a-button type="link" size="small">
+                              操作 <DownOutlined style="font-size:10px;margin-left:2px" />
+                            </a-button>
+                            <template #overlay>
+                              <a-menu @click="(e) => handleMixedAction(e, record)">
+                                <a-menu-item key="view"><EyeOutlined /> 详情</a-menu-item>
+                                <a-menu-item key="rename"><FormOutlined /> 重命名</a-menu-item>
+                                <a-menu-item v-if="record.entityType === 'PART'" key="saveAs"><CopyOutlined /> 另存为</a-menu-item>
+                                <a-menu-item key="history"><HistoryOutlined /> 查看历史版本</a-menu-item>
+                                <a-menu-item v-if="!record.checkedOut" key="checkout"><LockOutlined /> 检出</a-menu-item>
+                                <a-menu-item v-if="canUndoCheckout(record)" key="edit"><EditOutlined /> 编辑</a-menu-item>
+                                <a-menu-item v-if="canUndoCheckout(record)" key="checkin"><CheckOutlined /> 检入</a-menu-item>
+                                <a-menu-item v-if="canUndoCheckout(record)" key="undoCheckout"><RollbackOutlined /> 取消检出</a-menu-item>
+                                <a-menu-item v-if="record.ckfileOid" key="download"><DownloadOutlined /> 下载主文件</a-menu-item>
+                                <a-menu-divider />
+                                <a-menu-item key="move"><SwapOutlined /> 移动</a-menu-item>
+                                <a-menu-item key="newViewVersion"><BranchesOutlined /> 新建视图版本</a-menu-item>
+                                <a-menu-divider />
+                                <a-menu-item v-if="!record.checkedOut" key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
+                                <a-menu-item v-if="!record.checkedOut" key="workflow"><SendOutlined /> 发起流程</a-menu-item>
+                                <a-menu-divider />
+                                <a-menu-item v-if="!record.checkedOut" key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
+                              </a-menu>
+                            </template>
+                          </a-dropdown>
                         </template>
                       </template>
                     </DataTable>
@@ -433,6 +442,7 @@
           :current-container-oid="line?.oid"
           :current-stage-oid="activeStage"
           :stage-options="stageOptions"
+          :type-definition-oid="selectedDocType?.oid"
           v-model="docForm"
         />
       </div>
@@ -480,6 +490,7 @@
           :context="{ containerType: 'PRODUCT_LINE', containerOid: line?.oid, currentStageOid: activeStage, folderOid: selectedFolder?.oid, stageOid: activeStage }"
           :current-stage-oid="activeStage"
           :stage-options="stageOptions"
+          :type-definition-oid="selectedPartType?.oid"
           v-model="partForm"
         />
       </div>
@@ -492,11 +503,10 @@
     <!-- 检出注释弹窗 -->
     <a-modal
       v-model:visible="checkoutModalVisible"
-      title="检出文档"
+      :title="checkoutTargetDoc?.entityType === 'PART' ? '检出零组件' : '检出文档'"
       ok-text="确认检出"
       cancel-text="取消"
       :confirm-loading="checkoutSaving"
-      :ok-button-props="{ disabled: !checkoutComment.trim() }"
       @ok="confirmCheckout"
       @cancel="checkoutModalVisible = false"
     >
@@ -510,14 +520,268 @@
             {{ checkoutTargetDoc.statusName || checkoutTargetDoc.statusCode || '-' }}
           </a-tag>
         </div>
-        <div style="margin-top:10px;margin-bottom:4px;font-size:12px;color:#666">检出注释</div>
+        <div style="margin-top:10px;margin-bottom:4px;font-size:12px;color:#666">检出注释（可选）</div>
         <a-textarea
           v-model:value="checkoutComment"
-          placeholder="请输入检出注释（如：修改方向、检出原因等）"
+          placeholder="请输入检出注释（如：修改方向、检出原因等，可不填）"
           :rows="3"
           :maxlength="500"
           show-count
         />
+      </div>
+    </a-modal>
+
+    <!-- 历史版本弹窗 -->
+    <a-modal
+      v-model:visible="historyModalVisible"
+      :title="historyTitle"
+      :footer="null"
+      width="860px"
+    >
+      <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;color:#8c8c8c">勾选两个版本可进行对比</span>
+        <a-button
+          type="primary"
+          size="small"
+          :disabled="historySelectedRows.length !== 2"
+          @click="openCompareModal"
+        >
+          <template #icon><SwapOutlined /></template>
+          对比所选版本 ({{ historySelectedRows.length }}/2)
+        </a-button>
+      </div>
+      <a-table
+        :columns="historyColumns"
+        :data-source="historyData"
+        :loading="historyLoading"
+        :pagination="false"
+        row-key="oid"
+        size="small"
+        :row-selection="historyRowSelection"
+        :scroll="{ y: 420 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'displayVersion'">
+            <a-tag color="blue">{{ record.displayVersion || '-' }}</a-tag>
+          </template>
+          <template v-else-if="column.key === 'status'">
+            <a-tag :color="statusColor(record.status?.code)" size="small">
+              {{ record.status?.displayName || record.status?.code || '-' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'latest'">
+            <a-tag v-if="record.latest" color="green" size="small">最新</a-tag>
+            <span v-else style="color:#bfbfbf">-</span>
+          </template>
+          <template v-else-if="column.key === 'checkout'">
+            <a-tag v-if="record.checkedOut" color="orange" size="small">已检出: {{ record.checkedOutBy || '-' }}</a-tag>
+            <a-tag v-else color="green" size="small">已检入</a-tag>
+          </template>
+          <template v-else-if="column.key === 'createdAt'">
+            <span style="font-size:12px;color:#8c8c8c">{{ record.createdAt ? String(record.createdAt).substring(0,19).replace('T',' ') : '-' }}</span>
+          </template>
+        </template>
+      </a-table>
+    </a-modal>
+
+    <!-- 编辑弹窗（文档/零组件） -->
+    <a-modal
+      v-model:visible="editModalVisible"
+      :title="editTitle"
+      ok-text="保存"
+      cancel-text="取消"
+      :confirm-loading="editModalSaving"
+      @ok="confirmEdit"
+      @cancel="editModalVisible = false"
+      width="640px"
+    >
+      <DynamicForm
+        ref="editFormRef"
+        :key="editEntityOid + '-' + editEntityCode"
+        :entity-code="editEntityCode"
+        operation-code="update"
+        :entity-oid="editEntityOid"
+        :fallback-entity-code="editEntityType === 'DOC' ? 'DOCUMENT' : 'PART'"
+        :current-stage-oid="activeStage"
+        :stage-options="stageOptions"
+        v-model="editForm"
+      />
+    </a-modal>
+
+    <!-- 删除弹窗（选择删除范围） -->
+    <a-modal
+      v-model:visible="deleteModalVisible"
+      :title="`删除${deleteTarget?.entityType === 'PART' ? '零组件' : '文档'}`"
+      ok-text="确认删除"
+      cancel-text="取消"
+      :ok-button-props="{ danger: true }"
+      :confirm-loading="deleteSaving"
+      @ok="confirmDelete"
+      @cancel="deleteModalVisible = false"
+      width="480px"
+    >
+      <div v-if="deleteTarget" style="padding:4px 0">
+        <p style="margin-bottom:16px">
+          对象：<b>{{ deleteTarget.code || deleteTarget.name }}</b>
+        </p>
+        <a-radio-group v-model:value="deleteScope">
+          <a-space direction="vertical">
+            <a-radio value="all">删除所有版本（彻底删除该对象及其全部历史版本）</a-radio>
+            <a-radio value="latest">删除最新小版本（仅删除当前最新版本）</a-radio>
+          </a-space>
+        </a-radio-group>
+        <a-alert
+          v-if="deleteScope === 'all'"
+          type="warning"
+          show-icon
+          message="删除所有版本后数据不可恢复，请谨慎操作。"
+          style="margin-top:16px"
+        />
+      </div>
+    </a-modal>
+
+    <!-- 重命名弹窗 -->
+    <a-modal
+      v-model:visible="renameModalVisible"
+      :title="`重命名${renameTarget?.entityType === 'PART' ? '零组件' : '文档'}`"
+      ok-text="保存"
+      cancel-text="取消"
+      :confirm-loading="renameSaving"
+      @ok="confirmRename"
+      @cancel="renameModalVisible = false"
+      width="420px"
+    >
+      <div v-if="renameTarget" style="padding:4px 0">
+        <p style="margin-bottom:12px">
+          对象：<b>{{ renameTarget.code || renameTarget.name }}</b>
+        </p>
+        <a-input
+          v-model:value="renameName"
+          placeholder="请输入新名称"
+          maxlength="100"
+          @pressEnter="confirmRename"
+        />
+      </div>
+    </a-modal>
+
+    <!-- 另存为弹窗 -->
+    <a-modal
+      v-model:visible="saveAsModalVisible"
+      title="另存为零组件"
+      ok-text="另存为"
+      cancel-text="取消"
+      :confirm-loading="saveAsSaving"
+      @ok="confirmSaveAs"
+      @cancel="saveAsModalVisible = false"
+      width="420px"
+    >
+      <div v-if="saveAsTarget" style="padding:4px 0">
+        <p style="margin-bottom:12px">
+          源对象：<b>{{ saveAsTarget.code || saveAsTarget.name }}</b>
+        </p>
+        <a-input
+          v-model:value="saveAsName"
+          placeholder="请输入新名称"
+          maxlength="100"
+          @pressEnter="confirmSaveAs"
+        />
+        <p style="margin-top:12px;color:#8c8c8c;font-size:12px">
+          将复制当前零组件的类型、分类、单位、来源及 IBA 属性值，生成一个新编号的对象。
+        </p>
+      </div>
+    </a-modal>
+
+    <!-- 移动弹窗 -->
+    <a-modal
+      v-model:visible="moveModalVisible"
+      :title="`移动${moveTarget?.entityType === 'PART' ? '零组件' : '文档'}`"
+      ok-text="确定移动"
+      cancel-text="取消"
+      :confirm-loading="moveSaving"
+      @ok="confirmMove"
+      @cancel="moveModalVisible = false"
+      width="480px"
+    >
+      <div v-if="moveTarget" style="padding:4px 0">
+        <p style="margin-bottom:16px">
+          对象：<b>{{ moveTarget.code || moveTarget.name }}</b>
+        </p>
+        <a-form layout="vertical">
+          <a-form-item label="产品系列/型号" required>
+            <a-tree-select
+              v-model:value="moveSelectedOwner"
+              :tree-data="moveProductTree"
+              :loading="moveProductLoading"
+              :tree-default-expand-all="true"
+              show-search
+              tree-node-filter-prop="title"
+              :field-names="{ label: 'title', key: 'key', value: 'value', children: 'children' }"
+              placeholder="请选择产品系列或型号"
+              style="width:100%"
+              @change="onMoveOwnerChange"
+            />
+          </a-form-item>
+          <a-form-item label="阶段" required>
+            <a-select
+              v-model:value="moveSelectedStage"
+              :loading="moveStageLoading"
+              placeholder="请先选择产品系列/型号"
+              style="width:100%"
+              @change="onMoveStageChange"
+              :options="moveStages.map(s => ({ label: s.name || s.title || s.code, value: s.oid }))"
+            />
+          </a-form-item>
+          <a-form-item label="文件夹">
+            <a-tree-select
+              v-model:value="moveSelectedFolder"
+              :tree-data="moveFolderTree"
+              :loading="moveFolderLoading"
+              :tree-default-expand-all="true"
+              show-search
+              tree-node-filter-prop="title"
+              :field-names="{ label: 'name', key: 'oid', value: 'oid', children: 'children' }"
+              placeholder="请选择目标文件夹（可选）"
+              style="width:100%"
+            />
+          </a-form-item>
+        </a-form>
+      </div>
+    </a-modal>
+
+    <!-- 版本对比弹窗 -->
+    <a-modal
+      v-model:visible="compareModalVisible"
+      title="版本对比"
+      :footer="null"
+      width="860px"
+    >
+      <div
+        v-for="group in compareGroups"
+        :key="group.key"
+        class="compare-group"
+      >
+        <div class="compare-group-title">{{ group.title }}</div>
+        <a-table
+          v-if="group.rows.length > 0"
+          :columns="compareColumns"
+          :data-source="group.rows"
+          :pagination="false"
+          row-key="field"
+          size="small"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'field'">
+              <span style="font-weight:500">{{ record.field }}</span>
+            </template>
+            <template v-else-if="column.key === 'left'">
+              <span :style="record.diff ? 'color:#fa541c;font-weight:500' : ''">{{ record.left || '-' }}</span>
+            </template>
+            <template v-else-if="column.key === 'right'">
+              <span :style="record.diff ? 'color:#fa541c;font-weight:500' : ''">{{ record.right || '-' }}</span>
+            </template>
+          </template>
+        </a-table>
+        <a-empty v-else description="无该类型属性" :image-style="{ height: '24px' }" />
       </div>
     </a-modal>
 
@@ -541,11 +805,15 @@ import {
   FolderOutlined, FolderAddOutlined,
   FileTextOutlined, InboxOutlined, PlusOutlined, LinkOutlined, EyeOutlined,
   DeleteOutlined, CopyOutlined, DownOutlined,
-  EditOutlined, CheckOutlined, SwapOutlined, SendOutlined, LockOutlined, RollbackOutlined, DownloadOutlined,
+  EditOutlined, CheckOutlined, SwapOutlined, SendOutlined, LockOutlined, RollbackOutlined, DownloadOutlined, HistoryOutlined,
+  BranchesOutlined, FormOutlined,
 } from '@ant-design/icons-vue'
 import { getProductLine, getProductLineChildren, getFolderTree, createFolder, updateFolder, deleteFolder,
-         getDocuments, createDocument, deleteDocument, checkoutDocument as checkoutDocApi, undoCheckoutDocument as undoCheckoutApi,
-         getStages, getFolderDocumentDetails, getDocumentDownloadUrl, createPart, getTypeDefinitionTree } from '@/api'
+         getDocuments, createDocument, deleteDocument, deleteDocumentLatestIteration, newViewVersionDocument, renameDocument, moveDocumentApi, checkoutDocument as checkoutDocApi, undoCheckoutDocument as undoCheckoutApi,
+         checkoutPart as checkoutPartApi, undoCheckoutPart as undoCheckoutPartApi, checkinPart as checkinPartApi, checkinDocument as checkinDocApi,
+         getStages, getFolderDocumentDetails, getDocumentDownloadUrl, createPart, getTypeDefinitionTree, getPartsByFolder, deletePart, deletePartLatestIteration, newViewVersionPart, renamePart, saveAsPart, movePart,
+         getPartIterations, getDocumentIterations, getClassification, getClassificationIBAs,
+         updatePart, updateDocument, getProductLineTree, getProductModels } from '@/api'
 import { useUserStore } from '@/stores/user'
 import FolderTreeNode from './FolderTreeNode.vue'
 import DynamicForm from '@/components/DynamicForm.vue'
@@ -648,12 +916,77 @@ const docFormEntityCode = ref('DOCUMENT')
 const partModalVisible = ref(false)
 const partModalSaving = ref(false)
 const partFormRef = ref(null)
-const partForm = ref({ name: '', typeDefinitionCode: '', description: '', stageOid: '', folderOid: '', containerOid: '', containerType: '', classificationOid: '', ckfileOid: '', attachmentOid: '' })
+const partForm = ref({ name: '', typeDefinitionCode: '', description: '', stageOid: '', folderOid: '', containerOid: '', containerType: '', clsOid: '', ckfileOid: '', attachmentOid: '' })
 const partTypeSelectValue = ref(undefined)
 const selectedPartType = ref(null)
 const partFormEntityCode = ref('PART')
 const partTypeOptions = ref([])
 const partTypeLoading = ref(false)
+
+// ==================== 编辑（文档/零组件） ====================
+const editModalVisible = ref(false)
+const editModalSaving = ref(false)
+const editFormRef = ref(null)
+const editForm = ref({})
+const editEntityType = ref('')   // 'PART' | 'DOC'
+const editEntityOid = ref(null)
+const editEntityCode = ref('')   // 类型编码（typeDefinitionCode），用于加载布局
+const editTitle = ref('')
+
+function openEditModal(record) {
+  const isPart = record.entityType === 'PART'
+  editEntityType.value = isPart ? 'PART' : 'DOC'
+  editEntityOid.value = record.oid
+  editEntityCode.value = record.typeDefinitionCode || (isPart ? 'PART' : 'DOCUMENT')
+  editTitle.value = `编辑${isPart ? '零组件' : '文档'}：${record.code || ''} ${record.name || ''}`
+  editForm.value = {}
+  editModalVisible.value = true
+}
+
+async function confirmEdit() {
+  if (editFormRef.value) {
+    const errors = editFormRef.value.validate()
+    if (errors.length > 0) return message.warning(errors[0])
+  }
+  editModalSaving.value = true
+  try {
+    const isPart = editEntityType.value === 'PART'
+    // 优先使用 DynamicForm 的 getFormData()（避免依赖 v-model 同步时序）
+    const formData = editFormRef.value?.getFormData() || editForm.value
+    const payload = { ...formData }
+    // 分类 IBA 字段值单独提交到 ck_cls_iba_data（分类节点级）
+    if (editFormRef.value) {
+      const clsIbaFieldNames = editFormRef.value.getClsIbaFieldNames() || []
+      clsIbaFieldNames.forEach(k => delete payload[k])
+      const clsIbaValues = editFormRef.value.getClsIbaValues() || {}
+      if (Object.keys(clsIbaValues).length > 0) {
+        payload.clsIbaValues = clsIbaValues
+      }
+    }
+    // 外键字段空字符串转 null
+    ;['clsOid', 'stageOid', 'folderOid', 'containerOid', 'ckfileOid', 'attachmentOid'].forEach(k => {
+      if (payload[k] != null && String(payload[k]).trim() === '') payload[k] = null
+    })
+    const res = isPart
+      ? await updatePart(editEntityOid.value, payload)
+      : await updateDocument(editEntityOid.value, payload)
+    if (res.code === 200) {
+      message.success('保存成功')
+      editModalVisible.value = false
+      // 刷新当前文件夹列表
+      if (selectedFolder.value) {
+        if (isPart) loadParts(selectedFolder.value.oid)
+        loadDocuments(selectedFolder.value.oid)
+      }
+    } else {
+      message.error(res.message || '保存失败')
+    }
+  } catch (e) {
+    message.error(e?.response?.data?.message || '保存失败')
+  } finally {
+    editModalSaving.value = false
+  }
+}
 
 async function loadPartTypes() {
   partTypeLoading.value = true
@@ -700,7 +1033,7 @@ function openCreatePart() {
     folderOid: selectedFolder.value?.oid || '',
     containerOid: plOid || '',
     containerType: isModel ? 'PRODUCT_MODEL' : 'PRODUCT_LINE',
-    classificationOid: '',
+    clsOid: '',
     ckfileOid: '',
     attachmentOid: '',
   }
@@ -728,7 +1061,7 @@ function resetPartModal() {
   partForm.value = {
     name: '', typeDefinitionCode: '', description: '',
     stageOid: '', folderOid: '', containerOid: '', containerType: '',
-    classificationOid: '', ckfileOid: '', attachmentOid: '',
+    clsOid: '', ckfileOid: '', attachmentOid: '',
   }
 }
 
@@ -736,11 +1069,27 @@ async function confirmPart() {
   if (!partForm.value.name?.trim()) { message.warning('请输入零组件名称'); return }
   partModalSaving.value = true
   try {
-    const res = await createPart(partForm.value)
+    // 外键字段空字符串转 null，避免外键约束失败
+    const payload = { ...partForm.value }
+    // 分类 IBA 字段值单独提交到 ck_cls_iba_data（分类节点级）
+    if (partFormRef.value) {
+      const clsIbaFieldNames = partFormRef.value.getClsIbaFieldNames() || []
+      clsIbaFieldNames.forEach(k => delete payload[k])
+      const clsIbaValues = partFormRef.value.getClsIbaValues() || {}
+      if (Object.keys(clsIbaValues).length > 0) {
+        payload.clsIbaValues = clsIbaValues
+      }
+    }
+    ;['clsOid', 'stageOid', 'folderOid', 'containerOid', 'ckfileOid', 'attachmentOid'].forEach(k => {
+      if (payload[k] != null && String(payload[k]).trim() === '') payload[k] = null
+    })
+    const res = await createPart(payload)
     if (res.code === 200) {
       message.success('零组件创建成功')
       partModalVisible.value = false
       resetPartModal()
+      // 刷新当前文件夹的零组件列表
+      if (selectedFolder.value) loadParts(selectedFolder.value.oid)
     } else {
       message.error(res.message || '创建失败')
     }
@@ -817,14 +1166,18 @@ const selectFolder = (node) => {
   selectedFolder.value = node
   inheritedDocuments.value = []
   docTypeFilter.value = ''  // 重置类型筛选
+  parts.value = []
   if (node && node._mergedInherited) {
     // 合并节点：同时加载继承资料和自有资料
     loadInheritedDocuments(node._mergedInherited.oid)
     loadDocuments(node.oid)
+    loadParts(node.oid)
   } else if (node && !node._inherited) {
     loadDocuments(node.oid)
+    loadParts(node.oid)
   } else {
     documents.value = []
+    parts.value = []
   }
 }
 
@@ -891,6 +1244,40 @@ const inheritedDocColumns = [
   { title: '检出状态', key: 'checkout', width: 100 },
   { title: '操作', key: 'action', width: 110 }
 ]
+
+// ==================== 零组件（Part）列表 ====================
+const parts = ref([])
+const partLoading = ref(false)
+
+/** 零组件 + 文档合并列定义（通过「类型」列区分，Part 用 geekblue 标签） */
+const mixedColumns = [
+  { title: '', dataIndex: 'checkedOut', key: 'checkout_status', width: 36, align: 'center' },
+  { title: '编码', dataIndex: 'code', key: 'code', width: 140 },
+  { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true, width: 180 },
+  { title: '类型', dataIndex: 'typeDefinitionName', key: 'typeDefinitionName', width: 130 },
+  { title: '版本', dataIndex: 'displayVersion', key: 'displayVersion', width: 70 },
+  { title: '单位', dataIndex: 'unit', key: 'unit', width: 70 },
+  { title: '生命周期状态', key: 'status', width: 100 },
+  { title: '检出状态', key: 'checkout', width: 100 },
+  { title: '操作', key: 'action', width: 110, fixed: 'right' }
+]
+
+/** 零组件 + 文档合并列表（Part 标记 entityType='PART'） */
+const filteredMixed = computed(() => {
+  const partItems = parts.value.map(p => ({ ...p, entityType: 'PART' }))
+  const docItems = documents.value.map(d => ({ ...d, entityType: 'DOC' }))
+  return [...partItems, ...docItems]
+})
+
+async function loadParts(folderOid) {
+  partLoading.value = true
+  try {
+    const res = await getPartsByFolder(folderOid)
+    if (res.code === 200) parts.value = res.data || []
+    else parts.value = []
+  } catch { parts.value = [] }
+  finally { partLoading.value = false }
+}
 
 // ==================== 文档类型筛选 ====================
 const docTypeFilter = ref('')           // 当前选中的类型过滤值（空=全部）
@@ -1029,18 +1416,31 @@ const confirmDocument = async () => {
   if (!selectedFolder.value) return message.warning('请先选择文件夹')
   docModalSaving.value = true
   try {
-    const res = await createDocument({
-      name,
-      typeDefinitionCode: selectedDocType.value?.code || '',
-      description: docForm.value.description || '',
-      containerOid: docForm.value.containerOid || '',
-      containerType: docForm.value.containerType || 'PRODUCT_LINE',
-      folderOid: selectedFolder.value.oid,
-      stageOid: activeStage.value,
-      location: selectedFolder.value.name,
-      ckfileOid: docForm.value.ckfileOid || '',
-      attachmentOid: docForm.value.attachmentOid || '',
+    // 以 DynamicForm 的表单数据为基础（含动态 IBA/分类字段等）
+    const formData = docFormRef.value?.getFormData() || { ...docForm.value }
+    const payload = { ...formData }
+    // 分类 IBA 字段值单独提交到 ck_cls_iba_data（分类节点级）
+    if (docFormRef.value) {
+      const clsIbaFieldNames = docFormRef.value.getClsIbaFieldNames() || []
+      clsIbaFieldNames.forEach(k => delete payload[k])
+      const clsIbaValues = docFormRef.value.getClsIbaValues() || {}
+      if (Object.keys(clsIbaValues).length > 0) {
+        payload.clsIbaValues = clsIbaValues
+      }
+    }
+    // 强制覆盖必填字段（容器、阶段、文件夹等以当前弹窗上下文为准）
+    payload.name = name
+    payload.typeDefinitionCode = selectedDocType.value?.code || ''
+    payload.containerOid = docForm.value.containerOid || ''
+    payload.containerType = docForm.value.containerType || 'PRODUCT_LINE'
+    payload.folderOid = selectedFolder.value.oid
+    payload.stageOid = activeStage.value
+    payload.location = selectedFolder.value.name
+    // 外键字段空字符串转 null
+    ;['clsOid', 'stageOid', 'folderOid', 'containerOid', 'ckfileOid', 'attachmentOid'].forEach(k => {
+      if (payload[k] != null && String(payload[k]).trim() === '') payload[k] = null
     })
+    const res = await createDocument(payload)
     if (res.code === 200) {
       message.success('文档创建成功')
       docModalVisible.value = false
@@ -1053,16 +1453,158 @@ const confirmDocument = async () => {
   finally { docModalSaving.value = false }
 }
 
-const removeDocument = async (doc) => {
+// ==================== 删除（支持选择删除范围） ====================
+const deleteModalVisible = ref(false)
+const deleteSaving = ref(false)
+const deleteTarget = ref(null)
+const deleteScope = ref('all')   // 'all' = 删除所有版本, 'latest' = 删除最新小版本
+
+/** 打开删除弹窗 */
+function openDeleteModal(record) {
+  deleteTarget.value = record
+  deleteScope.value = 'all'
+  deleteModalVisible.value = true
+}
+
+/** 确认删除 */
+async function confirmDelete() {
+  if (!deleteTarget.value) return
+  const record = deleteTarget.value
+  const isPart = record.entityType === 'PART'
+  deleteSaving.value = true
   try {
-    const res = await deleteDocument(doc.oid)
+    const isLatest = deleteScope.value === 'latest'
+    const res = isLatest
+      ? (isPart ? await deletePartLatestIteration(record.oid) : await deleteDocumentLatestIteration(record.oid))
+      : (isPart ? await deletePart(record.oid) : await deleteDocument(record.oid))
     if (res.code === 200) {
-      message.success('文档已删除')
-      loadDocuments(selectedFolder.value.oid)
+      message.success(isLatest ? '已删除最新小版本' : '已删除')
+      deleteModalVisible.value = false
+      if (selectedFolder.value) {
+        if (isPart) loadParts(selectedFolder.value.oid)
+        loadDocuments(selectedFolder.value.oid)
+      }
     } else {
       message.error(res.message || '删除失败')
     }
-  } catch { message.error('删除失败') }
+  } catch (e) {
+    message.error('删除失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+  } finally {
+    deleteSaving.value = false
+  }
+}
+
+/** 新建视图版本（通用，区分零组件/文档） */
+function newViewVersionRecord(record) {
+  const isPart = record.entityType === 'PART'
+  Modal.confirm({
+    title: `确认新建视图版本 "${record.code || record.name}"？`,
+    content: '将基于当前最新版本创建一个新的大版本（版本号递增，小版本重置为 1）。',
+    okText: '确认新建',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const res = isPart
+          ? await newViewVersionPart(record.oid)
+          : await newViewVersionDocument(record.oid)
+        if (res.code === 200) {
+          message.success(`已新建视图版本: ${record.code || record.name}`)
+          if (selectedFolder.value) {
+            if (isPart) loadParts(selectedFolder.value.oid)
+            loadDocuments(selectedFolder.value.oid)
+          }
+        } else {
+          message.error(res.message || '新建视图版本失败')
+        }
+      } catch (e) {
+        message.error('新建视图版本失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+      }
+    }
+  })
+}
+
+// ==================== 重命名 ====================
+const renameModalVisible = ref(false)
+const renameSaving = ref(false)
+const renameTarget = ref(null)
+const renameName = ref('')
+
+/** 打开重命名弹窗 */
+function openRenameModal(record) {
+  renameTarget.value = record
+  renameName.value = record.name || ''
+  renameModalVisible.value = true
+}
+
+/** 确认重命名 */
+async function confirmRename() {
+  if (!renameTarget.value) return
+  const record = renameTarget.value
+  const isPart = record.entityType === 'PART'
+  const name = renameName.value?.trim()
+  if (!name) { message.warning('请输入名称'); return }
+  renameSaving.value = true
+  try {
+    const res = isPart
+      ? await renamePart(record.oid, name)
+      : await renameDocument(record.oid, name)
+    if (res.code === 200) {
+      message.success('重命名成功')
+      renameModalVisible.value = false
+      if (selectedFolder.value) {
+        if (isPart) loadParts(selectedFolder.value.oid)
+        loadDocuments(selectedFolder.value.oid)
+      }
+    } else {
+      message.error(res.message || '重命名失败')
+    }
+  } catch (e) {
+    message.error('重命名失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+  } finally {
+    renameSaving.value = false
+  }
+}
+
+// ==================== 另存为 ====================
+const saveAsModalVisible = ref(false)
+const saveAsSaving = ref(false)
+const saveAsTarget = ref(null)
+const saveAsName = ref('')
+
+/** 打开零组件详情（新开窗口） */
+function openPartDetail(record) {
+  const href = router.resolve({ name: 'PartDetail', params: { oid: record.oid } }).href
+  window.open(href, '_blank')
+}
+
+/** 打开另存为弹窗 */
+function openSaveAsModal(record) {
+  saveAsTarget.value = record
+  saveAsName.value = `${record.name || ''} - 副本`
+  saveAsModalVisible.value = true
+}
+
+/** 确认另存为 */
+async function confirmSaveAs() {
+  if (!saveAsTarget.value) return
+  const record = saveAsTarget.value
+  const name = saveAsName.value?.trim()
+  if (!name) { message.warning('请输入名称'); return }
+  saveAsSaving.value = true
+  try {
+    const res = await saveAsPart(record.oid, name)
+    if (res.code === 200) {
+      message.success('另存为成功')
+      saveAsModalVisible.value = false
+      if (selectedFolder.value) loadParts(selectedFolder.value.oid)
+    } else {
+      message.error(res.message || '另存为失败')
+    }
+  } catch (e) {
+    message.error('另存为失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+  } finally {
+    saveAsSaving.value = false
+  }
 }
 
 /** 生命周期状态颜色 */
@@ -1084,23 +1626,28 @@ const checkoutTargetDoc = ref(null)
 /** 确认检出 */
 async function confirmCheckout() {
   if (!checkoutTargetDoc.value) return
-  if (!checkoutComment.value.trim()) return message.warning('请输入检出注释')
+  const isPart = checkoutTargetDoc.value.entityType === 'PART'
   checkoutSaving.value = true
   try {
-    const res = await checkoutDocApi(checkoutTargetDoc.value.oid, checkoutComment.value.trim())
+    const res = isPart
+      ? await checkoutPartApi(checkoutTargetDoc.value.oid, checkoutComment.value.trim())
+      : await checkoutDocApi(checkoutTargetDoc.value.oid, checkoutComment.value.trim())
     if (res.code === 200) {
       message.success('检出成功')
-      recordOperation({ action: '检出文档', target: checkoutTargetDoc.value.code + ' ' + checkoutTargetDoc.value.name })
+      recordOperation({
+        action: isPart ? '检出零组件' : '检出文档',
+        target: checkoutTargetDoc.value.code + ' ' + checkoutTargetDoc.value.name
+      })
       checkoutModalVisible.value = false
       checkoutComment.value = ''
       checkoutTargetDoc.value = null
-      // 刷新当前文件夹的文档列表
+      // 刷新当前文件夹列表
       if (selectedFolder.value) {
+        if (isPart) loadParts(selectedFolder.value.oid)
         if (selectedFolder.value._mergedInherited) {
-          loadDocuments(selectedFolder.value.oid)
-        } else {
-          loadDocuments(selectedFolder.value.oid)
+          loadInheritedDocuments(selectedFolder.value._mergedInherited.oid)
         }
+        loadDocuments(selectedFolder.value.oid)
       }
     } else {
       message.error(res.message || '检出失败')
@@ -1116,21 +1663,321 @@ async function confirmCheckout() {
 function handleDocAction({ key }, doc) {
   switch (key) {
     case 'view': docViewerDoc.value = doc; docViewerVisible.value = true; break
+    case 'rename': openRenameModal({ ...doc, entityType: 'DOC' }); break
     case 'checkout': checkoutDocument(doc); break
     case 'edit': editDocument(doc); break
     case 'checkin': checkinDocument(doc); break
     case 'undoCheckout': undoCheckoutDocument(doc); break
     case 'download': downloadDocument(doc); break
-    case 'move': moveDocument(doc); break
+    case 'move': openMoveModal({ ...doc, entityType: 'DOC' }); break
+    case 'newViewVersion': newViewVersionRecord({ ...doc, entityType: 'DOC' }); break
     case 'lifecycle': message.info(`设置生命周期: ${doc.name}`); break
     case 'workflow': message.info(`发起流程: ${doc.name}`); break
     case 'delete':
-      Modal.confirm({
-        title: '确定删除该文档？', content: '删除后数据不可恢复',
-        okText: '删除', okType: 'danger', cancelText: '取消',
-        onOk: () => removeDocument(doc)
-      })
+      openDeleteModal({ ...doc, entityType: 'DOC' })
       break
+  }
+}
+
+/** 统一零组件/文档操作分发 */
+function handleMixedAction({ key }, record) {
+  const isPart = record.entityType === 'PART'
+  switch (key) {
+    case 'view':
+      if (isPart) openPartDetail(record)
+      else { docViewerDoc.value = record; docViewerVisible.value = true }
+      break
+    case 'rename':
+      openRenameModal(record)
+      break
+    case 'saveAs':
+      openSaveAsModal(record)
+      break
+    case 'history':
+      openHistoryModal(record)
+      break
+    case 'checkout':
+      // 通用检出：弹出注释输入框（record 含 entityType 标记）
+      checkoutTargetDoc.value = record
+      checkoutComment.value = ''
+      checkoutModalVisible.value = true
+      break
+    case 'edit':
+      openEditModal(record)
+      break
+    case 'checkin':
+      checkinRecord(record)
+      break
+    case 'undoCheckout':
+      undoCheckoutRecord(record)
+      break
+    case 'download':
+      if (isPart) message.warning('零组件暂无主文件')
+      else downloadDocument(record)
+      break
+    case 'move':
+      openMoveModal(record)
+      break
+    case 'newViewVersion':
+      newViewVersionRecord(record)
+      break
+    case 'lifecycle':
+      message.info(`设置生命周期: ${record.name || record.code}`)
+      break
+    case 'workflow':
+      message.info(`发起流程: ${record.name || record.code}`)
+      break
+    case 'delete':
+      openDeleteModal(record)
+      break
+  }
+}
+
+/** 取消检出（通用，区分零组件/文档） */
+function undoCheckoutRecord(record) {
+  const isPart = record.entityType === 'PART'
+  Modal.confirm({
+    title: `确认取消检出 "${record.code || record.name}"？`,
+    content: '取消检出将丢弃本次检出后的所有修改，恢复为检出前的版本。',
+    okText: '确认取消检出',
+    cancelText: '保留检出',
+    okType: 'danger',
+    onOk: async () => {
+      try {
+        const res = isPart
+          ? await undoCheckoutPartApi(record.oid)
+          : await undoCheckoutApi(record.oid)
+        if (res.code === 200) {
+          message.success(`已取消检出: ${record.code || record.name}`)
+          if (selectedFolder.value) {
+            if (isPart) loadParts(selectedFolder.value.oid)
+            if (selectedFolder.value._mergedInherited) {
+              loadInheritedDocuments(selectedFolder.value._mergedInherited.oid)
+            }
+            loadDocuments(selectedFolder.value.oid)
+          }
+        }
+      } catch { /* 错误已在拦截器中处理 */ }
+      }
+      })
+      }
+
+      /** 检入（通用，区分零组件/文档），确认后解除检出并将副本保存为新版本 */
+      function checkinRecord(record) {
+      const isPart = record.entityType === 'PART'
+      Modal.confirm({
+      title: `确认检入 "${record.code || record.name}"？`,
+      content: '检入后，本次检出修改的副本将保存为新的版本，并解除检出锁定。',
+      okText: '确认检入',
+      cancelText: '取消',
+      onOk: async () => {
+      try {
+      const res = isPart
+        ? await checkinPartApi(record.oid)
+        : await checkinDocApi(record.oid)
+      if (res.code === 200) {
+        message.success(`已检入: ${record.code || record.name}`)
+        if (selectedFolder.value) {
+          if (isPart) loadParts(selectedFolder.value.oid)
+          if (selectedFolder.value._mergedInherited) {
+            loadInheritedDocuments(selectedFolder.value._mergedInherited.oid)
+          }
+          loadDocuments(selectedFolder.value.oid)
+        }
+      } else {
+        message.error(res.message || '检入失败')
+      }
+      } catch (e) {
+      message.error('检入失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+      }
+      }
+      })
+      }
+
+      // ==================== 历史版本 ====================
+const historyModalVisible = ref(false)
+const historyLoading = ref(false)
+const historyTitle = ref('')
+const historyColumns = [
+  { title: '版本', dataIndex: 'displayVersion', key: 'displayVersion', width: 100 },
+  { title: '大版本', dataIndex: 'revision', key: 'revision', width: 80 },
+  { title: '小版本', dataIndex: 'iteration', key: 'iteration', width: 80 },
+  { title: '生命周期状态', key: 'status', width: 120 },
+  { title: '最新', dataIndex: 'latest', key: 'latest', width: 70 },
+  { title: '检出状态', key: 'checkout', width: 100 },
+  { title: '创建人', dataIndex: 'creator', key: 'creator', width: 100 },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 170 },
+]
+const historyData = ref([])
+
+// 版本勾选对比
+const historySelectedRowKeys = ref([])
+const historySelectedRows = ref([])
+const historyRowSelection = computed(() => ({
+  selectedRowKeys: historySelectedRowKeys.value,
+  onChange: (keys, rows) => {
+    if (keys.length > 2) {
+      message.warning('最多只能勾选两个版本进行对比')
+      historySelectedRowKeys.value = keys.slice(0, 2)
+      historySelectedRows.value = rows.slice(0, 2)
+      return
+    }
+    historySelectedRowKeys.value = keys
+    historySelectedRows.value = rows
+  },
+}))
+
+const compareModalVisible = ref(false)
+const compareColumns = [
+  { title: '版本', key: 'field', dataIndex: 'field', width: 160 },
+  { title: '基线版本', key: 'left', dataIndex: 'left' },
+  { title: '目标版本', key: 'right', dataIndex: 'right' },
+]
+/** 分组对比结果：[{ key, title, rows }] */
+const compareGroups = ref([])
+
+/** 可对比的字段定义（label + 取值函数） */
+function buildCompareFields(record, clsInfo) {
+  const fmtTime = (v) => v ? String(v).substring(0, 19).replace('T', ' ') : ''
+  const statusText = (r) => r.status?.displayName || r.status?.code || ''
+  return [
+    { field: '版本', val: record.displayVersion || (record.revision ? `${record.revision}.${record.iteration}` : '') },
+    { field: '大版本', val: record.revision || '' },
+    { field: '小版本', val: record.iteration != null ? String(record.iteration) : '' },
+    { field: '生命周期状态', val: statusText(record) },
+    { field: '检出状态', val: record.checkedOut ? `已检出(${record.checkedOutBy || ''})` : '已检入' },
+    { field: '检出注释', val: record.checkedOutComment || '' },
+    { field: '单位', val: record.unit || '' },
+    { field: '来源', val: record.source || '' },
+    { field: '分类', val: clsInfo?.name || '' },
+    { field: '创建人', val: record.creator || '' },
+    { field: '创建时间', val: fmtTime(record.createdAt) },
+  ]
+}
+
+/** 格式化 IBA 属性值（JSONB 可能是对象/数组/字符串） */
+function formatIbaValue(val) {
+  if (val == null) return ''
+  if (typeof val === 'string') return val
+  try { return JSON.stringify(val) } catch { return String(val) }
+}
+
+/** 加载分类信息（名称 + IBA 显示名映射，用于 code → 显示名） */
+async function loadClsInfo(clsOid) {
+  if (!clsOid) return { name: '', nameMap: {} }
+  try {
+    const [clsRes, ibaDefRes] = await Promise.all([
+      getClassification(clsOid),
+      getClassificationIBAs(clsOid),
+    ])
+    const cls = clsRes?.data || clsRes
+    const ibaDefs = ibaDefRes?.data || ibaDefRes || []
+    const nameMap = {}
+    ;(Array.isArray(ibaDefs) ? ibaDefs : []).forEach(def => {
+      const code = def.ibaCode || def.code
+      const name = def.ibaDisplayName || def.ibaName || def.displayName || def.name || code
+      if (code) nameMap[code] = name
+    })
+    return { name: cls?.name || cls?.code || clsOid, nameMap }
+  } catch {
+    return { name: clsOid, nameMap: {} }
+  }
+}
+
+async function openCompareModal() {
+  if (historySelectedRows.value.length !== 2) {
+    message.warning('请先勾选两个版本进行对比')
+    return
+  }
+  const [a, b] = historySelectedRows.value
+
+  // 加载两个版本的分类信息（分类名称 + 分类 IBA 属性值）
+  const [clsA, clsB] = await Promise.all([
+    loadClsInfo(a.clsOid),
+    loadClsInfo(b.clsOid),
+  ])
+
+  // 1. 基本属性对比
+  const fieldsA = buildCompareFields(a, clsA)
+  const fieldsB = buildCompareFields(b, clsB)
+  const basicRows = fieldsA.map((fa, i) => {
+    const fb = fieldsB[i]
+    return { field: fa.field, left: fa.val, right: fb.val, diff: fa.val !== fb.val }
+  })
+
+  // 2. 实体 IBA 属性对比
+  const ibaRows = []
+  const entityIbaCodes = new Set([
+    ...Object.keys(a.entityIba || {}),
+    ...Object.keys(b.entityIba || {}),
+  ])
+  entityIbaCodes.forEach(code => {
+    const left = formatIbaValue(a.entityIba?.[code])
+    const right = formatIbaValue(b.entityIba?.[code])
+    ibaRows.push({
+      field: code,
+      left,
+      right,
+      diff: left !== right,
+    })
+  })
+
+  // 3. 分类 IBA 属性对比（对象实例值，ck_cls_iba_data，entity_oid = 对象 oid）
+  const clsIbaRows = []
+  const clsIbaCodes = new Set([
+    ...Object.keys(a.clsIba || {}),
+    ...Object.keys(b.clsIba || {}),
+  ])
+  clsIbaCodes.forEach(code => {
+    const label = clsA.nameMap?.[code] || clsB.nameMap?.[code] || code
+    const left = formatIbaValue(a.clsIba?.[code])
+    const right = formatIbaValue(b.clsIba?.[code])
+    clsIbaRows.push({
+      field: label,
+      left,
+      right,
+      diff: left !== right,
+    })
+  })
+
+  compareGroups.value = [
+    { key: 'basic', title: '基本属性', rows: basicRows },
+    { key: 'iba', title: 'IBA 属性', rows: ibaRows },
+    { key: 'clsIba', title: '分类 IBA 属性', rows: clsIbaRows },
+  ]
+
+  // 设置对比弹窗列名：直接使用 displayVersion 作为列名（如 A.1、B.2），
+  // 避免「版本 A」「版本 B」这种命名在同大版本下造成的歧义，
+  // 同时也能正确区分未来可能涉及的不同大版本
+  const verA = a.displayVersion || (a.revision ? `${a.revision}.${a.iteration}` : '')
+  const verB = b.displayVersion || (b.revision ? `${b.revision}.${b.iteration}` : '')
+  compareColumns[0].title = '版本'
+  compareColumns[1].title = verA || '基线版本'
+  compareColumns[2].title = verB || '目标版本'
+  compareModalVisible.value = true
+}
+
+async function openHistoryModal(record) {
+  const isPart = record.entityType === 'PART'
+  historyTitle.value = `${isPart ? '零组件' : '文档'}历史版本：${record.code || ''} ${record.name || ''}`
+  historyModalVisible.value = true
+  historyLoading.value = true
+  historyData.value = []
+  historySelectedRowKeys.value = []
+  historySelectedRows.value = []
+  try {
+    const res = isPart
+      ? await getPartIterations(record.oid)
+      : await getDocumentIterations(record.oid)
+    const list = res?.data || res || []
+    historyData.value = (Array.isArray(list) ? list : []).map(it => ({
+      ...it,
+      displayVersion: it.displayVersion || (it.revision ? `${it.revision}.${it.iteration}` : '-'),
+    }))
+  } catch {
+    historyData.value = []
+  } finally {
+    historyLoading.value = false
   }
 }
 
@@ -1143,14 +1990,12 @@ async function checkoutDocument(doc) {
 
 /** 编辑文档（检出后才可编辑） */
 function editDocument(doc) {
-  message.info(`编辑: ${doc.name}`)
-  // TODO: 打开编辑弹窗或跳转到编辑页
+  openEditModal(doc)
 }
 
-/** 检入文档 */
-async function checkinDocument(doc) {
-  message.info(`检入: ${doc.name}`)
-  // TODO: 调用检入 API
+/** 检入文档（文档 Tab） */
+function checkinDocument(doc) {
+  checkinRecord({ ...doc, entityType: 'DOC' })
 }
 
 /** 当前用户是否可以取消检出 */
@@ -1196,10 +2041,161 @@ async function undoCheckoutDocument(doc) {
   })
 }
 
-/** 移动文档 */
-function moveDocument(doc) {
-  message.info(`移动: ${doc.name}`)
-  // TODO: 打开移动弹窗
+// ==================== 移动 ====================
+const moveModalVisible = ref(false)
+const moveSaving = ref(false)
+const moveTarget = ref(null)
+const moveProductLoading = ref(false)
+const moveProductTree = ref([])
+/** oid → { nodeType, seriesOid } */
+const moveProductMeta = ref({})
+const moveSelectedOwner = ref(undefined)
+const moveStageLoading = ref(false)
+const moveStages = ref([])
+const moveSelectedStage = ref(undefined)
+const moveFolderLoading = ref(false)
+const moveFolderTree = ref([])
+const moveSelectedFolder = ref(undefined)
+
+/** 打开移动弹窗 */
+async function openMoveModal(record) {
+  moveTarget.value = record
+  moveSelectedOwner.value = undefined
+  moveStages.value = []
+  moveSelectedStage.value = undefined
+  moveFolderTree.value = []
+  moveSelectedFolder.value = undefined
+  moveModalVisible.value = true
+  await loadMoveProductTree()
+  // 默认回填当前所属系列/型号、阶段、文件夹（无需用户从头选择）
+  if (record.containerOid) {
+    moveSelectedOwner.value = record.containerOid
+    await onMoveOwnerChange(record.containerOid)
+    if (record.stageOid) {
+      moveSelectedStage.value = record.stageOid
+      await onMoveStageChange(record.stageOid)
+      if (record.folderOid) {
+        moveSelectedFolder.value = record.folderOid
+      }
+    }
+  }
+}
+
+/** 加载产品系列 + 型号树 */
+async function loadMoveProductTree() {
+  moveProductLoading.value = true
+  try {
+    const lineRes = await getProductLineTree()
+    if (lineRes.code !== 200) { moveProductTree.value = []; return }
+    const lines = lineRes.data || []
+    const tree = []
+    const meta = {}
+
+    async function buildNode(lineNode) {
+      const node = {
+        title: lineNode.name || lineNode.code,
+        value: lineNode.oid,
+        key: lineNode.oid,
+      }
+      meta[lineNode.oid] = { nodeType: 'PRODUCT_LINE', seriesOid: lineNode.oid }
+      try {
+        const modelsRes = await getProductModels({ productLineOid: lineNode.oid })
+        if (modelsRes.code === 200 && modelsRes.data?.length) {
+          const modelNodes = modelsRes.data.map(m => {
+            meta[m.oid] = { nodeType: 'PRODUCT_MODEL', seriesOid: lineNode.oid }
+            return { title: m.name || m.code, value: m.oid, key: m.oid }
+          })
+          node.children = modelNodes
+        }
+      } catch { /* ignore */ }
+      if (lineNode.children?.length) {
+        const childNodes = await Promise.all(lineNode.children.map(buildNode))
+        node.children = [...(node.children || []), ...childNodes]
+      }
+      return node
+    }
+
+    for (const line of lines) {
+      tree.push(await buildNode(line))
+    }
+    moveProductTree.value = tree
+    moveProductMeta.value = meta
+  } catch {
+    moveProductTree.value = []
+    moveProductMeta.value = {}
+  } finally {
+    moveProductLoading.value = false
+  }
+}
+
+/** 选择产品系列/型号 → 加载阶段 */
+async function onMoveOwnerChange(ownerOid) {
+  moveSelectedStage.value = undefined
+  moveFolderTree.value = []
+  moveSelectedFolder.value = undefined
+  if (!ownerOid) { moveStages.value = []; return }
+  const meta = moveProductMeta.value[ownerOid] || {}
+  const seriesOid = meta.seriesOid || ownerOid
+  moveStageLoading.value = true
+  try {
+    const res = await getStages(seriesOid)
+    moveStages.value = res.code === 200 ? (res.data || []) : []
+  } catch {
+    moveStages.value = []
+  } finally {
+    moveStageLoading.value = false
+  }
+}
+
+/** 选择阶段 → 加载文件夹 */
+async function onMoveStageChange(stageOid) {
+  moveSelectedFolder.value = undefined
+  moveFolderTree.value = []
+  if (!stageOid) return
+  const meta = moveProductMeta.value[moveSelectedOwner.value] || {}
+  const seriesOid = meta.seriesOid || moveSelectedOwner.value
+  moveFolderLoading.value = true
+  try {
+    const res = await getFolderTree(seriesOid, stageOid)
+    moveFolderTree.value = res.code === 200 ? (res.data || []) : []
+  } catch {
+    moveFolderTree.value = []
+  } finally {
+    moveFolderLoading.value = false
+  }
+}
+
+/** 确认移动 */
+async function confirmMove() {
+  if (!moveTarget.value) return
+  const record = moveTarget.value
+  const isPart = record.entityType === 'PART'
+  const ownerOid = moveSelectedOwner.value
+  if (!ownerOid) { message.warning('请选择产品系列/型号'); return }
+  const meta = moveProductMeta.value[ownerOid] || {}
+  const containerOid = meta.nodeType === 'PRODUCT_MODEL' ? meta.seriesOid : ownerOid
+  const containerType = meta.nodeType === 'PRODUCT_MODEL' ? 'PRODUCT_MODEL' : 'PRODUCT_LINE'
+  const stageOid = moveSelectedStage.value || ''
+  const folderOid = moveSelectedFolder.value || ''
+  moveSaving.value = true
+  try {
+    const data = { containerOid, containerType, folderOid, stageOid }
+    const res = isPart ? await movePart(record.oid, data) : await moveDocumentApi(record.oid, data)
+    if (res.code === 200) {
+      message.success('移动成功')
+      moveModalVisible.value = false
+      if (selectedFolder.value) {
+        if (isPart) loadParts(selectedFolder.value.oid)
+        loadDocuments(selectedFolder.value.oid)
+      }
+    } else {
+      message.error(res.message || '移动失败')
+    }
+  } catch (e) {
+    message.error('移动失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+  } finally {
+    moveSaving.value = false
+  }
 }
 
 const loadFolders = async () => {
@@ -1778,5 +2774,22 @@ onMounted(loadProductLine)
   font-family: monospace;
   font-size: 12px;
   color: #8c8c8c;
+}
+
+/* ===== 版本对比分组 ===== */
+.compare-group {
+  margin-bottom: 16px;
+}
+.compare-group:last-child {
+  margin-bottom: 0;
+}
+.compare-group-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 8px;
+  padding-left: 8px;
+  border-left: 3px solid #1677ff;
+  line-height: 1.2;
 }
 </style>

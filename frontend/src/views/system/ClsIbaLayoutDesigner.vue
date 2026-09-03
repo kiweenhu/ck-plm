@@ -469,21 +469,36 @@ import { getClassificationIBAs, getClsIbaLayout, saveClsIbaLayout, deleteClsIbaL
 const props = defineProps({
   classificationOid: { type: String, required: true },
   classificationName: { type: String, default: '' },
+  initialOpCode: { type: String, default: '' },
+  layoutOperations: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['back'])
 
-// ===== 操作列表 =====
-const operationList = ref([
+// ===== 操作列表（系统预置） =====
+const builtinOps = [
   { code: 'create', name: '新建页', builtin: 'true' },
   { code: 'update', name: '编辑页', builtin: 'true' },
   { code: 'detail', name: '详情页', builtin: 'true' },
-])
+]
+const operationList = ref([...builtinOps])
 const currentOpCode = ref('update')
 const currentOpName = computed(() => operationList.value.find(o => o.code === currentOpCode.value)?.name || currentOpCode.value)
 const showAddOp = ref(false)
 const newOpCode = ref('')
 const newOpName = ref('')
+
+// 父组件注入已存在的布局列表（含系统预置 + 租户自定义）
+if (props.layoutOperations && props.layoutOperations.length) {
+  const existing = new Map(operationList.value.map(o => [o.code, o]))
+  for (const op of props.layoutOperations) {
+    if (!existing.has(op.code)) operationList.value.push({ code: op.code, name: op.name, builtin: op.builtin || 'false' })
+  }
+}
+// 切换到外部传入的初始 opCode
+if (props.initialOpCode && operationList.value.some(o => o.code === props.initialOpCode)) {
+  currentOpCode.value = props.initialOpCode
+}
 
 // ===== 画布模式 =====
 const canvasMode = ref('desktop')

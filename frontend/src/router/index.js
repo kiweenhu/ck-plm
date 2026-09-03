@@ -36,6 +36,12 @@ const routes = [
         component: () => import('@/views/product/ProductLineDashboard.vue'),
         meta: { title: '产品线管业' }
       },
+      {
+        path: 'part/:oid',
+        name: 'PartDetail',
+        component: () => import('@/views/product/PartDetail.vue'),
+        meta: { title: '零组件详情' }
+      },
       // 企业资源
       {
         path: 'resource',

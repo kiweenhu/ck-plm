@@ -8,6 +8,8 @@ public class Document extends MasterEntity implements TenantEntity {
     private String typeDefinitionCode;
     private String folderOid;
     private String stageOid;
+    /** 分类 oid（关联 ck_classification.oid） */
+    private String clsOid;
     private String tenantOid;
 
     public Document() {
@@ -22,6 +24,9 @@ public class Document extends MasterEntity implements TenantEntity {
 
     public String getStageOid() { return stageOid; }
     public void setStageOid(String stageOid) { this.stageOid = stageOid; }
+
+    public String getClsOid() { return clsOid; }
+    public void setClsOid(String clsOid) { this.clsOid = clsOid; }
 
     @Override
     public String getTenantOid() { return tenantOid; }

@@ -146,8 +146,118 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     @Transactional
+    public Document rename(String oid, String name) {
+        Document existing = documentMapper.selectByOid(oid);
+        if (existing == null) {
+            throw new IllegalArgumentException("文档不存在: " + oid);
+        }
+        existing.setName(name);
+        existing.setUpdatedAt(LocalDateTime.now());
+        documentMapper.update(existing);
+        return existing;
+    }
+
+    @Override
+    @Transactional
+    public Document move(String oid, String containerOid, String containerType, String folderOid, String stageOid) {
+        Document existing = documentMapper.selectByOid(oid);
+        if (existing == null) {
+            throw new IllegalArgumentException("文档不存在: " + oid);
+        }
+        existing.setContainerOid(normalizeOid(containerOid));
+        existing.setContainerType(containerType);
+        existing.setFolderOid(normalizeOid(folderOid));
+        existing.setStageOid(normalizeOid(stageOid));
+        existing.setUpdatedAt(LocalDateTime.now());
+        documentMapper.update(existing);
+        return existing;
+    }
+
+    /** 空字符串外键 oid 转 null，避免违反外键约束 */
+    private String normalizeOid(String oid) {
+        if (oid == null) return null;
+        String trimmed = oid.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    @Override
+    @Transactional
     public void delete(String oid) {
         documentMapper.deleteByOid(oid);
+    }
+
+    @Override
+    @Transactional
+    public void deleteLatestIteration(String oid) {
+        DocumentIteration latest = iterationMapper.selectLatestByMasterOid(oid);
+        if (latest == null) {
+            return;
+        }
+        iterationMapper.deleteByOid(latest.getOid());
+
+        List<DocumentIteration> remaining = iterationMapper.selectByMasterOid(oid);
+        if (remaining == null || remaining.isEmpty()) {
+            // 无剩余版本，删除主对象
+            documentMapper.deleteByOid(oid);
+            return;
+        }
+        // 将剩余中最新的版本标记为 latest=true
+        DocumentIteration newLatest = remaining.get(0);
+        if (!newLatest.isLatest()) {
+            newLatest.setLatest(true);
+            iterationMapper.update(newLatest);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void newViewVersion(String oid) {
+        Document document = documentMapper.selectByOid(oid);
+        if (document == null) {
+            throw new IllegalArgumentException("文档不存在: " + oid);
+        }
+        DocumentIteration currentIter = iterationMapper.selectLatestByMasterOid(oid);
+        if (currentIter == null) {
+            throw new IllegalArgumentException("文档没有可用版本: " + oid);
+        }
+
+        // 1. 原最新版本 latest → false
+        currentIter.setLatest(false);
+        iterationMapper.update(currentIter);
+
+        // 2. 创建新的大版本（revision+1，iteration=1，view 继承）
+        DocumentIteration copy = new DocumentIteration();
+        copy.setOid(java.util.UUID.randomUUID().toString());
+        copy.setMasterOid(oid);
+        copy.setIteration(1);
+        copy.setLatest(true);
+        copy.setCheckedOut(false);
+        copy.setCkfileOid(currentIter.getCkfileOid());
+        copy.setCreatedAt(LocalDateTime.now());
+        copy.setUpdatedAt(LocalDateTime.now());
+        copy.setCreator(currentIter.getCreator());
+        copy.setStatus(currentIter.getStatus());
+        copy.setLifecycleTemplateIterationOid(currentIter.getLifecycleTemplateIterationOid());
+
+        String versionRuleCode = versionRuleService.resolveVersionRuleCode(document.getTypeDefinitionCode());
+        String nextRevision = null;
+        if (versionRuleCode != null) {
+            try {
+                nextRevision = versionRuleService.getNextRevision(versionRuleCode, currentIter.getRevision());
+            } catch (Exception e) {
+                log.warn("版本规则获取下一版本失败，使用 char+1: ruleCode={}, error={}", versionRuleCode, e.getMessage());
+            }
+        }
+        if (nextRevision == null) {
+            char c = currentIter.getRevision() != null && !currentIter.getRevision().isEmpty()
+                    ? currentIter.getRevision().charAt(0) : 'A';
+            nextRevision = String.valueOf((char) (c + 1));
+        }
+        copy.setRevision(nextRevision);
+        iterationMapper.insert(copy);
+
+        log.info("新建视图版本成功: docOid={}, {}.{} -> {}.1", oid,
+                currentIter.getRevision(), currentIter.getIteration(), copy.getRevision());
     }
 
     @Override
@@ -214,6 +324,16 @@ public class DocumentServiceImpl implements DocumentService {
             vos.add(vo);
         }
         return vos;
+    }
+
+    @Override
+    public List<DocumentIteration> findIterationsByMaster(String masterOid) {
+        return iterationMapper.selectByMasterOid(masterOid);
+    }
+
+    @Override
+    public DocumentIteration findLatestIteration(String masterOid) {
+        return iterationMapper.selectLatestByMasterOid(masterOid);
     }
 
     @Override

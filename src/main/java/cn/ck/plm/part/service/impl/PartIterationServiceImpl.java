@@ -18,6 +18,7 @@ public class PartIterationServiceImpl extends IterationServiceImpl {
             PartIteration partSource = (PartIteration) source;
             partTarget.setUnit(partSource.getUnit());
             partTarget.setSource(partSource.getSource());
+            partTarget.setView(partSource.getView());
         }
     }
 }

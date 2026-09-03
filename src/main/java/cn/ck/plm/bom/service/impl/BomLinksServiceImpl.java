@@ -14,7 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -29,7 +29,7 @@ public class BomLinksServiceImpl implements BomLinksService {
 
     @Override
     public BomLinks create(BomLinks bomLinks) {
-        Date now = new Date();
+        LocalDateTime now = LocalDateTime.now();
         bomLinks.setCreatedAt(now);
         bomLinks.setUpdatedAt(now);
         bomLinksMapper.insert(bomLinks);
@@ -38,7 +38,7 @@ public class BomLinksServiceImpl implements BomLinksService {
 
     @Override
     public BomLinks update(BomLinks bomLinks) {
-        bomLinks.setUpdatedAt(new Date());
+        bomLinks.setUpdatedAt(LocalDateTime.now());
         bomLinksMapper.update(bomLinks);
         return bomLinks;
     }

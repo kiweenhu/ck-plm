@@ -62,7 +62,7 @@
           </div>
         </template>
 
-        <!-- 研发阶段子模块 -->
+        <!-- 模板管理子模块 -->
         <template v-else-if="activeModule === 'stagetemplate'">
           <div class="bc-embedded-page">
             <StageTemplateConfig />
@@ -129,7 +129,7 @@ const modules = [
   { key: 'view',       label: '视图定义',     icon: EyeOutlined,        desc: '按业务角色定义数据视图，控制字段可见性与布局切换' },
   { key: 'versionrule',label: '版本规则',    icon: NumberOutlined,     desc: '大版本/小版本编码模板，含 CheckIn/CheckOut 版本号生成策略' },
   { key: 'numberrule',  label: '编码规则',    icon: BarcodeOutlined,    desc: '物料、文档等业务对象的编码段组合模板，支持分类码与流水号' },
-  { key: 'stagetemplate', label: '研发阶段',  icon: RocketOutlined,     desc: '研发阶段元数据模板，创建产品线/型号时按模板生成阶段节点' },
+  { key: 'stagetemplate', label: '模板管理',  icon: RocketOutlined,     desc: '研发阶段模板管理，创建产品线/型号时按模板生成阶段节点' },
   { key: 'platform',   label: '平台成员',     icon: TeamOutlined,       desc: '平台级角色（管理员/租户管理员）成员分配与管理' },
   { key: 'dict',       label: '数据字典',     icon: BookOutlined,       desc: '枚举值、代码表与标准化参考数据集中维护' },
   { key: 'unit',       label: '单位配置',     icon: CompassOutlined,    desc: '计量单位体系定义，含量纲类型、SI 标准、换算系数与偏移量' },

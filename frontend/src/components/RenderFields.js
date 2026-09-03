@@ -8,6 +8,11 @@ import RichTextEditor from './RichTextEditor.vue'
 import DataTable from './DataTable.vue'
 import DocumentTypeSelect from './DocumentTypeSelect.vue'
 import ClassificationSelect from './ClassificationSelect.vue'
+import ClassificationBoundSelect from './ClassificationBoundSelect.vue'
+import UnitSelect from './UnitSelect.vue'
+import SourceSelect from './SourceSelect.vue'
+import LifecycleDisplay from './LifecycleDisplay.vue'
+import NumberPreview from './NumberPreview.vue'
 
 /** 去除 HTML 标签，保留纯文本 */
 const stripHtml = (html) => {
@@ -41,6 +46,8 @@ const RenderFields = {
     userOptions: { type: Array, default: () => [] },
     folderTree: { type: Array, default: () => [] },
     stageOptions: { type: Array, default: () => [] },
+    /** 类型定义 oid，用于 classification-bound-select 组件获取绑定分类子树 */
+    typeDefinitionOid: { type: String, default: null },
   },
   emits: ['update', 'table-action'],
   render() {
@@ -68,6 +75,7 @@ const RenderFields = {
                   userOptions: this.userOptions,
                   folderTree: this.folderTree,
                   stageOptions: this.stageOptions,
+                  typeDefinitionOid: this.typeDefinitionOid,
                   onUpdate: (key, val) => this.$emit('update', key, val),
                   'onTable-action': (payload) => this.$emit('table-action', payload),
                 })
@@ -93,6 +101,7 @@ const RenderFields = {
               userOptions: this.userOptions,
               folderTree: this.folderTree,
               stageOptions: this.stageOptions,
+              typeDefinitionOid: this.typeDefinitionOid,
               onUpdate: (key, val) => this.$emit('update', key, val),
               'onTable-action': (payload) => this.$emit('table-action', payload),
             }),
@@ -387,9 +396,50 @@ const RenderFields = {
             'onUpdate:value': (val) => this.$emit('update', fieldName, val),
           })
 
+        case 'unit-select':
+          return h(UnitSelect, {
+            modelValue: value,
+            disabled: isReadonly,
+            placeholder: placeholder || '请选择单位',
+            allowClear: true,
+            'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
+          })
+
+        case 'source-select':
+          return h(SourceSelect, {
+            modelValue: value,
+            disabled: isReadonly,
+            placeholder: placeholder || '请选择来源',
+            allowClear: true,
+            'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
+          })
+
+        case 'lifecycle-display':
+          return h(LifecycleDisplay, {
+            typeDefinitionOid: this.typeDefinitionOid || field.typeDefinitionOid,
+            disabled: isReadonly,
+          })
+
+        case 'number-preview':
+          return h(NumberPreview, {
+            value: value,
+            typeDefinitionOid: this.typeDefinitionOid || field.typeDefinitionOid,
+            disabled: isReadonly,
+          })
+
         case 'classification-select':
           return h(ClassificationSelect, {
             modelValue: value,
+            disabled: isReadonly,
+            placeholder: placeholder || '请选择分类',
+            allowClear: true,
+            'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
+          })
+
+        case 'classification-bound-select':
+          return h(ClassificationBoundSelect, {
+            modelValue: value,
+            typeDefinitionOid: this.typeDefinitionOid || field.typeDefinitionOid,
             disabled: isReadonly,
             placeholder: placeholder || '请选择分类',
             allowClear: true,

@@ -19,6 +19,9 @@ import java.util.Map;
 @RequestMapping("/api/classifications")
 public class ClassificationController {
 
+    /** 分类节点默认值使用的 entity_oid（空字符串表示非对象实例，即分类默认值） */
+    private static final String DEFAULT_ENTITY_OID = "";
+
     private final ClassificationService classificationService;
     private final ClsIbaDataService clsIbaDataService;
     private final UserService userService;
@@ -99,6 +102,14 @@ public class ClassificationController {
         return ApiResponse.ok(classificationService.findTree());
     }
 
+    /** 获取以 rootOid 为根的子树 */
+    @GetMapping("/subtree/{rootOid}")
+    public ApiResponse<Classification> subtree(@PathVariable String rootOid) {
+        Classification subtree = classificationService.findSubtree(rootOid);
+        if (subtree == null) return ApiResponse.fail(404, "分类不存在: " + rootOid);
+        return ApiResponse.ok(subtree);
+    }
+
     // ==================== 分类-IBA 关联 ====================
     // 注意：不能使用 /{oid}/ibas 因为会与 /{oid} 冲突
     // 使用 /cls-iba 作为独立前缀避免路径变量歧义
@@ -156,26 +167,26 @@ public class ClassificationController {
 
     // ==================== 分类 IBA 数据存取 ====================
 
-    /** 获取分类的 IBA 属性值 */
+    /** 获取分类的 IBA 属性值（分类节点默认值） */
     @GetMapping("/{oid}/iba-values")
     public ApiResponse<Map<String, Object>> getIBAValues(@PathVariable String oid) {
-        Map<String, Object> values = clsIbaDataService.getValues(oid);
+        Map<String, Object> values = clsIbaDataService.getValues(DEFAULT_ENTITY_OID, oid);
         return ApiResponse.ok(values);
     }
 
-    /** 保存分类的 IBA 属性值（全量替换） */
+    /** 保存分类的 IBA 属性值（分类节点默认值，全量替换） */
     @PostMapping("/{oid}/iba-values")
     public ApiResponse<Void> saveIBAValues(@PathVariable String oid,
                                            @RequestBody Map<String, Object> values) {
-        clsIbaDataService.saveValues(oid, values);
+        clsIbaDataService.saveValues(DEFAULT_ENTITY_OID, oid, values);
         return ApiResponse.ok();
     }
 
-    /** 合并保存分类的 IBA 属性值（仅更新提交的字段） */
+    /** 合并保存分类的 IBA 属性值（分类节点默认值，仅更新提交的字段） */
     @PutMapping("/{oid}/iba-values")
     public ApiResponse<Void> mergeIBAValues(@PathVariable String oid,
                                             @RequestBody Map<String, Object> values) {
-        clsIbaDataService.mergeValues(oid, values);
+        clsIbaDataService.mergeValues(DEFAULT_ENTITY_OID, oid, values);
         return ApiResponse.ok();
     }
 }

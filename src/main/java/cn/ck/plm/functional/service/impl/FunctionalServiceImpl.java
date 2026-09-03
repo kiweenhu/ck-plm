@@ -133,7 +133,6 @@ public class FunctionalServiceImpl implements FunctionalService {
                 vo.setRevision(latestIter.getRevision());
                 vo.setIteration(latestIter.getIteration());
                 vo.setDisplayVersion(latestIter.getDisplayVersion());
-                vo.setView(latestIter.getView());
                 vo.setStatus(latestIter.getStatus());
                 vo.setCheckedOut(latestIter.isCheckedOut());
                 vo.setCheckedOutBy(latestIter.getCheckedOutBy());

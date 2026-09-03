@@ -6,7 +6,6 @@
 package cn.ck.plm.functional.mapper.impl.postgresql;
 
 import cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler;
-import cn.ck.plm.base.typehandler.ViewTypeHandler;
 import cn.ck.plm.functional.entity.FunctionalIteration;
 import cn.ck.plm.functional.mapper.FunctionalIterationMapper;
 import org.apache.ibatis.annotations.*;
@@ -20,19 +19,18 @@ public interface PostgreSqlFunctionalIterationMapper extends FunctionalIteration
 
     String TABLE = "ck_functional_iteration";
     String SELECT_COLS = "oid, master_oid, revision, iteration, display_version, " +
-            "view, status, lifecycle_template_iteration_oid, " +
+            "status, lifecycle_template_iteration_oid, " +
             "checked_out, checked_out_by, checked_out_comment, latest, " +
             "derived_from_oid, derived_at, version_sort, branch_id, delete_mark, " +
             "tenant_oid, creator, created_at, updater, updated_at";
 
     @Override
     @Insert("INSERT INTO " + TABLE + " (oid, master_oid, revision, iteration, display_version, " +
-            "view, status, lifecycle_template_iteration_oid, " +
+            "status, lifecycle_template_iteration_oid, " +
             "checked_out, checked_out_by, checked_out_comment, latest, " +
             "derived_from_oid, derived_at, version_sort, branch_id, delete_mark, " +
             "tenant_oid, creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{masterOid}, #{revision}, #{iteration}, #{displayVersion}, " +
-            "#{view, typeHandler=cn.ck.plm.base.typehandler.ViewTypeHandler}, " +
             "#{status, typeHandler=cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler}, " +
             "#{lifecycleTemplateIterationOid}, " +
             "#{checkedOut}, #{checkedOutBy}, #{checkedOutComment}, #{latest}, " +
@@ -43,7 +41,6 @@ public interface PostgreSqlFunctionalIterationMapper extends FunctionalIteration
     @Override
     @Update("UPDATE " + TABLE + " SET revision = #{revision}, iteration = #{iteration}, " +
             "display_version = #{displayVersion}, " +
-            "view = #{view, typeHandler=cn.ck.plm.base.typehandler.ViewTypeHandler}, " +
             "status = #{status, typeHandler=cn.ck.plm.base.typehandler.LifecycleStatusTypeHandler}, " +
             "lifecycle_template_iteration_oid = #{lifecycleTemplateIterationOid}, " +
             "checked_out = #{checkedOut}, checked_out_by = #{checkedOutBy}, " +
@@ -63,7 +60,6 @@ public interface PostgreSqlFunctionalIterationMapper extends FunctionalIteration
             @Result(property = "masterOid", column = "master_oid"),
             @Result(property = "displayVersion", column = "display_version"),
             @Result(property = "lifecycleTemplateIterationOid", column = "lifecycle_template_iteration_oid"),
-            @Result(property = "view", column = "view", typeHandler = ViewTypeHandler.class),
             @Result(property = "status", column = "status", typeHandler = LifecycleStatusTypeHandler.class),
             @Result(property = "checkedOut", column = "checked_out"),
             @Result(property = "checkedOutBy", column = "checked_out_by"),

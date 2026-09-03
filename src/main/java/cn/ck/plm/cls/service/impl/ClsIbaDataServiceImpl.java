@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -24,39 +25,36 @@ public class ClsIbaDataServiceImpl implements ClsIbaDataService {
 
     @Override
     @Transactional
-    public void saveValues(String classificationOid, Map<String, Object> values) {
-        mapper.deleteByClassificationOid(classificationOid);
+    public void saveValues(String entityOid, String classificationOid, Map<String, Object> values) {
+        mapper.deleteByEntity(entityOid, classificationOid);
         if (values == null || values.isEmpty()) return;
         String tenantOid = TenantContext.get();
         String operator = UserContext.get();
         for (Map.Entry<String, Object> entry : values.entrySet()) {
             String attrCode = entry.getKey();
             String attrValue = toJsonString(entry.getValue());
-            mapper.insert(classificationOid, attrCode, attrValue, tenantOid, operator, operator);
+            mapper.insert(entityOid, classificationOid, attrCode, attrValue, tenantOid, operator, operator);
         }
     }
 
     @Override
     @Transactional
-    public void mergeValues(String classificationOid, Map<String, Object> values) {
+    public void mergeValues(String entityOid, String classificationOid, Map<String, Object> values) {
         if (values == null || values.isEmpty()) return;
-        Map<String, Object> existing = getValues(classificationOid);
-        if (existing != null) {
-            existing.putAll(values);
-        } else {
-            existing = values;
-        }
-        saveValues(classificationOid, existing);
+        Map<String, Object> existing = getValues(entityOid, classificationOid);
+        existing.putAll(values);
+        saveValues(entityOid, classificationOid, existing);
     }
 
     @Override
-    public Map<String, Object> getValues(String classificationOid) {
-        Map<String, Object> raw = mapper.selectByClassificationOid(classificationOid);
-        if (raw == null) return new HashMap<>();
+    public Map<String, Object> getValues(String entityOid, String classificationOid) {
+        List<Map<String, Object>> rows = mapper.selectByEntity(entityOid, classificationOid);
         Map<String, Object> result = new HashMap<>();
-        for (Map.Entry<String, Object> entry : raw.entrySet()) {
-            String attrCode = entry.getKey();
-            Object attrValue = entry.getValue();
+        if (rows == null) return result;
+        for (Map<String, Object> row : rows) {
+            String attrCode = row.get("attr_code") != null ? String.valueOf(row.get("attr_code")) : null;
+            Object attrValue = row.get("attr_value");
+            if (attrCode == null) continue;
             if (attrValue instanceof String) {
                 attrValue = parseJsonValue((String) attrValue);
             }
@@ -66,8 +64,8 @@ public class ClsIbaDataServiceImpl implements ClsIbaDataService {
     }
 
     @Override
-    public String getValue(String classificationOid, String attrCode) {
-        String raw = mapper.selectAttrValue(classificationOid, attrCode);
+    public String getValue(String entityOid, String classificationOid, String attrCode) {
+        String raw = mapper.selectAttrValue(entityOid, classificationOid, attrCode);
         if (raw == null) return null;
         Object parsed = parseJsonValue(raw);
         return parsed != null ? parsed.toString() : null;
@@ -75,8 +73,8 @@ public class ClsIbaDataServiceImpl implements ClsIbaDataService {
 
     @Override
     @Transactional
-    public void deleteByClassificationOid(String classificationOid) {
-        mapper.deleteByClassificationOid(classificationOid);
+    public void deleteByEntity(String entityOid, String classificationOid) {
+        mapper.deleteByEntity(entityOid, classificationOid);
     }
 
     // ==================== JSON 值处理 ====================

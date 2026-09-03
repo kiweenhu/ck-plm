@@ -167,7 +167,6 @@ public class IterationServiceImpl implements IterationService {
         target.setRevision(source.getRevision());
         target.setIteration(source.getIteration());
         target.setLatest(source.isLatest());
-        target.setView(source.getView());
         target.setStatus(source.getStatus());
     }
 
