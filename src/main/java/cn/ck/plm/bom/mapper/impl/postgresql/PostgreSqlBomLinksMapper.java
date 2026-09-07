@@ -24,19 +24,23 @@ public interface PostgreSqlBomLinksMapper extends BomLinksMapper {
     @Override
     @Insert("INSERT INTO ck_bom_links (oid, code, name, description, " +
             "parent_iteration_oid, child_part_oid, child_iteration_oid, resolved_iteration_oid, " +
-            "quantity, unit, line_number, " +
+            "quantity, unit, line_number, unit_cost, " +
             "tenant_oid, creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{code}, #{name}, #{description}, " +
             "#{parentIterationOid}, #{childPartOid}, #{childIterationOid}, #{resolvedIterationOid}, " +
-            "#{quantity}, #{unit}, #{lineNumber}, " +
+            "#{quantity}, #{unit}, #{lineNumber}, #{unitCost}, " +
             "#{tenantOid}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(BomLinks bomLinks);
+
+    @Override
+    @Select("SELECT COALESCE(MAX(line_number), 0) FROM ck_bom_links WHERE parent_iteration_oid = #{parentIterationOid}")
+    Integer selectMaxLineNumber(@Param("parentIterationOid") String parentIterationOid);
 
     @Override
     @Update("UPDATE ck_bom_links SET code = #{code}, name = #{name}, description = #{description}, " +
             "parent_iteration_oid = #{parentIterationOid}, child_part_oid = #{childPartOid}, " +
             "child_iteration_oid = #{childIterationOid}, resolved_iteration_oid = #{resolvedIterationOid}, " +
-            "quantity = #{quantity}, unit = #{unit}, line_number = #{lineNumber}, " +
+            "quantity = #{quantity}, unit = #{unit}, line_number = #{lineNumber}, unit_cost = #{unitCost}, " +
             "updater = #{updater}, updated_at = #{updatedAt} " +
             "WHERE oid = #{oid}")
     int update(BomLinks bomLinks);
@@ -45,9 +49,13 @@ public interface PostgreSqlBomLinksMapper extends BomLinksMapper {
     @Delete("DELETE FROM ck_bom_links WHERE oid = #{oid}")
     int deleteByOid(@Param("oid") String oid);
 
+    @Override
+    @Delete("DELETE FROM ck_bom_links WHERE parent_iteration_oid = #{parentIterationOid}")
+    int deleteByParentIterationOid(@Param("parentIterationOid") String parentIterationOid);
+
     String SELECT_COLUMNS = "SELECT oid, code, name, description, " +
             "parent_iteration_oid, child_part_oid, child_iteration_oid, resolved_iteration_oid, " +
-            "quantity, unit, line_number, " +
+            "quantity, unit, line_number, unit_cost, " +
             "tenant_oid, creator, created_at, updater, updated_at FROM ck_bom_links ";
 
     @Override
@@ -64,6 +72,7 @@ public interface PostgreSqlBomLinksMapper extends BomLinksMapper {
             @Result(property = "quantity",             column = "quantity"),
             @Result(property = "unit",                 column = "unit"),
             @Result(property = "lineNumber",           column = "line_number"),
+            @Result(property = "unitCost",             column = "unit_cost"),
             @Result(property = "tenantOid",            column = "tenant_oid"),
             @Result(property = "creator",              column = "creator"),
             @Result(property = "createdAt",            column = "created_at"),

@@ -1,8 +1,9 @@
 package cn.ck.plm.document.mapper;  
   
 import cn.ck.plm.document.entity.Document;  
-  
-import java.util.List;  
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
   
 /**  
  * Document 主对象数据访问接口，定义数据库无关的持久化契约。  
@@ -23,5 +24,8 @@ public interface DocumentMapper {
   
     List<Document> selectByFolderOid(String folderOid);  
   
+    /** 统计绑定了指定分类的文档数量 */
+    int countByClassificationOid(@Param("classificationOid") String classificationOid);
+
     List<Document> selectAll();  
 } 

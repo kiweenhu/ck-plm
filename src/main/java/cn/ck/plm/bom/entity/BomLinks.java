@@ -63,6 +63,9 @@ public class BomLinks extends WithoutVersionEntity implements TenantEntity {
     /** 行号 */
     private Integer lineNumber;
 
+    /** 单位成本（单个子件的基础成本，用于 BOM 成本核算） */
+    private Double unitCost;
+
     /** 租户 oid（引用 ck_tenant.oid） */
     private String tenantOid;
 
@@ -95,6 +98,9 @@ public class BomLinks extends WithoutVersionEntity implements TenantEntity {
     public Integer getLineNumber() { return lineNumber; }
     public void setLineNumber(Integer lineNumber) { this.lineNumber = lineNumber; }
 
+    public Double getUnitCost() { return unitCost; }
+    public void setUnitCost(Double unitCost) { this.unitCost = unitCost; }
+
     @Override
     public String getTenantOid() { return tenantOid; }
 
@@ -115,6 +121,7 @@ public class BomLinks extends WithoutVersionEntity implements TenantEntity {
                 + "', childIterationOid='" + childIterationOid
                 + "', quantity=" + quantity
                 + ", unit='" + unit
-                + "', lineNumber=" + lineNumber + "}";
+                + "', lineNumber=" + lineNumber
+                + ", unitCost=" + unitCost + "}";
     }
 }

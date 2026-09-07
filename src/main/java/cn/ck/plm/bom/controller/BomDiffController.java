@@ -53,4 +53,10 @@ public class BomDiffController {
     public BomDiff getBetween(@RequestParam String fromIterationOid, @RequestParam String toIterationOid) {
         return bomDiffService.getByFromAndTo(fromIterationOid, toIterationOid);
     }
+
+    /** 实时对比两个迭代的顶层 BOM 行差异（不依赖预计算，直接两次拉取树比对） */
+    @GetMapping("/compare")
+    public BomDiff compare(@RequestParam String fromIterationOid, @RequestParam String toIterationOid) {
+        return bomDiffService.compareNow(fromIterationOid, toIterationOid);
+    }
 }

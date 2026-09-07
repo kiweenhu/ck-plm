@@ -30,4 +30,10 @@ public interface BomDiffService {
 
     /** 查询两个迭代之间的 Diff */
     BomDiff getByFromAndTo(String fromIterationOid, String toIterationOid);
+
+    /**
+     * 实时对比两个迭代的顶层 BOM 行差异（新增/移除/修改），不依赖预计算数据。
+     * 通过两次拉取 BOM 树并逐行比对实现，结果仅返回不落库。
+     */
+    BomDiff compareNow(String fromIterationOid, String toIterationOid);
 }

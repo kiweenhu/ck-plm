@@ -7,8 +7,10 @@
 
 package cn.ck.plm.bom.controller;
 
+import cn.ck.plm.bom.dto.BomTreeNode;
 import cn.ck.plm.bom.entity.BomLinks;
 import cn.ck.plm.bom.service.api.BomLinksService;
+import cn.ck.plm.iam.dto.ApiResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,19 +27,20 @@ public class BomLinksController {
     private BomLinksService bomLinksService;
 
     @PostMapping
-    public BomLinks create(@RequestBody BomLinks bomLinks) {
-        return bomLinksService.create(bomLinks);
+    public ApiResponse<BomLinks> create(@RequestBody BomLinks bomLinks) {
+        return ApiResponse.ok(bomLinksService.create(bomLinks));
     }
 
     @PutMapping("/{oid}")
-    public BomLinks update(@PathVariable String oid, @RequestBody BomLinks bomLinks) {
+    public ApiResponse<BomLinks> update(@PathVariable String oid, @RequestBody BomLinks bomLinks) {
         bomLinks.setOid(oid);
-        return bomLinksService.update(bomLinks);
+        return ApiResponse.ok(bomLinksService.update(bomLinks));
     }
 
     @DeleteMapping("/{oid}")
-    public void delete(@PathVariable String oid) {
+    public ApiResponse<Void> delete(@PathVariable String oid) {
         bomLinksService.deleteByOid(oid);
+        return ApiResponse.ok();
     }
 
     @GetMapping("/{oid}")
@@ -46,13 +49,19 @@ public class BomLinksController {
     }
 
     @GetMapping("/by-parent-iteration/{parentIterationOid}")
-    public List<BomLinks> listByParentIteration(@PathVariable String parentIterationOid) {
-        return bomLinksService.listByParentIterationOid(parentIterationOid);
+    public ApiResponse<List<BomLinks>> listByParentIteration(@PathVariable String parentIterationOid) {
+        return ApiResponse.ok(bomLinksService.listByParentIterationOid(parentIterationOid));
+    }
+
+    /** 递归构建某父迭代下的完整多层 BOM 树（含子件展示信息） */
+    @GetMapping("/tree/{parentIterationOid}")
+    public ApiResponse<List<BomTreeNode>> getTree(@PathVariable String parentIterationOid) {
+        return ApiResponse.ok(bomLinksService.buildTree(parentIterationOid));
     }
 
     @GetMapping("/by-child-part/{childPartOid}")
-    public List<BomLinks> listByChildPart(@PathVariable String childPartOid) {
-        return bomLinksService.listByChildPartOid(childPartOid);
+    public ApiResponse<List<BomLinks>> listByChildPart(@PathVariable String childPartOid) {
+        return ApiResponse.ok(bomLinksService.listByChildPartOid(childPartOid));
     }
 
     @GetMapping("/by-child-iteration/{childIterationOid}")

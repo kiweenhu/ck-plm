@@ -7,6 +7,7 @@
 
 package cn.ck.plm.bom.service.api;
 
+import cn.ck.plm.bom.dto.BomTreeNode;
 import cn.ck.plm.bom.entity.BomLinks;
 
 import java.util.List;
@@ -35,6 +36,9 @@ public interface BomLinksService {
 
     /** 刷新非精确引用的解析缓存 */
     void refreshResolvedIteration(String oid, String resolvedIterationOid);
+
+    /** 递归构建某父迭代下的完整多层 BOM 树（含子件展示信息，带防环与深度限制） */
+    List<BomTreeNode> buildTree(String parentIterationOid);
 
     List<BomLinks> listAll();
 }

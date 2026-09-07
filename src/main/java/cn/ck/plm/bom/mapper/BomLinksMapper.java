@@ -18,9 +18,15 @@ public interface BomLinksMapper {
 
     int insert(BomLinks bomLinks);
 
+    /** 查询某父迭代下的最大行号（无行时返回 null），用于步长编号分配 */
+    Integer selectMaxLineNumber(String parentIterationOid);
+
     int update(BomLinks bomLinks);
 
     int deleteByOid(String oid);
+
+    /** 按父迭代删除其全部 BOM 行（用于撤销检出时清除检出后版本的 BOM 行） */
+    int deleteByParentIterationOid(String parentIterationOid);
 
     BomLinks selectByOid(String oid);
 

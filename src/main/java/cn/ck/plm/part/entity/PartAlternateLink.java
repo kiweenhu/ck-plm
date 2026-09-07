@@ -117,8 +117,13 @@ public class PartAlternateLink extends WithoutVersionEntity implements TenantEnt
 
     // ==================== 便捷方法 ====================
 
-    /** 判断替代关系是否启用 */
-    public boolean isEnabled() {
+    /**
+     * 判断替代关系是否生效启用。
+     * <p>注意：不可命名为 {@code isEnabled()}——与 {@link #getEnabled()}（Boolean）构成
+     * JavaBeans 规范中的模糊重载 getter，会导致 MyBatis 反射报
+     * {@code Illegal overloaded getter method} 异常。
+     */
+    public boolean isEffectivelyEnabled() {
         return enabled == null || enabled;
     }
 

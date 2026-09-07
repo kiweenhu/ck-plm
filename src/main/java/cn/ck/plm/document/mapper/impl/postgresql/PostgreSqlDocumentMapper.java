@@ -85,6 +85,10 @@ public interface PostgreSqlDocumentMapper extends DocumentMapper {
     List<Document> selectByFolderOid(@Param("folderOid") String folderOid);
 
     @Override
+    @Select("SELECT COUNT(*) FROM ck_document WHERE cls_oid = #{classificationOid}")
+    int countByClassificationOid(@Param("classificationOid") String classificationOid);
+
+    @Override
     @Select(SELECT_COLUMNS + "ORDER BY created_at DESC")
     @ResultMap("documentResult")
     List<Document> selectAll();
