@@ -41,7 +41,7 @@ public class StageController {
     @PostMapping("/init")
     public ApiResponse<List<Stage>> initDefaults(@PathVariable String ownerOid,
                                                   @RequestParam(defaultValue = "LINE") String ownerType) {
-        List<Stage> stages = stageService.initDefaultStages(ownerOid, ownerType);
+        List<Stage> stages = stageService.initDefaultStages(ownerOid, ownerType, null);
         return ApiResponse.ok(stages);
     }
 

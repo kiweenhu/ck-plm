@@ -73,10 +73,22 @@ public class ProductLineController {
         }
     }
 
-    /** 删除产品线 */
+    /** 删除产品线（逻辑删除，进入回收站） */
     @DeleteMapping("/{oid}")
     public ApiResponse<Boolean> delete(@PathVariable String oid) {
         return ApiResponse.ok(productLineService.delete(oid));
+    }
+
+    /** 查询回收站（逻辑删除的产品系列） */
+    @GetMapping("/deleted")
+    public ApiResponse<List<ProductLine>> listDeleted() {
+        return ApiResponse.ok(productLineService.findDeleted());
+    }
+
+    /** 恢复产品系列（从回收站） */
+    @PostMapping("/{oid}/restore")
+    public ApiResponse<Boolean> restore(@PathVariable String oid) {
+        return ApiResponse.ok(productLineService.restore(oid));
     }
 
     /** 查询产品线详情（同时支持产品系列和产品型号） */

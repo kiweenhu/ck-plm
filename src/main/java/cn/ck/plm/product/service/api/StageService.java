@@ -16,8 +16,9 @@ import java.util.List;
  */
 public interface StageService {
 
-    /** 初始化归属单元的 6 个默认研发阶段（幂等：已存在则跳过），返回创建的所有阶段列表 */
-    List<Stage> initDefaultStages(String ownerOid, String ownerType);
+    /** 初始化归属单元的默认研发阶段（幂等：已存在则跳过），返回创建的所有阶段列表
+     * @param industry 行业模板标识（TRADITIONAL/IPD/MILITARY/AUTOMOTIVE），只初始化本租户该行业的模板 */
+    List<Stage> initDefaultStages(String ownerOid, String ownerType, String industry);
 
     /** 查询归属单元下所有阶段（按 sortOrder 排序） */
     List<Stage> findByOwnerOid(String ownerOid);

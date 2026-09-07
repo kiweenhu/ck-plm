@@ -100,10 +100,13 @@ public class ProductModelServiceImpl implements ProductModelService {
         teamMapper.insert(team);
 
         model.setTeamOid(team.getOid());
+        if (model.getDeleteMark() == null) {
+            model.setDeleteMark(false);
+        }
         productModelMapper.insert(model);
 
         // 根据本租户的研发阶段模板初始化阶段到 ck_stage 表（先生成 stage OID）
-        List<Stage> stages = stageService.initDefaultStages(model.getOid(), Stage.OWNER_TYPE_MODEL);
+        List<Stage> stages = stageService.initDefaultStages(model.getOid(), Stage.OWNER_TYPE_MODEL, null);
 
         // 根据阶段自带的 defaultFolders 创建各研发阶段的系统默认文件夹
         for (Stage stage : stages) {
@@ -165,13 +168,22 @@ public class ProductModelServiceImpl implements ProductModelService {
         if (existing == null) {
             return false;
         }
-        // 删除关联团队成员
-        if (existing.getTeamOid() != null) {
-            teamMemberMapper.deleteByTeamOid(existing.getTeamOid());
-            teamMapper.deleteByOid(existing.getTeamOid());
-        }
-        productModelMapper.deleteByOid(oid);
+        // 逻辑删除：进入回收站，不物理删除
+        productModelMapper.softDeleteByOid(oid);
         return true;
+    }
+
+    @Override
+    public List<ProductModel> findDeleted() {
+        return productModelMapper.selectDeleted();
+    }
+
+    @Override
+    public boolean restore(String oid) {
+        if (oid == null || oid.trim().isEmpty()) {
+            return false;
+        }
+        return productModelMapper.restoreByOid(oid) > 0;
     }
 
     @Override

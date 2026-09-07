@@ -20,7 +20,16 @@ public interface ProductModelMapper {
 
     int update(ProductModel model);
 
+    /** 逻辑删除（置 delete_mark=true） */
+    int softDeleteByOid(String oid);
+
+    /** 从回收站恢复（delete_mark=false） */
+    int restoreByOid(String oid);
+
     int deleteByOid(String oid);
+
+    /** 查询回收站（delete_mark=true） */
+    List<ProductModel> selectDeleted();
 
     ProductModel selectByOid(String oid);
 

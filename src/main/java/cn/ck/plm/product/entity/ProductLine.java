@@ -68,6 +68,9 @@ public class ProductLine extends WithoutVersionEntity implements TenantEntity {
     /** 租户 oid（引用 ck_tenant.oid） */
     private String tenantOid;
 
+    /** 逻辑删除标记（true 表示已删除，进入回收站，可恢复） */
+    private Boolean deleteMark;
+
     // ==================== 构造方法 ====================
 
     public ProductLine() {
@@ -99,6 +102,9 @@ public class ProductLine extends WithoutVersionEntity implements TenantEntity {
 
     @Override
     public void setTenantOid(String tenantOid) { this.tenantOid = tenantOid; }
+
+    public Boolean getDeleteMark() { return deleteMark; }
+    public void setDeleteMark(Boolean deleteMark) { this.deleteMark = deleteMark; }
 
     @Override
     public String toString() {

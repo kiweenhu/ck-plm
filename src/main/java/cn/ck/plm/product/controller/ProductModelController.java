@@ -52,10 +52,22 @@ public class ProductModelController {
         }
     }
 
-    /** 删除产品型号 */
+    /** 删除产品型号（逻辑删除，进入回收站） */
     @DeleteMapping("/{oid}")
     public ApiResponse<Boolean> delete(@PathVariable String oid) {
         return ApiResponse.ok(productModelService.delete(oid));
+    }
+
+    /** 查询回收站（逻辑删除的产品型号） */
+    @GetMapping("/deleted")
+    public ApiResponse<List<ProductModel>> listDeleted() {
+        return ApiResponse.ok(productModelService.findDeleted());
+    }
+
+    /** 恢复产品型号（从回收站） */
+    @PostMapping("/{oid}/restore")
+    public ApiResponse<Boolean> restore(@PathVariable String oid) {
+        return ApiResponse.ok(productModelService.restore(oid));
     }
 
     /** 查询产品型号详情 */

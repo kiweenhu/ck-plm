@@ -25,6 +25,12 @@ public interface ProductModelService {
 
     boolean delete(String oid);
 
+    /** 查询回收站中的产品型号（逻辑删除，delete_mark=true） */
+    List<ProductModel> findDeleted();
+
+    /** 从回收站恢复产品型号 */
+    boolean restore(String oid);
+
     ProductModel findByOid(String oid);
 
     List<ProductModel> findAll();

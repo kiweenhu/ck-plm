@@ -26,6 +26,12 @@ public interface ProductLineService {
 
     boolean delete(String oid);
 
+    /** 查询回收站中的产品系列（逻辑删除，delete_mark=true） */
+    List<ProductLine> findDeleted();
+
+    /** 从回收站恢复产品系列 */
+    boolean restore(String oid);
+
     ProductLine findByOid(String oid);
 
     List<ProductLine> findAll();

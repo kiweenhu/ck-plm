@@ -110,10 +110,13 @@ public class ProductLineServiceImpl implements ProductLineService {
         teamMapper.insert(team);
 
         productLine.setTeamOid(team.getOid());
+        if (productLine.getDeleteMark() == null) {
+            productLine.setDeleteMark(false);
+        }
         productLineMapper.insert(productLine);
 
         // 根据本租户的研发阶段模板初始化阶段到 ck_stage 表（先生成 stage OID）
-        List<Stage> stages = stageService.initDefaultStages(productLine.getOid(), Stage.OWNER_TYPE_LINE);
+        List<Stage> stages = stageService.initDefaultStages(productLine.getOid(), Stage.OWNER_TYPE_LINE, null);
 
         // 根据阶段自带的 defaultFolders 创建各研发阶段的系统默认文件夹
         for (Stage stage : stages) {
@@ -199,15 +202,22 @@ public class ProductLineServiceImpl implements ProductLineService {
         if (existing == null) {
             return false;
         }
-        // 删除关联团队成员
-        if (existing.getTeamOid() != null) {
-            teamMemberMapper.deleteByTeamOid(existing.getTeamOid());
-            teamMapper.deleteByOid(existing.getTeamOid());
-        }
-        // 子节点的 parent_oid 由 FK ON DELETE SET NULL 自动处理
-        productLineMapper.deleteByOid(oid);
-
+        // 逻辑删除：进入回收站，不物理删除（团队/子节点保留，恢复后仍完整）
+        productLineMapper.softDeleteByOid(oid);
         return true;
+    }
+
+    @Override
+    public List<ProductLine> findDeleted() {
+        return productLineMapper.selectDeleted();
+    }
+
+    @Override
+    public boolean restore(String oid) {
+        if (oid == null || oid.trim().isEmpty()) {
+            return false;
+        }
+        return productLineMapper.restoreByOid(oid) > 0;
     }
 
     @Override

@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2025 深圳乘恺科技有限公司
  * All rights reserved.
- *
- * @author Kiween.Hu; Roney.Liu
  */
 
 package cn.ck.plm.product.mapper.impl.postgresql;
@@ -23,15 +21,18 @@ public interface PostgreSqlStageMapper extends StageMapper {
 
     @Override
     @Insert("INSERT INTO ck_stage (oid, code, name, description, icon, color, sort_order, "
-            + "owner_oid, owner_type, show_on_dashboard, default_folders, creator, created_at, updater, updated_at) "
+            + "owner_oid, owner_type, show_on_dashboard, default_folders, managed_object_types, "
+            + "creator, created_at, updater, updated_at) "
             + "VALUES (#{oid}, #{code}, #{name}, #{description}, #{icon}, #{color}, #{sortOrder}, "
-            + "#{ownerOid}, #{ownerType}, #{showOnDashboard}, #{defaultFolders}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
+            + "#{ownerOid}, #{ownerType}, #{showOnDashboard}, #{defaultFolders}, #{managedObjectTypes}, "
+            + "#{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(Stage stage);
 
     @Override
     @Update("UPDATE ck_stage SET name = #{name}, description = #{description}, "
             + "icon = #{icon}, color = #{color}, sort_order = #{sortOrder}, "
             + "show_on_dashboard = #{showOnDashboard}, default_folders = #{defaultFolders}, "
+            + "managed_object_types = #{managedObjectTypes}, "
             + "updater = #{updater}, updated_at = #{updatedAt} WHERE oid = #{oid}")
     int update(Stage stage);
 
@@ -41,27 +42,28 @@ public interface PostgreSqlStageMapper extends StageMapper {
 
     // ==================== 查询列 ====================
     String SELECT_COLUMNS = "SELECT oid, code, name, description, icon, color, sort_order, "
-            + "owner_oid, owner_type, show_on_dashboard, default_folders, "
+            + "owner_oid, owner_type, show_on_dashboard, default_folders, managed_object_types, "
             + "creator, created_at, updater, updated_at FROM ck_stage ";
 
     @Override
     @Select(SELECT_COLUMNS + "WHERE oid = #{oid}")
     @Results(id = "stageResult", value = {
-            @Result(property = "oid",              column = "oid"),
-            @Result(property = "code",             column = "code"),
-            @Result(property = "name",             column = "name"),
-            @Result(property = "description",      column = "description"),
-            @Result(property = "icon",             column = "icon"),
-            @Result(property = "color",            column = "color"),
-            @Result(property = "sortOrder",        column = "sort_order"),
-            @Result(property = "ownerOid",         column = "owner_oid"),
-            @Result(property = "ownerType",        column = "owner_type"),
-            @Result(property = "showOnDashboard",  column = "show_on_dashboard"),
-            @Result(property = "defaultFolders",   column = "default_folders"),
-            @Result(property = "creator",          column = "creator"),
-            @Result(property = "createdAt",        column = "created_at"),
-            @Result(property = "updater",          column = "updater"),
-            @Result(property = "updatedAt",        column = "updated_at")
+            @Result(property = "oid",                 column = "oid"),
+            @Result(property = "code",                column = "code"),
+            @Result(property = "name",                column = "name"),
+            @Result(property = "description",         column = "description"),
+            @Result(property = "icon",                column = "icon"),
+            @Result(property = "color",               column = "color"),
+            @Result(property = "sortOrder",          column = "sort_order"),
+            @Result(property = "ownerOid",            column = "owner_oid"),
+            @Result(property = "ownerType",           column = "owner_type"),
+            @Result(property = "showOnDashboard",     column = "show_on_dashboard"),
+            @Result(property = "defaultFolders",      column = "default_folders"),
+            @Result(property = "managedObjectTypes",  column = "managed_object_types"),
+            @Result(property = "creator",             column = "creator"),
+            @Result(property = "createdAt",           column = "created_at"),
+            @Result(property = "updater",             column = "updater"),
+            @Result(property = "updatedAt",           column = "updated_at")
     })
     Stage selectByOid(@Param("oid") String oid);
 

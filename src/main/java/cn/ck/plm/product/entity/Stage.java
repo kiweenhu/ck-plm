@@ -69,6 +69,9 @@ public class Stage extends WithoutVersionEntity implements TenantEntity {
     /** 阶段默认文件夹名称列表（JSON 数组字符串，如 ["市场调研分析","目标用户验证"]） */
     private String defaultFolders;
 
+    /** 阶段管理的业务对象类型（JSON 数组字符串，如 ["FUNCTIONAL","PART","DOCUMENT"]），由阶段模板复制而来 */
+    private String managedObjectTypes;
+
     /** 租户 oid（引用 ck_tenant.oid） */
     private String tenantOid;
 
@@ -100,6 +103,9 @@ public class Stage extends WithoutVersionEntity implements TenantEntity {
 
     public String getDefaultFolders() { return defaultFolders; }
     public void setDefaultFolders(String defaultFolders) { this.defaultFolders = defaultFolders; }
+
+    public String getManagedObjectTypes() { return managedObjectTypes; }
+    public void setManagedObjectTypes(String managedObjectTypes) { this.managedObjectTypes = managedObjectTypes; }
 
     @Override
     public String getTenantOid() { return tenantOid; }

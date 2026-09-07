@@ -41,7 +41,7 @@ public class StageServiceImpl implements StageService {
 
     @Override
     @Transactional
-    public List<Stage> initDefaultStages(String ownerOid, String ownerType) {
+    public List<Stage> initDefaultStages(String ownerOid, String ownerType, String industry) {
         List<Stage> stages = new ArrayList<>();
 
         // 如果已存在阶段，返回已有的阶段列表
@@ -51,17 +51,18 @@ public class StageServiceImpl implements StageService {
             return existingStages;
         }
 
-        // 从数据库获取本租户的研发阶段模板
-        List<StageTemplate> templates = stageTemplateService.findAll();
+        // 从数据库获取本租户指定行业的研发阶段模板
+        String ind = (industry == null || industry.trim().isEmpty()) ? resolveDefaultIndustry() : industry.trim();
+        List<StageTemplate> templates = stageTemplateService.findAll(ind);
 
-        // 如果租户没有配置模板，fallback 到平台级模板（通过 selectByTenant 查平台租户）
+        // 如果租户没有该行业模板，fallback 到平台级模板
         if (templates.isEmpty()) {
-            log.info("租户尚未配置研发阶段模板，使用平台级默认模板初始化");
-            templates = stageTemplateService.findPlatformTemplates();
+            log.info("租户尚未配置 {} 行业阶段模板，使用平台级默认模板初始化", ind);
+            templates = stageTemplateService.findPlatformTemplates(ind);
         }
 
         if (templates.isEmpty()) {
-            log.warn("没有任何研发阶段模板可用，阶段初始化跳过");
+            log.warn("没有任何 {} 行业研发阶段模板可用，阶段初始化跳过", ind);
             return stages;
         }
 
@@ -75,6 +76,7 @@ public class StageServiceImpl implements StageService {
             stage.setSortOrder(tmpl.getSortOrder() != null ? tmpl.getSortOrder() : 0);
             stage.setShowOnDashboard(true);
             stage.setDefaultFolders(tmpl.getDefaultFolders());
+            stage.setManagedObjectTypes(tmpl.getManagedObjectTypes());
             stage.setOwnerOid(ownerOid);
             stage.setOwnerType(ownerType);
 
@@ -84,6 +86,19 @@ public class StageServiceImpl implements StageService {
 
         log.info("为归属单元 {} (type={}) 初始化了 {} 个研发阶段", ownerOid, ownerType, stages.size());
         return stages;
+    }
+
+    /**
+     * 推断本租户默认行业模板：优先 TRADITIONAL（向后兼容），否则取第一个模板的行业。
+     * 用于创建产品系列/型号但未指定行业时，按本租户实际配置的模板动态选择。
+     */
+    private String resolveDefaultIndustry() {
+        List<StageTemplate> all = stageTemplateService.findAll();
+        for (StageTemplate t : all) {
+            if ("TRADITIONAL".equals(t.getIndustry())) return "TRADITIONAL";
+        }
+        if (all.isEmpty()) return "TRADITIONAL";
+        return all.get(0).getIndustry() != null ? all.get(0).getIndustry() : "TRADITIONAL";
     }
 
     @Override

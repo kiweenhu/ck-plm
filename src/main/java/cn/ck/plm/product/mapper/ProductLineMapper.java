@@ -20,7 +20,16 @@ public interface ProductLineMapper {
 
     int update(ProductLine productLine);
 
+    /** 逻辑删除（置 delete_mark=true），不再物理删除 */
+    int softDeleteByOid(String oid);
+
+    /** 从回收站恢复（delete_mark=false） */
+    int restoreByOid(String oid);
+
     int deleteByOid(String oid);
+
+    /** 查询回收站（delete_mark=true） */
+    List<ProductLine> selectDeleted();
 
     ProductLine selectByOid(String oid);
 
