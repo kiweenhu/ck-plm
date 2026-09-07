@@ -2,7 +2,7 @@
   <div class="operation-log-page">
     <!-- 筛选栏 -->
     <a-card :bordered="false" class="filter-card">
-      <a-form layout="inline">
+      <a-form layout="inline" :wrap="true">
         <a-form-item label="日志类型">
           <a-select v-model:value="filters.activityType" style="width:140px" allow-clear placeholder="全部类型" @change="handleSearch">
             <a-select-option value="">全部类型</a-select-option>
@@ -43,6 +43,7 @@
         :pagination="pagination"
         row-key="oid"
         size="middle"
+        :scroll="{ x: 'max-content' }"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -215,15 +216,24 @@ onMounted(() => {
 
 .filter-card {
   margin-bottom: 16px;
-  border-radius: 10px;
+  border-radius: 0;
+  border: 1px solid #f0f0f0;
+  box-shadow: none;
+}
+
+.filter-card :deep(.ant-form) {
+  row-gap: 12px;
 }
 
 .filter-card :deep(.ant-form-item) {
   margin-bottom: 0;
+  margin-right: 16px;
 }
 
 .table-card {
-  border-radius: 10px;
+  border-radius: 0;
+  border: 1px solid #f0f0f0;
+  box-shadow: none;
 }
 
 .total-count {

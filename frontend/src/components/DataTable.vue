@@ -1,5 +1,5 @@
 <template>
-  <div class="data-table-wrapper">
+  <div ref="wrapperRef" class="data-table-wrapper" :class="{ 'data-table-wrapper--stretch': stretch }">
     <!-- 工具栏 -->
     <div v-if="toolbarVisible" class="dt-toolbar">
       <div class="dt-toolbar-left">
@@ -11,7 +11,7 @@
           v-if="searchable"
           v-model:value="searchText"
           :placeholder="searchPlaceholder"
-          style="width: 320px"
+          style="width: 220px"
           size="small"
           allow-clear
           @search="handleSearch"
@@ -85,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onBeforeUnmount, useSlots } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, useSlots } from 'vue'
 import { SettingOutlined } from '@ant-design/icons-vue'
 
 // ==================== Props ====================
@@ -109,6 +109,8 @@ const props = defineProps({
   scrollX: { type: Number, default: undefined },
   /** 表格内容区最大高度（px），超出后表体可滚动，表头/分页固定 */
   maxHeight: { type: Number, default: undefined },
+  /** 撑满父容器高度：表体自动滚动、分页器固定在底部（优先级高于 maxHeight） */
+  stretch: { type: Boolean, default: false },
   expandedRowRender: { type: Function, default: null },
   rowSelection: { type: Object, default: null },
   /** 树形数据子节点字段名（如 'children'），设置后启用树形表格 */
@@ -181,15 +183,19 @@ const sortedData = computed(() => {
 // ==================== 分页 ====================
 const innerPagination = reactive({ current: 1, pageSize: 10 })
 
+// 只监听 pagination 的原始值（pageSize / current），而不是对象引用。
+// 原因：父组件通常传对象字面量（如 :pagination="{ pageSize: 10 }"），每次渲染
+// 都会产生新引用。若 watch 对象引用，用户切换每页条数后父组件一重渲染，
+// pageSize 就会被重置回父组件的值，导致"选择 20/page 没反应"。
 watch(
-  () => props.pagination,
-  (val) => {
-    if (val && typeof val === 'object') {
-      if (val.current != null) innerPagination.current = val.current
-      if (val.pageSize != null) innerPagination.pageSize = val.pageSize
-    }
-  },
-  { immediate: true, deep: true }
+  () => (props.pagination && typeof props.pagination === 'object') ? props.pagination.pageSize : undefined,
+  (v) => { if (v != null) innerPagination.pageSize = v },
+  { immediate: true }
+)
+watch(
+  () => (props.pagination && typeof props.pagination === 'object') ? props.pagination.current : undefined,
+  (v) => { if (v != null) innerPagination.current = v },
+  { immediate: true }
 )
 
 // 前端分页后的数据总数（用于分页组件显示页码）
@@ -261,10 +267,72 @@ function handleTableChange(pag, filters, sorter) {
 // ==================== 滚动 ====================
 const _scrollCache = ref({ x: undefined, y: undefined })
 
+// 撑满模式：动态测量 wrapper 可用高度，得到表体高度（表头/分页器固定）
+const wrapperRef = ref(null)
+const stretchScrollY = ref(undefined)
+let _resizeObserver = null
+
+function measureStretchHeight() {
+  if (!props.stretch || !wrapperRef.value) return
+  const wrapper = wrapperRef.value
+  const wrapperH = wrapper.clientHeight
+  if (wrapperH <= 0) return
+  const toolbar = wrapper.querySelector('.dt-toolbar')
+  const toolbarH = toolbar ? toolbar.offsetHeight : 0
+  // 表头预估（small ~39, middle ~47），渲染后用实测值
+  const header = wrapper.querySelector('.ant-table-thead')
+  const estHeaderH = props.size === 'small' ? 39 : 47
+  const headerH = header ? header.offsetHeight : estHeaderH
+  // 分页器：offsetHeight + 上下 margin（antd 分页器默认 margin:16px 0，
+  // 漏算 margin 会让 a-table 总高超出容器，产生多余的垂直滚动条）
+  const pagination = wrapper.querySelector('.ant-table-pagination')
+  const estPaginationH = props.size === 'small' ? 48 : 64
+  let paginationH = estPaginationH
+  if (pagination) {
+    const cs = getComputedStyle(pagination)
+    paginationH = pagination.offsetHeight
+      + (parseFloat(cs.marginTop) || 0)
+      + (parseFloat(cs.marginBottom) || 0)
+  }
+  const bodyH = wrapperH - toolbarH - headerH - paginationH
+  if (bodyH > 40) stretchScrollY.value = bodyH
+}
+
+onMounted(() => {
+  if (props.stretch && wrapperRef.value) {
+    _resizeObserver = new ResizeObserver(() => measureStretchHeight())
+    _resizeObserver.observe(wrapperRef.value)
+    // 工具栏内容可能换行导致高度变化，需一并监听以重新计算表体高度
+    const toolbar = wrapperRef.value.querySelector('.dt-toolbar')
+    if (toolbar) _resizeObserver.observe(toolbar)
+    nextTick(() => {
+      measureStretchHeight()
+      // 布局稳定（工具栏换行、分页器渲染完成）后再校正一次，消除残留滚动
+      setTimeout(() => measureStretchHeight(), 150)
+    })
+  }
+})
+
+// 数据/分页变化时表头、分页器高度可能改变（如分页器从无到有），需重新测量
+watch(
+  () => [props.dataSource, props.pagination, props.total],
+  () => {
+    if (props.stretch) nextTick(() => measureStretchHeight())
+  }
+)
+
+onBeforeUnmount(() => {
+  if (_resizeObserver) {
+    _resizeObserver.disconnect()
+    _resizeObserver = null
+  }
+})
+
 const computedScroll = computed(() => {
-  // 仅当用户显式传入 scrollX 时设置 scroll.x，避免自动计算与 pagination 冲突
   const x = props.scrollX || undefined
-  const y = props.maxHeight || undefined
+  // 撑满模式：优先用动态测量的表体高度
+  let y = props.maxHeight || undefined
+  if (props.stretch) y = stretchScrollY.value || undefined
 
   // 值未变时返回缓存引用，避免 a-table 因新对象引用而重置内部状态
   if (_scrollCache.value.x === x && _scrollCache.value.y === y) {
@@ -462,6 +530,14 @@ defineExpose({
   overflow-x: auto;
 }
 
+/* 撑满模式：靠 JS 精确控制 a-table 的 scroll.y，使 a-table 总高
+   (header + scroll.y + 分页器) 恰好填满 wrapper 剩余空间。
+   不在 a-table 内部做 flex hack，保持 a-table 自然 block 布局，
+   分页器作为 a-table 内部元素在底部自然显示。 */
+.data-table-wrapper--stretch {
+  /* 保持 flex column 让 toolbar + a-table 堆叠 */
+}
+
 /* 确保 a-table 自身不裁剪分页; 列溢出由父容器 overflow-x 处理 */
 .data-table-wrapper :deep(.ant-table) {
   min-width: fit-content;
@@ -474,6 +550,9 @@ defineExpose({
   justify-content: space-between;
   padding: 8px 0 8px;
   flex-shrink: 0;
+  /* 内容过多时换行，避免工具栏撑宽容器产生横向滚动条 */
+  flex-wrap: wrap;
+  gap: 8px 12px;
 }
 
 .dt-toolbar-left {
@@ -481,6 +560,8 @@ defineExpose({
   align-items: center;
   gap: 10px;
   padding-left: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .dt-toolbar-right {
@@ -488,6 +569,8 @@ defineExpose({
   align-items: center;
   gap: 8px;
   padding-right: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 /* 列头拖拽手柄 */

@@ -6,6 +6,12 @@
         <h3 class="ps-title">产品系列</h3>
         <span class="ps-subtitle">管理产品线及其研发团队</span>
       </div>
+      <div class="ps-header-right">
+        <a-button @click="openRecycleBin">
+          <template #icon><DeleteOutlined /></template>
+          回收站
+        </a-button>
+      </div>
     </div>
 
     <!-- 统计栏 -->
@@ -120,7 +126,7 @@
                 <a-button type="link" size="small" @click="openStageDrawer(record)">阶段</a-button>
                 <a-button type="link" size="small" @click="openModal(record)">编辑</a-button>
                 <a-popconfirm
-                  title="确定删除该产品线？关联的团队及成员将被一并删除。"
+                  title="确定删除该产品线？将移入回收站，可随时恢复。"
                   @confirm="handleDelete(record)"
                 >
                   <a-button type="link" size="small" danger>
@@ -134,7 +140,7 @@
                 <a-button type="link" size="small" @click="openModelStageDrawer(record)">阶段</a-button>
                 <a-button type="link" size="small" @click="openModelEdit(record)">编辑</a-button>
                 <a-popconfirm
-                  title="确定删除该产品型号？关联的团队及成员将被一并删除。"
+                  title="确定删除该产品型号？将移入回收站，可随时恢复。"
                   @confirm="handleModelDelete(record)"
                 >
                   <a-button type="link" size="small" danger>
@@ -157,6 +163,9 @@
       @cancel="onModalCancel"
       :confirm-loading="modal.saving"
       width="640px"
+      centered
+      wrap-class-name="part-create-modal"
+      :body-style="{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '16px 20px 20px' }"
       :mask-closable="false"
       :destroy-on-close="true"
     >
@@ -321,32 +330,15 @@
                 </template>
                 <template #title>
                   <a-tag :color="item.color?.replace('#','') || 'blue'">{{ item.code }}</a-tag>
-                  <span v-if="stageDrawer.editingCode !== item.code" style="margin-left:8px;font-weight:500">
-                    {{ item.name }}
-                  </span>
-                  <a-input
-                    v-else
-                    v-model:value="stageDrawer.editForm.name"
-                    size="small"
-                    style="width:120px"
-                    @keyup.enter="handleSaveStage(item)"
-                  />
-                  <span v-if="stageDrawer.editingCode !== item.code" style="margin-left:8px;color:#999;font-size:12px">
-                    {{ item.description }}
-                  </span>
+                  <span style="margin-left:8px;font-weight:500">{{ item.name }}</span>
+                  <span style="margin-left:8px;color:#999;font-size:12px">{{ item.description }}</span>
                 </template>
                 <template #description>
-                  <template v-if="stageDrawer.editingCode === item.code">
-                    <a-space size="small" style="margin-top:4px">
-                      <a-input v-model:value="stageDrawer.editForm.description" size="small" placeholder="阶段描述" style="width:280px" />
-                      <a-input v-model:value="stageDrawer.editForm.color" size="small" placeholder="颜色(#xxx)" style="width:90px" />
-                      <a-input-number v-model:value="stageDrawer.editForm.sortOrder" size="small" :min="1" :max="99" style="width:60px" />
-                      <a-button size="small" type="primary" @click="handleSaveStage(item)">保存</a-button>
-                      <a-button size="small" @click="stageDrawer.editingCode = null">取消</a-button>
-                    </a-space>
-                  </template>
-                  <span v-else style="color:#8c8c8c;font-size:12px">
+                  <span style="color:#8c8c8c;font-size:12px">
                     图标: {{ item.icon || '-' }} | 颜色: {{ item.color || '-' }} | 排序: {{ item.sortOrder || '-' }}
+                    <template v-if="parseManagedObjects(item.managedObjectTypes).length">
+                      | 管理: {{ parseManagedObjects(item.managedObjectTypes).map(t => managedObjectOptions.find(o => o.value === t)?.label || t).join('、') }}
+                    </template>
                   </span>
                 </template>
               </a-list-item-meta>
@@ -365,7 +357,7 @@
                 <a-button
                   v-if="stageDrawer.editingCode !== item.code"
                   type="link" size="small"
-                  @click="startEditStage(item)"
+                  @click="openStageEditModal(item)"
                 >编辑</a-button>
               </template>
             </a-list-item>
@@ -373,6 +365,56 @@
         </a-list>
       </div>
     </a-drawer>
+
+    <!-- 编辑研发阶段弹窗（产品系列） -->
+    <a-modal
+      v-model:open="stageEditModal.visible"
+      title="编辑研发阶段"
+      :confirm-loading="stageEditModal.saving"
+      centered
+      wrap-class-name="part-create-modal"
+      :body-style="{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '16px 20px 20px' }"
+      @ok="handleStageEditSave"
+      @cancel="stageEditModal.visible = false"
+      width="560px"
+    >
+      <a-form :model="stageEditModal.form" layout="vertical">
+        <a-form-item label="阶段编码">
+          <a-input :value="stageEditModal.form.code" disabled />
+        </a-form-item>
+        <a-form-item label="阶段名称" required>
+          <a-input v-model:value="stageEditModal.form.name" placeholder="如 市场验证" />
+        </a-form-item>
+        <a-form-item label="阶段描述">
+          <a-textarea v-model:value="stageEditModal.form.description" :rows="2" />
+        </a-form-item>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="图标">
+              <a-input v-model:value="stageEditModal.form.icon" placeholder="Ant Design 图标名" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="6">
+            <a-form-item label="颜色">
+              <a-input v-model:value="stageEditModal.form.color" placeholder="#52c41a" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="6">
+            <a-form-item label="排序">
+              <a-input-number v-model:value="stageEditModal.form.sortOrder" :min="1" style="width:100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-form-item label="管理的业务对象">
+          <a-select
+            v-model:value="stageEditModal.form.managedObjectTypes"
+            mode="multiple"
+            placeholder="选择该阶段管理的业务对象类型"
+            :options="managedObjectOptions"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
 
     <!-- 产品型号管理抽屉 -->
     <a-drawer
@@ -422,7 +464,7 @@
                 <a-button type="link" size="small" @click="openModelStageDrawer(item)">阶段</a-button>
                 <a-button type="link" size="small" @click="openModelEdit(item)">编辑</a-button>
                 <a-popconfirm
-                  title="确定删除该产品型号？关联的团队及成员将被一并删除。"
+                  title="确定删除该产品型号？将移入回收站，可随时恢复。"
                   @confirm="handleModelDelete(item)"
                 >
                   <a-button type="link" size="small" danger>删除</a-button>
@@ -442,6 +484,9 @@
       @cancel="modelModal.visible = false"
       :confirm-loading="modelModal.saving"
       width="640px"
+      centered
+      wrap-class-name="part-create-modal"
+      :body-style="{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '16px 20px 20px' }"
       :mask-closable="false"
       :destroy-on-close="true"
     >
@@ -580,32 +625,15 @@
                 </template>
                 <template #title>
                   <a-tag :color="item.color?.replace('#','') || 'blue'">{{ item.code }}</a-tag>
-                  <span v-if="modelStageDrawer.editingCode !== item.code" style="margin-left:8px;font-weight:500">
-                    {{ item.name }}
-                  </span>
-                  <a-input
-                    v-else
-                    v-model:value="modelStageDrawer.editForm.name"
-                    size="small"
-                    style="width:120px"
-                    @keyup.enter="handleSaveModelStage(item)"
-                  />
-                  <span v-if="modelStageDrawer.editingCode !== item.code" style="margin-left:8px;color:#999;font-size:12px">
-                    {{ item.description }}
-                  </span>
+                  <span style="margin-left:8px;font-weight:500">{{ item.name }}</span>
+                  <span style="margin-left:8px;color:#999;font-size:12px">{{ item.description }}</span>
                 </template>
                 <template #description>
-                  <template v-if="modelStageDrawer.editingCode === item.code">
-                    <a-space size="small" style="margin-top:4px">
-                      <a-input v-model:value="modelStageDrawer.editForm.description" size="small" placeholder="阶段描述" style="width:280px" />
-                      <a-input v-model:value="modelStageDrawer.editForm.color" size="small" placeholder="颜色(#xxx)" style="width:90px" />
-                      <a-input-number v-model:value="modelStageDrawer.editForm.sortOrder" size="small" :min="1" :max="99" style="width:60px" />
-                      <a-button size="small" type="primary" @click="handleSaveModelStage(item)">保存</a-button>
-                      <a-button size="small" @click="modelStageDrawer.editingCode = null">取消</a-button>
-                    </a-space>
-                  </template>
-                  <span v-else style="color:#8c8c8c;font-size:12px">
+                  <span style="color:#8c8c8c;font-size:12px">
                     图标: {{ item.icon || '-' }} | 颜色: {{ item.color || '-' }} | 排序: {{ item.sortOrder || '-' }}
+                    <template v-if="parseManagedObjects(item.managedObjectTypes).length">
+                      | 管理: {{ parseManagedObjects(item.managedObjectTypes).map(t => managedObjectOptions.find(o => o.value === t)?.label || t).join('、') }}
+                    </template>
                   </span>
                 </template>
               </a-list-item-meta>
@@ -624,7 +652,7 @@
                 <a-button
                   v-if="modelStageDrawer.editingCode !== item.code"
                   type="link" size="small"
-                  @click="startModelEditStage(item)"
+                  @click="openModelStageEditModal(item)"
                 >编辑</a-button>
               </template>
             </a-list-item>
@@ -633,6 +661,89 @@
       </div>
     </a-drawer>
 
+    <!-- 编辑研发阶段弹窗（产品型号） -->
+    <a-modal
+      v-model:open="modelStageEditModal.visible"
+      title="编辑研发阶段"
+      :confirm-loading="modelStageEditModal.saving"
+      centered
+      wrap-class-name="part-create-modal"
+      :body-style="{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '16px 20px 20px' }"
+      @ok="handleModelStageEditSave"
+      @cancel="modelStageEditModal.visible = false"
+      width="560px"
+    >
+      <a-form :model="modelStageEditModal.form" layout="vertical">
+        <a-form-item label="阶段编码">
+          <a-input :value="modelStageEditModal.form.code" disabled />
+        </a-form-item>
+        <a-form-item label="阶段名称" required>
+          <a-input v-model:value="modelStageEditModal.form.name" placeholder="如 需求论证" />
+        </a-form-item>
+        <a-form-item label="阶段描述">
+          <a-textarea v-model:value="modelStageEditModal.form.description" :rows="2" />
+        </a-form-item>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="图标">
+              <a-input v-model:value="modelStageEditModal.form.icon" placeholder="Ant Design 图标名" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="6">
+            <a-form-item label="颜色">
+              <a-input v-model:value="modelStageEditModal.form.color" placeholder="#52c41a" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="6">
+            <a-form-item label="排序">
+              <a-input-number v-model:value="modelStageEditModal.form.sortOrder" :min="1" style="width:100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-form-item label="管理的业务对象">
+          <a-select
+            v-model:value="modelStageEditModal.form.managedObjectTypes"
+            mode="multiple"
+            placeholder="选择该阶段管理的业务对象类型"
+            :options="managedObjectOptions"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 回收站 -->
+    <a-drawer v-model:open="recycleVisible" title="回收站" placement="right" :width="720">
+      <a-tabs size="small">
+        <a-tab-pane key="lines" :tab="`产品系列 (${deletedLines.length})`">
+          <a-table :columns="recycleColumns" :data-source="deletedLines" :loading="recycleLoading" row-key="oid" size="small" :pagination="false">
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'type'"><a-tag color="blue">系列</a-tag></template>
+              <template v-else-if="column.key === 'action'">
+                <a-button type="link" size="small" @click="restoreLine(record)">
+                  <template #icon><UndoOutlined /></template>
+                  恢复
+                </a-button>
+              </template>
+            </template>
+          </a-table>
+          <a-empty v-if="!recycleLoading && deletedLines.length === 0" description="回收站无产品系列" :image-style="{ height: '48px' }" />
+        </a-tab-pane>
+        <a-tab-pane key="models" :tab="`产品型号 (${deletedModels.length})`">
+          <a-table :columns="recycleColumns" :data-source="deletedModels" :loading="recycleLoading" row-key="oid" size="small" :pagination="false">
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'type'"><a-tag color="green">型号</a-tag></template>
+              <template v-else-if="column.key === 'action'">
+                <a-button type="link" size="small" @click="restoreModel(record)">
+                  <template #icon><UndoOutlined /></template>
+                  恢复
+                </a-button>
+              </template>
+            </template>
+          </a-table>
+          <a-empty v-if="!recycleLoading && deletedModels.length === 0" description="回收站无产品型号" :image-style="{ height: '48px' }" />
+        </a-tab-pane>
+      </a-tabs>
+    </a-drawer>
 
   </div>
 </template>
@@ -645,17 +756,17 @@ import {
   PlusOutlined, TeamOutlined, ClusterOutlined,
   DeleteOutlined, UserAddOutlined, CloseOutlined,
   NodeIndexOutlined, EyeOutlined, EyeInvisibleOutlined,
-  ApartmentOutlined, TagOutlined,
+  ApartmentOutlined, TagOutlined, UndoOutlined,
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
 import {
-  getProductLines, createProductLine, updateProductLine, deleteProductLine,
+  getProductLines, createProductLine, updateProductLine, deleteProductLine, listDeletedProductLines, restoreProductLine,
   getProductLineTree, getProductLineRoots, getProductLineStats,
   getProductLineTeam, getTeamMembers, addTeamMember, removeTeamMember,
   getAllUsers, getRoles, getPageLayoutByCode,
   getStages, initDefaultStages, updateStage, toggleStageShowOnDashboard,
-  getProductModels, createProductModel, updateProductModel, deleteProductModel,
+  getProductModels, createProductModel, updateProductModel, deleteProductModel, listDeletedProductModels, restoreProductModel,
   getProductModelTeam, getProductModelTeamMembers,
   addProductModelTeamMember, removeProductModelTeamMember,
 } from '@/api'
@@ -774,8 +885,62 @@ const stageDrawer = reactive({
   loading: false,
   initializing: false,
   editingCode: null,
-  editForm: { name: '', description: '', color: '', sortOrder: 1 },
+  editForm: { name: '', description: '', color: '', sortOrder: 1, managedObjectTypes: [] },
 })
+
+const stageEditModal = reactive({
+  visible: false, saving: false,
+  form: { oid: '', code: '', name: '', description: '', icon: '', color: '', sortOrder: 1, managedObjectTypes: [] },
+})
+
+function openStageEditModal(stage) {
+  stageEditModal.form = {
+    oid: stage.oid,
+    code: stage.code,
+    name: stage.name || '',
+    description: stage.description || '',
+    icon: stage.icon || '',
+    color: stage.color || '',
+    sortOrder: stage.sortOrder || 1,
+    managedObjectTypes: parseManagedObjects(stage.managedObjectTypes),
+  }
+  stageEditModal.visible = true
+}
+
+async function handleStageEditSave() {
+  const f = stageEditModal.form
+  if (!f.name?.trim()) { message.warning('阶段名称不能为空'); return }
+  stageEditModal.saving = true
+  try {
+    const res = await updateStage(stageDrawer.lineOid, f.oid, {
+      name: f.name.trim(),
+      description: f.description || '',
+      icon: f.icon || '',
+      color: f.color || '',
+      sortOrder: f.sortOrder,
+      managedObjectTypes: JSON.stringify(f.managedObjectTypes),
+    })
+    if (res.code === 200) {
+      message.success('阶段更新成功')
+      stageEditModal.visible = false
+      const stage = stageDrawer.stages.find(s => s.oid === f.oid)
+      if (stage) {
+        stage.name = f.name.trim()
+        stage.description = f.description
+        stage.icon = f.icon
+        stage.color = f.color
+        stage.sortOrder = f.sortOrder
+        stage.managedObjectTypes = JSON.stringify(f.managedObjectTypes)
+      }
+    } else {
+      message.error(res.message || '更新失败')
+    }
+  } catch {
+    message.error('更新阶段失败')
+  } finally {
+    stageEditModal.saving = false
+  }
+}
 
 async function openStageDrawer(line) {
   stageDrawer.visible = true
@@ -815,6 +980,23 @@ async function handleInitStages() {
   }
 }
 
+const managedObjectOptions = [
+  { value: 'FUNCTIONAL', label: '功能架构 (Functional)' },
+  { value: 'PART', label: '零组件 (Part)' },
+  { value: 'DOCUMENT', label: '文档 (Document)' },
+]
+
+/** 解析后端返回的 managedObjectTypes JSON 字符串为数组 */
+function parseManagedObjects(json) {
+  if (!json) return []
+  try {
+    const arr = typeof json === 'string' ? JSON.parse(json) : json
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
 function startEditStage(stage) {
   stageDrawer.editingCode = stage.code
   stageDrawer.editForm = {
@@ -822,6 +1004,7 @@ function startEditStage(stage) {
     description: stage.description || '',
     color: stage.color || '',
     sortOrder: stage.sortOrder || 1,
+    managedObjectTypes: parseManagedObjects(stage.managedObjectTypes),
   }
 }
 
@@ -837,6 +1020,7 @@ async function handleSaveStage(stage) {
       description: form.description || '',
       color: form.color || '',
       sortOrder: form.sortOrder,
+      managedObjectTypes: JSON.stringify(form.managedObjectTypes),
     })
     if (res.code === 200) {
       message.success('阶段更新成功')
@@ -845,6 +1029,7 @@ async function handleSaveStage(stage) {
       stage.description = form.description
       stage.color = form.color
       stage.sortOrder = form.sortOrder
+      stage.managedObjectTypes = JSON.stringify(form.managedObjectTypes)
     }
   } catch {
     message.error('更新阶段失败')
@@ -1081,8 +1266,62 @@ const modelStageDrawer = reactive({
   visible: false, title: '', modelOid: null,
   stages: [], loading: false, initializing: false,
   editingCode: null,
-  editForm: { name: '', description: '', color: '', sortOrder: 1 },
+  editForm: { name: '', description: '', color: '', sortOrder: 1, managedObjectTypes: [] },
 })
+
+const modelStageEditModal = reactive({
+  visible: false, saving: false,
+  form: { oid: '', code: '', name: '', description: '', icon: '', color: '', sortOrder: 1, managedObjectTypes: [] },
+})
+
+function openModelStageEditModal(stage) {
+  modelStageEditModal.form = {
+    oid: stage.oid,
+    code: stage.code,
+    name: stage.name || '',
+    description: stage.description || '',
+    icon: stage.icon || '',
+    color: stage.color || '',
+    sortOrder: stage.sortOrder || 1,
+    managedObjectTypes: parseManagedObjects(stage.managedObjectTypes),
+  }
+  modelStageEditModal.visible = true
+}
+
+async function handleModelStageEditSave() {
+  const f = modelStageEditModal.form
+  if (!f.name?.trim()) { message.warning('阶段名称不能为空'); return }
+  modelStageEditModal.saving = true
+  try {
+    const res = await updateStage(modelStageDrawer.modelOid, f.oid, {
+      name: f.name.trim(),
+      description: f.description || '',
+      icon: f.icon || '',
+      color: f.color || '',
+      sortOrder: f.sortOrder,
+      managedObjectTypes: JSON.stringify(f.managedObjectTypes),
+    })
+    if (res.code === 200) {
+      message.success('阶段更新成功')
+      modelStageEditModal.visible = false
+      const stage = modelStageDrawer.stages.find(s => s.oid === f.oid)
+      if (stage) {
+        stage.name = f.name.trim()
+        stage.description = f.description
+        stage.icon = f.icon
+        stage.color = f.color
+        stage.sortOrder = f.sortOrder
+        stage.managedObjectTypes = JSON.stringify(f.managedObjectTypes)
+      }
+    } else {
+      message.error(res.message || '更新失败')
+    }
+  } catch {
+    message.error('更新阶段失败')
+  } finally {
+    modelStageEditModal.saving = false
+  }
+}
 
 async function openModelStageDrawer(model) {
   modelStageDrawer.visible = true
@@ -1115,6 +1354,7 @@ function startModelEditStage(stage) {
     description: stage.description || '',
     color: stage.color || '',
     sortOrder: stage.sortOrder || 1,
+    managedObjectTypes: parseManagedObjects(stage.managedObjectTypes),
   }
 }
 
@@ -1130,6 +1370,7 @@ async function handleSaveModelStage(stage) {
       description: form.description || '',
       color: form.color || '',
       sortOrder: form.sortOrder,
+      managedObjectTypes: JSON.stringify(form.managedObjectTypes),
     })
     if (res.code === 200) {
       message.success('阶段更新成功')
@@ -1138,6 +1379,7 @@ async function handleSaveModelStage(stage) {
       stage.description = form.description
       stage.color = form.color
       stage.sortOrder = form.sortOrder
+      stage.managedObjectTypes = JSON.stringify(form.managedObjectTypes)
     }
   } catch {
     message.error('更新阶段失败')
@@ -1447,6 +1689,57 @@ function formatTime(str) {
   return str.replace('T', ' ').substring(0, 19)
 }
 
+// ==================== 回收站 ====================
+const recycleVisible = ref(false)
+const recycleLoading = ref(false)
+const deletedLines = ref([])
+const deletedModels = ref([])
+
+const recycleColumns = [
+  { title: '类型', key: 'type', width: 70 },
+  { title: '编码', dataIndex: 'code', key: 'code', width: 140 },
+  { title: '名称', dataIndex: 'name', key: 'name', width: 160 },
+  { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
+  { title: '操作', key: 'action', width: 90 },
+]
+
+async function openRecycleBin() {
+  recycleVisible.value = true
+  recycleLoading.value = true
+  try {
+    const [l, m] = await Promise.all([listDeletedProductLines(), listDeletedProductModels()])
+    deletedLines.value = (l.code === 200 && l.data) ? l.data : []
+    deletedModels.value = (m.code === 200 && m.data) ? m.data : []
+  } catch { message.error('加载回收站失败') }
+  finally { recycleLoading.value = false }
+}
+
+async function restoreLine(record) {
+  try {
+    const res = await restoreProductLine(record.oid)
+    if (res.code === 200) {
+      message.success('产品系列已恢复')
+      await loadAllLines()
+      await openRecycleBin()
+    } else {
+      message.error(res.message || '恢复失败')
+    }
+  } catch { message.error('恢复失败') }
+}
+
+async function restoreModel(record) {
+  try {
+    const res = await restoreProductModel(record.oid)
+    if (res.code === 200) {
+      message.success('产品型号已恢复')
+      await refreshModels()
+      await openRecycleBin()
+    } else {
+      message.error(res.message || '恢复失败')
+    }
+  } catch { message.error('恢复失败') }
+}
+
 // ==================== 生命周期 ====================
 onMounted(() => {
   loadAllLines()
@@ -1610,5 +1903,28 @@ async function loadListLayout() {
   border-radius: 4px;
   padding: 4px 8px;
   opacity: 0.85;
+}
+
+/* 复用 Part 编辑窗口的紧凑弹窗样式 */
+.part-create-modal :deep(.ant-modal-header) {
+  padding: 12px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.part-create-modal :deep(.ant-modal-title) {
+  font-size: 15px;
+}
+.part-create-modal :deep(.ant-modal-footer) {
+  padding: 10px 20px;
+  border-top: 1px solid #f0f0f0;
+}
+.part-create-modal :deep(.ant-form-item) {
+  margin-bottom: 12px;
+}
+.part-create-modal :deep(.ant-form-item-label) {
+  padding-bottom: 2px;
+}
+.part-create-modal :deep(.ant-form-item-label > label) {
+  font-size: 13px;
+  color: #595959;
 }
 </style>

@@ -443,6 +443,7 @@ const RenderFields = {
             disabled: isReadonly,
             placeholder: placeholder || '请选择分类',
             allowClear: true,
+            hideWhenUnbound: true,
             'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
           })
 

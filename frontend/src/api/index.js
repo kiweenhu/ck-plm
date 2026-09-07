@@ -488,10 +488,11 @@ export function getProductLine(oid) {
  * 用于 DynamicForm 等通用组件的 edit 场景自动加载实体数据
  * @param {string} entityCode 实体编码，如 PRODUCT_LINE
  * @param {string} oid 实体 ID
+ * @param {object} [params] 额外查询参数（如 { iterationOid } 用于查看历史版本）
  */
-export function getEntityByCode(entityCode, oid) {
+export function getEntityByCode(entityCode, oid, params) {
   const path = ENTITY_API_PATH[entityCode] || entityCode.toLowerCase().replace(/_/g, '-')
-  return request.get(`/${path}/${oid}`)
+  return request.get(`/${path}/${oid}`, { params })
 }
 
 /** 实体编码 → API 路径映射，新增实体类型时在此添加即可 */
@@ -500,7 +501,15 @@ const ENTITY_API_PATH = {
   PRODUCT_MODEL: 'product-models',
   DOCUMENT: 'documents',
   PART: 'parts',
-  FUNCTIONAL: 'parts',
+  FUNCTIONAL: 'functionals',
+  // Part 子类型（SOFT_TYPE）共用 ck_part 表，按 typeDefinitionCode 区分，均走 parts 端点
+  ELECTRONIC: 'parts',
+  STRUCTURAL: 'parts',
+  ELECTRICAL: 'parts',
+  SOFTWARE: 'parts',
+  PCBA: 'parts',
+  // 文档子类型（SOFT_TYPE）共用 ck_document 表，按 typeDefinitionCode 区分，均走 documents 端点
+  'SUMMARY-SOLUATION': 'documents',
 }
 
 /** 创建产品线 */
@@ -516,6 +525,16 @@ export function updateProductLine(oid, data) {
 /** 删除产品线 */
 export function deleteProductLine(oid) {
   return request.delete(`/product-lines/${oid}`)
+}
+
+/** 查询回收站中的产品系列（逻辑删除） */
+export function listDeletedProductLines() {
+  return request.get('/product-lines/deleted')
+}
+
+/** 恢复产品系列（从回收站） */
+export function restoreProductLine(oid) {
+  return request.post(`/product-lines/${oid}/restore`)
 }
 
 /** 获取产品线关联的团队 */
@@ -610,6 +629,16 @@ export function updateProductModel(oid, data) {
 /** 删除产品型号 */
 export function deleteProductModel(oid) {
   return request.delete(`/product-models/${oid}`)
+}
+
+/** 查询回收站中的产品型号（逻辑删除） */
+export function listDeletedProductModels() {
+  return request.get('/product-models/deleted')
+}
+
+/** 恢复产品型号（从回收站） */
+export function restoreProductModel(oid) {
+  return request.post(`/product-models/${oid}/restore`)
 }
 
 /** 获取产品型号关联的团队 */
@@ -800,6 +829,11 @@ export function getAllFolderTree() {
   return request.get('/folders/all-tree')
 }
 
+/** 按 oid 查询文件夹详情（用于解析 Part/文档所属文件夹的完整路径） */
+export function getFolderByOid(oid) {
+  return request.get(`/folders/${oid}`)
+}
+
 /** 获取文件夹扁平列表 */
 export function getFolders(ownerOid, stageOid) {
   return request.get('/folders', { params: { ownerOid, stageOid } })
@@ -887,6 +921,11 @@ export function movePart(oid, data) {
 /** 按文件夹查询零组件 VO */
 export function getPartsByFolder(folderOid) {
   return request.get('/parts/by-folder', { params: { folderOid } })
+}
+
+/** 按容器（产品系列/型号）查询零组件，支持名称/编码关键字过滤 */
+export function getPartsByContainer(containerOid, keyword) {
+  return request.get('/parts/by-container', { params: { containerOid, keyword } })
 }
 
 /** 查询零组件历史版本 */
@@ -1289,6 +1328,16 @@ export function getClassificationTree() {
   return request.get('/classifications/tree')
 }
 
+/** 获取平台租户的分类树（用于克隆预览） */
+export function getPlatformTree() {
+  return request.get('/classifications/platform-tree')
+}
+
+/** 从平台克隆指定根分类到当前租户（支持多选） */
+export function clonePlatform(rootOids) {
+  return request.post('/classifications/clone-platform', { rootOids })
+}
+
 export function getClassificationList() {
   return request.get('/classifications')
 }
@@ -1306,6 +1355,11 @@ export function deleteClassification(oid) {
 }
 export function searchClassifications(keyword) {
   return request.get('/classifications/search', { params: { keyword } })
+}
+
+/** 全局搜索（产品系列/产品型号/零组件/文档）按 name/number(code) 模糊匹配 */
+export function globalSearch(keyword, limit = 20) {
+  return request.get('/global-search', { params: { q: keyword, limit } })
 }
 
 // ===== 分类-IBA 关联 =====
@@ -1390,6 +1444,160 @@ export function deleteUnit(oid) {
 /** 单位换算 */
 export function convertUnit(from, to) {
   return request.get('/units/convert', { params: { from, to } })
+}
+
+// ==================== 阶段模板 API ====================
+export function listStageTemplates() { return request.get('/stage-templates') }
+export function createStageTemplate(data) { return request.post('/stage-templates', data) }
+export function updateStageTemplate(oid, data) { return request.put(`/stage-templates/${oid}`, data) }
+export function deleteStageTemplate(oid) { return request.delete(`/stage-templates/${oid}`) }
+/** 查询平台提供的行业列表 */
+export function listPlatformIndustries() { return request.get('/stage-templates/platform-industries') }
+/** 查询平台模板（按 industry 过滤，空返回全部） */
+export function listPlatformTemplates(industry) { return request.get('/stage-templates/platform', { params: { industry } }) }
+/** 克隆平台模板（industry 空时克隆全部） */
+export function cloneStageTemplatesFromPlatform(industry) {
+  return industry
+    ? request.post(`/stage-templates/clone-from-platform?industry=${encodeURIComponent(industry)}`)
+    : request.post('/stage-templates/clone-from-platform')
+}
+
+// ==================== BOM 链接 API ====================
+
+/** 按父迭代查询 BOM 子件（BOM 结构页签） */
+export function getBomLinksByParentIteration(parentIterationOid) {
+  return request.get(`/bom-links/by-parent-iteration/${parentIterationOid}`)
+}
+
+/** 递归查询某父迭代下的完整多层 BOM 树（含子件展示信息） */
+export function getBomTree(parentIterationOid) {
+  return request.get(`/bom-links/tree/${parentIterationOid}`)
+}
+
+/** 创建 BOM 行（把指定 Part 添加为子件） */
+export function createBomLinks(data) {
+  return request.post('/bom-links', data)
+}
+
+/** 删除 BOM 行（移除子件） */
+export function deleteBomLinks(oid) {
+  return request.delete(`/bom-links/${oid}`)
+}
+
+/** 更新 BOM 行（行号/数量/单位/单位成本等） */
+export function updateBomLinks(oid, data) {
+  return request.put(`/bom-links/${oid}`, data)
+}
+
+/** 按子件 Part 查询反向 BOM（被使用情况页签） */
+export function getBomLinksByChildPart(childPartOid) {
+  return request.get(`/bom-links/by-child-part/${childPartOid}`)
+}
+
+/** 查询两个 BOM 版本之间的差异（预计算数据，由检入时生成） */
+export function getBomDiff(fromIterationOid, toIterationOid) {
+  return request.get('/bom-diffs/between', { params: { fromIterationOid, toIterationOid } })
+}
+
+/** 实时对比两个 BOM 版本的顶层行差异（新增/移除/修改，不依赖预计算） */
+export function compareBomVersions(fromIterationOid, toIterationOid) {
+  return request.get('/bom-diffs/compare', { params: { fromIterationOid, toIterationOid } })
+}
+
+// ==================== 部件双向替代 API ====================
+
+/** 创建双向替代关系（roleA/roleB 有序对，后端自动规范化） */
+export function createPartAlternateLink(data) {
+  return request.post('/part-alternate-links', data)
+}
+
+/** 更新双向替代关系 */
+export function updatePartAlternateLink(oid, data) {
+  return request.put(`/part-alternate-links/${oid}`, data)
+}
+
+/** 删除双向替代关系 */
+export function deletePartAlternateLink(oid) {
+  return request.delete(`/part-alternate-links/${oid}`)
+}
+
+/** 查询某部件作为 roleA（被替代方，roleB 为其替代件）的替代关系 */
+export function getPartAlternateLinksByRoleA(partOid) {
+  return request.get(`/part-alternate-links/by-role-a/${partOid}`)
+}
+
+/** 查询某部件作为 roleB（替代方，roleA 为被其替代的部件）的替代关系 */
+export function getPartAlternateLinksByRoleB(partOid) {
+  return request.get(`/part-alternate-links/by-role-b/${partOid}`)
+}
+
+/** 查询与某部件相关的全部替代关系（无论角色端） */
+export function getPartAlternateLinksByPart(partOid) {
+  return request.get(`/part-alternate-links/by-part/${partOid}`)
+}
+
+// ==================== 部件关联文档 API（参考 REFERENCE / 说明 DESCRIPTION） ====================
+
+/** 创建部件-文档关联 */
+export function createPartDocumentLink(data) {
+  return request.post('/part-document-links', data)
+}
+
+/** 删除部件-文档关联 */
+export function deletePartDocumentLink(oid) {
+  return request.delete(`/part-document-links/${oid}`)
+}
+
+/** 查询某部件的关联文档（linkType 可选：REFERENCE / DESCRIPTION，不传返回全部） */
+export function getPartDocumentLinksByPart(partOid, linkType) {
+  return request.get(`/part-document-links/by-part/${partOid}`, { params: linkType ? { linkType } : {} })
+}
+
+// ==================== 企业资源库-电子元器件库 API ====================
+
+/** 查询完整分类树 */
+export function getComponentCategoryTree() {
+  return request.get('/component-categories/tree')
+}
+
+/** 创建分类 */
+export function createComponentCategory(data) {
+  return request.post('/component-categories', data)
+}
+
+/** 更新分类 */
+export function updateComponentCategory(oid, data) {
+  return request.put(`/component-categories/${oid}`, data)
+}
+
+/** 删除分类 */
+export function deleteComponentCategory(oid) {
+  return request.delete(`/component-categories/${oid}`)
+}
+
+/** 按分类 + 关键字查询元器件（categoryOid 可空 = 全部分类） */
+export function getElectronicComponents(params = {}) {
+  return request.get('/electronic-components', { params })
+}
+
+/** 创建元器件（编码为空时后端自动生成） */
+export function createElectronicComponent(data) {
+  return request.post('/electronic-components', data)
+}
+
+/** 更新元器件 */
+export function updateElectronicComponent(oid, data) {
+  return request.put(`/electronic-components/${oid}`, data)
+}
+
+/** 删除元器件 */
+export function deleteElectronicComponent(oid) {
+  return request.delete(`/electronic-components/${oid}`)
+}
+
+/** 元器件库统计（总数/库存总数） */
+export function getElectronicComponentStats() {
+  return request.get('/electronic-components/stats')
 }
 
 export default request

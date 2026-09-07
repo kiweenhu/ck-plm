@@ -1,5 +1,10 @@
 <template>
-  <div>
+  <!--
+    未绑定分类时，如果 hideWhenUnbound=true（创建/编辑场景默认行为），
+    整个组件直接不渲染，避免在表单中出现无意义的"未绑定分类"提示区域。
+    设计器场景下需传 hideWhenUnbound=false 以保留组件展示。
+  -->
+  <div v-if="!hideWhenUnbound || hasBinding || loading">
     <!-- 弹窗模式（默认） -->
     <div v-if="showInlineButton" style="display:flex;align-items:center;gap:8px">
       <a-button @click="openModal" :disabled="disabled || !hasBinding" :loading="loading">
@@ -89,6 +94,12 @@ const props = defineProps({
   allowClear: { type: Boolean, default: true },
   /** true=按钮+弹窗（默认），false=TreeSelect 内联下拉 */
   showInlineButton: { type: Boolean, default: true },
+  /**
+   * true=当类型未绑定分类时，整个组件不渲染（包括"未绑定分类"提示）。
+   * 用于创建/编辑表单场景，避免出现无意义的提示控件。
+   * 设计器场景应传 false，保留展示以便用户配置。
+   */
+  hideWhenUnbound: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])

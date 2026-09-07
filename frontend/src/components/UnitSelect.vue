@@ -6,6 +6,7 @@
     :allow-clear="allowClear"
     :placeholder="placeholder"
     :disabled="disabled"
+    :size="size"
     :filter-option="filterOption"
     style="width: 100%"
     @change="onChange"
@@ -31,6 +32,7 @@ const props = defineProps({
   placeholder: { type: String, default: '请选择单位' },
   disabled: { type: Boolean, default: false },
   allowClear: { type: Boolean, default: true },
+  size: { type: String, default: 'middle' },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])

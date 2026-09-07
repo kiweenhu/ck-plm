@@ -619,7 +619,7 @@ import {
   TransactionOutlined, TranslationOutlined, UngroupOutlined, UnlockOutlined, UnorderedListOutlined,
   UploadOutlined, UsbOutlined, VerifiedOutlined, VerticalAlignBottomOutlined, WarningOutlined,
   WechatOutlined, WifiOutlined, WindowsOutlined, ZoomInOutlined, ZoomOutOutlined,
-  SwapOutlined,
+  SwapOutlined, ApiOutlined,
 } from '@ant-design/icons-vue'
 import RuleBindPanel from '@/views/system/RuleBindPanel.vue'
 import DataTable from '@/components/DataTable.vue'
@@ -652,6 +652,7 @@ const iconOptions = [
   { value: 'SettingOutlined', label: '设置', component: SettingOutlined },
   { value: 'UserOutlined', label: '用户', component: UserOutlined },
   { value: 'TeamOutlined', label: '团队', component: TeamOutlined },
+  { value: 'ApiOutlined', label: '芯片（PCBA/电子）', component: ApiOutlined },
   // ---- 产品研发阶段交付件 ----
   { value: 'AppstoreOutlined', label: '产品系列', component: AppstoreOutlined },
   { value: 'ClusterOutlined', label: '产品型号', component: ClusterOutlined },

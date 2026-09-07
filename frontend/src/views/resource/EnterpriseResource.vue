@@ -9,23 +9,7 @@
     <!-- Tab 切换 -->
     <a-tabs v-model:activeKey="activeTab" class="er-tabs">
       <a-tab-pane key="component" tab="电子元器件库">
-        <div class="placeholder-module">
-          <a-result status="info" title="电子元器件库" sub-title="管理电阻、电容、IC、连接器等电子元器件规格与库存信息">
-            <template #extra>
-              <a-space>
-                <a-button type="primary">开始使用</a-button>
-                <a-button>了解更多</a-button>
-              </a-space>
-            </template>
-          </a-result>
-          <div class="feature-grid">
-            <a-row :gutter="16">
-              <a-col :span="6" v-for="f in features.component" :key="f.title">
-                <a-card :title="f.title" size="small" hoverable><p>{{ f.desc }}</p></a-card>
-              </a-col>
-            </a-row>
-          </div>
-        </div>
+        <ComponentLibrary />
       </a-tab-pane>
 
       <a-tab-pane key="stdPart" tab="结构标准件图库">
@@ -118,6 +102,7 @@
 <script setup>
 import { ref } from 'vue'
 import MediaSpace from '@/views/media/MediaSpace.vue'
+import ComponentLibrary from './ComponentLibrary.vue'
 
 const activeTab = ref('component')
 

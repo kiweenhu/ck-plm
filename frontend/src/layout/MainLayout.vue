@@ -6,7 +6,7 @@
       :trigger="null"
       collapsible
       class="layout-sider"
-      width="220"
+      width="150"
     >
       <!-- Logo 区域 -->
       <div class="sider-logo" @click="goHome">
@@ -109,7 +109,7 @@
     </a-layout-sider>
 
     <!-- ===== 右侧主区域 ===== -->
-    <a-layout>
+    <a-layout class="right-area">
       <!-- 顶栏 -->
       <a-layout-header class="layout-header">
         <div class="header-left">
@@ -129,6 +129,28 @@
               :key="item"
             >{{ item }}</a-breadcrumb-item>
           </a-breadcrumb>
+        </div>
+        <div class="header-search">
+          <a-auto-complete
+            v-model:value="searchKeyword"
+            :options="searchOptions"
+            :filter-option="false"
+            placeholder="搜索产品/零组件/文档（名称或编码）"
+            allow-clear
+            @search="onSearchInput"
+            @select="onSearchSelect"
+          >
+            <template #option="option">
+              <div class="search-option">
+                <a-tag :color="searchTypeColor(option.type)" size="small">{{ searchTypeLabel(option.type) }}</a-tag>
+                <span class="search-code">{{ option.code }}</span>
+                <span class="search-name">{{ option.name }}</span>
+              </div>
+            </template>
+            <template #notFoundContent>
+              <div style="padding: 8px 12px; color: #8c8c8c; font-size: 13px;">无匹配结果</div>
+            </template>
+          </a-auto-complete>
         </div>
         <div class="header-right">
           <a-dropdown :trigger="['click']" v-if="notifications.length > 0">
@@ -195,7 +217,7 @@
 
       <!-- 版权声明 -->
       <a-layout-footer class="layout-footer">
-        深圳市乘恺科技有限公司 2026~2029
+        © 2026 - 2029 乘恺科技 · 保留所有权利
       </a-layout-footer>
     </a-layout>
   </a-layout>
@@ -206,7 +228,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { message } from 'ant-design-vue'
-import { logout, getUnreadCount, getNotifications, markNotifRead, markAllNotifRead, getCurrentTenant } from '@/api'
+import { logout, getUnreadCount, getNotifications, markNotifRead, markAllNotifRead, getCurrentTenant, globalSearch } from '@/api'
 import { recordLogout } from '@/composables/useActivity'
 import {
   HomeOutlined, AppstoreOutlined, DatabaseOutlined,
@@ -329,6 +351,60 @@ const handleMarkAllRead = async (e) => {
 }
 const goTenantReview = () => router.push('/system/tenants')
 
+// ---- 全局搜索 ----
+const searchKeyword = ref('')
+const searchOptions = ref([])
+let searchTimer = null
+
+function searchTypeColor(type) {
+  return ({ PRODUCT_LINE: 'blue', PRODUCT_MODEL: 'cyan', PART: 'green', DOCUMENT: 'orange' })[type] || 'default'
+}
+function searchTypeLabel(type) {
+  return ({ PRODUCT_LINE: '产品系列', PRODUCT_MODEL: '产品型号', PART: '零组件', DOCUMENT: '文档' })[type] || type
+}
+
+function onSearchInput(val) {
+  if (searchTimer) clearTimeout(searchTimer)
+  const kw = (val || '').trim()
+  if (!kw) { searchOptions.value = []; return }
+  searchTimer = setTimeout(async () => {
+    try {
+      const res = await globalSearch(kw, 10)
+      if (res.code === 200) {
+        searchOptions.value = (res.data || []).map(r => ({ value: r.oid, ...r }))
+      } else {
+        searchOptions.value = []
+      }
+    } catch { searchOptions.value = [] }
+  }, 300)
+}
+
+function onSearchSelect(value, option) {
+  const item = option
+  let path = ''
+  let tip = ''
+  switch (item.type) {
+    case 'PRODUCT_LINE':
+      path = `/product/${item.oid}`
+      break
+    case 'PRODUCT_MODEL':
+      tip = `产品型号「${item.code} ${item.name}」请到「系列/型号」页面查看`
+      path = '/product'
+      break
+    case 'PART':
+      path = `/part/${item.oid}`
+      break
+    case 'DOCUMENT':
+      tip = `文档「${item.code} ${item.name}」请到所属产品线下查看`
+      path = '/product'
+      break
+  }
+  if (tip) message.info(tip)
+  if (path) router.push(path)
+  searchKeyword.value = ''
+  searchOptions.value = []
+}
+
 onMounted(async () => {
   // 获取当前租户名称（非平台租户时显示）
   try {
@@ -376,7 +452,8 @@ async function handleUserMenu({ key }) {
 
 <style scoped>
 .main-layout {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* ===== 侧边栏 ===== */
@@ -423,6 +500,13 @@ async function handleUserMenu({ key }) {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* 窄宽度下菜单文字截断 */
+.layout-sider :deep(.ant-menu-title-content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sider-author {
@@ -481,6 +565,38 @@ async function handleUserMenu({ key }) {
 
 .header-breadcrumb {
   font-size: 14px;
+}
+
+.header-search {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 24px;
+  min-width: 0;
+}
+.header-search :deep(.ant-select) {
+  width: 100%;
+  max-width: 520px;
+}
+
+.search-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
+}
+.search-code {
+  font-weight: 500;
+  color: #262626;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+}
+.search-name {
+  color: #8c8c8c;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-right {
@@ -617,12 +733,21 @@ async function handleUserMenu({ key }) {
 
 /* ===== 内容区 ===== */
 .layout-content {
-  margin: 16px;
-  padding: 24px;
+  margin: 0;
+  padding: 16px 24px 56px;
   background: #fff;
-  border-radius: 8px;
-  min-height: calc(100vh - 56px - 32px);
+  border-radius: 0;
+  flex: 1;
+  min-height: 0;        /* 允许 flex item 收缩到父级分配高度，避免被内容撑开 */
   overflow: auto;
+}
+
+/* ===== 右侧主区域 ===== */
+.right-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 /* ===== 路由过渡动画 ===== */
@@ -643,11 +768,16 @@ async function handleUserMenu({ key }) {
 
 /* ===== 版权声明 ===== */
 .layout-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   text-align: center;
   font-size: 12px;
-  color: #999;
-  padding: 16px 24px;
-  border-top: 1px solid #f0f0f0;
-  background: #fff;
+  color: rgba(255, 255, 255, 0.65);
+  padding: 12px 24px;
+  background: #1a1a1a;
+  letter-spacing: 0.5px;
+  z-index: 100;
 }
 </style>

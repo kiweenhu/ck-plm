@@ -37,7 +37,7 @@ const routes = [
         meta: { title: '产品线管业' }
       },
       {
-        path: 'part/:oid',
+        path: 'part/:oid/:iterationOid?',
         name: 'PartDetail',
         component: () => import('@/views/product/PartDetail.vue'),
         meta: { title: '零组件详情' }

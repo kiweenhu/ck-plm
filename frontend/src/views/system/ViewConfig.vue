@@ -256,10 +256,20 @@
           </a-col>
         </a-row>
         <a-form-item label="前置条件 - 生命周期状态（可选）">
-          <a-input
+          <a-select
             v-model:value="transitionModal.form.conditionStatus"
-            placeholder="如 Released，留空表示无前置条件"
-          />
+            placeholder="留空表示无前置条件"
+            allow-clear
+            style="width: 100%"
+          >
+            <a-select-option
+              v-for="s in lifecycleStatuses"
+              :key="s.code"
+              :value="s.code"
+            >
+              {{ s.name || s.displayName || s.code }} ({{ s.code }})
+            </a-select-option>
+          </a-select>
         </a-form-item>
         <a-row :gutter="12">
           <a-col :span="10">
@@ -300,7 +310,8 @@ import {
 } from '@ant-design/icons-vue'
 import {
   getViews, getView, createView, updateView, deleteView,
-  getViewTransitions, createViewTransition, updateViewTransition, deleteViewTransition
+  getViewTransitions, createViewTransition, updateViewTransition, deleteViewTransition,
+  getLifecycleStatuses
 } from '@/api'
 import DataTable from '@/components/DataTable.vue'
 import { useUserStore } from '@/stores/user'
@@ -317,6 +328,16 @@ const activeTab = ref('view')
 // ==================== 视图数据 ====================
 const views = ref([])
 const viewLoading = ref(false)
+// 生命周期状态列表（用于切换规则的前置状态下拉）
+const lifecycleStatuses = ref([])
+
+async function loadLifecycleStatuses() {
+  try {
+    const r = await getLifecycleStatuses()
+    const data = r?.data || r || []
+    lifecycleStatuses.value = Array.isArray(data) ? data : []
+  } catch { lifecycleStatuses.value = [] }
+}
 
 const enabledViewCount = computed(() => views.value.filter(v => v.enabled !== false).length)
 const disabledViewCount = computed(() => views.value.filter(v => v.enabled === false).length)
@@ -607,6 +628,7 @@ function formatTime(str) {
 onMounted(async () => {
   await loadViews()
   await loadTransitions()
+  await loadLifecycleStatuses()
 })
 
 watch(activeTab, (val) => {

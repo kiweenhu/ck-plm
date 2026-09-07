@@ -104,19 +104,21 @@
             <div v-else class="pl-folders-body">
               <!-- 左侧树：合并显示（同名节点合一） -->
               <div class="pl-folders-tree">
-                <FolderTreeNode
-                  v-for="node in mergedTree" :key="node.oid"
-                  :node="node"
-                  :selected-folder-oid="selectedFolder?.oid"
-                  :expanded-folders="expandedFolders"
-                  @select="selectFolder"
-                  @toggle="toggleFolder"
-                  @create-sub="openCreateFolder"
-                  @rename="openRenameFolder"
-                  @delete="removeFolder"
-                  @clone-inherited="cloneInheritedFolder"
-                />
-                <a-button type="dashed" size="small" block style="margin-top: 8px" @click="openCreateFolder(null)">
+                <div class="pl-folders-tree-scroll">
+                  <FolderTreeNode
+                    v-for="node in mergedTree" :key="node.oid"
+                    :node="node"
+                    :selected-folder-oid="selectedFolder?.oid"
+                    :expanded-folders="expandedFolders"
+                    @select="selectFolder"
+                    @toggle="toggleFolder"
+                    @create-sub="openCreateFolder"
+                    @rename="openRenameFolder"
+                    @delete="removeFolder"
+                    @clone-inherited="cloneInheritedFolder"
+                  />
+                </div>
+                <a-button type="dashed" size="small" block class="pl-tree-new-btn" @click="openCreateFolder(null)">
                   <FolderAddOutlined /> 新建文件夹
                 </a-button>
               </div>
@@ -147,12 +149,9 @@
                         :search-fields="['code', 'name', 'typeDefinitionName']"
                       >
                         <template #toolbar>
-                          <a-button v-if="!isMarketValidation" type="primary" size="small" @click="openCreatePart" style="margin-right:8px">
-                            <PlusOutlined /> 创建零组件
-                          </a-button>
-                          <a-button size="small" @click="openCreateDocument">
-                            <PlusOutlined /> 创建文档
-                          </a-button>
+                          <a-tooltip title="新建零组件"><a-button v-if="stageManagedObjects.has('PART')" type="primary" size="small" @click="openCreatePart" style="margin-right:8px"><ToolOutlined /></a-button></a-tooltip>
+                          <a-tooltip title="新建文档"><a-button v-if="stageManagedObjects.has('DOCUMENT')" size="small" @click="openCreateDocument"><FileTextOutlined /></a-button></a-tooltip>
+                          <a-tooltip title="新建功能架构"><a-button v-if="stageManagedObjects.has('FUNCTIONAL')" size="small" @click="openCreateFunctional"><BranchesOutlined /></a-button></a-tooltip>
                         </template>
                         <template #bodyCell="{ column, record }">
                           <template v-if="column.key === 'checkout_status'">
@@ -186,6 +185,7 @@
                                   <a-menu-item key="view"><EyeOutlined /> 详情</a-menu-item>
                                   <a-menu-item key="rename"><FormOutlined /> 重命名</a-menu-item>
                                   <a-menu-item v-if="!record.checkedOut" key="checkout"><LockOutlined /> 检出</a-menu-item>
+                                  <a-menu-item v-if="!record.checkedOut" key="checkoutEdit"><EditOutlined /> 检出并编辑</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="edit"><EditOutlined /> 编辑</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="checkin"><CheckOutlined /> 检入</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="undoCheckout"><RollbackOutlined /> 取消检出</a-menu-item>
@@ -221,12 +221,9 @@
                           </div>
                         </template>
                         <template #toolbar>
-                          <a-button v-if="!isMarketValidation" type="primary" size="small" @click="openCreatePart" style="margin-right:8px">
-                            <PlusOutlined /> 创建零组件
-                          </a-button>
-                          <a-button size="small" @click="openCreateDocument">
-                            <PlusOutlined /> 创建文档
-                          </a-button>
+                          <a-tooltip title="新建零组件"><a-button v-if="stageManagedObjects.has('PART')" type="primary" size="small" @click="openCreatePart" style="margin-right:8px"><ToolOutlined /></a-button></a-tooltip>
+                          <a-tooltip title="新建文档"><a-button v-if="stageManagedObjects.has('DOCUMENT')" size="small" @click="openCreateDocument"><FileTextOutlined /></a-button></a-tooltip>
+                          <a-tooltip title="新建功能架构"><a-button v-if="stageManagedObjects.has('FUNCTIONAL')" size="small" @click="openCreateFunctional"><BranchesOutlined /></a-button></a-tooltip>
                         </template>
                         <template #bodyCell="{ column, record }">
                           <template v-if="column.key === 'checkout_status'">
@@ -260,13 +257,13 @@
                                   <a-menu-item key="view"><EyeOutlined /> 详情</a-menu-item>
                                   <a-menu-item key="rename"><FormOutlined /> 重命名</a-menu-item>
                                   <a-menu-item v-if="!record.checkedOut" key="checkout"><LockOutlined /> 检出</a-menu-item>
+                                  <a-menu-item v-if="!record.checkedOut" key="checkoutEdit"><EditOutlined /> 检出并编辑</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="edit"><EditOutlined /> 编辑</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="checkin"><CheckOutlined /> 检入</a-menu-item>
                                   <a-menu-item v-if="canUndoCheckout(record)" key="undoCheckout"><RollbackOutlined /> 取消检出</a-menu-item>
                                   <a-menu-item v-if="record.ckfileOid" key="download"><DownloadOutlined /> 下载主文件</a-menu-item>
                                   <a-menu-divider />
                                   <a-menu-item key="move"><SwapOutlined /> 移动</a-menu-item>
-                                  <a-menu-item key="newViewVersion"><BranchesOutlined /> 新建视图版本</a-menu-item>
                                   <a-menu-divider />
                                   <a-menu-item v-if="!record.checkedOut" key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
                                   <a-menu-item v-if="!record.checkedOut" key="workflow"><SendOutlined /> 发起流程</a-menu-item>
@@ -307,12 +304,13 @@
                       :columns="mixedColumns"
                       :data-source="filteredMixed"
                       :loading="docLoading || partLoading"
-                      :pagination="false"
+                      :pagination="{ pageSize: 10 }"
                       row-key="oid"
                       size="small"
                       :searchable="true"
                       search-placeholder="搜索零组件/文档..."
                       :search-fields="['code', 'name', 'typeDefinitionName']"
+                      stretch
                     >
                       <template #toolbar-left>
                         <div class="pl-content-bar-inline">
@@ -325,12 +323,17 @@
                         </div>
                       </template>
                       <template #toolbar>
-                        <a-button v-if="!isMarketValidation" type="primary" size="small" @click="openCreatePart" style="margin-right:8px">
-                          <PlusOutlined /> 创建零组件
-                        </a-button>
-                        <a-button size="small" @click="openCreateDocument">
-                          <PlusOutlined /> 创建文档
-                        </a-button>
+                        <!-- 业务对象过滤：右对齐（与新建/搜索/视图同一行） -->
+                        <a-select
+                          v-model:value="bizObjectFilter"
+                          size="small"
+                          style="min-width:140px;margin-right:8px"
+                          :options="bizObjectFilterOptions"
+                          placeholder="全部对象"
+                        />
+                        <a-tooltip title="新建零组件"><a-button v-if="stageManagedObjects.has('PART')" type="primary" size="small" @click="openCreatePart" style="margin-right:8px"><ToolOutlined /></a-button></a-tooltip>
+                        <a-tooltip title="新建文档"><a-button v-if="stageManagedObjects.has('DOCUMENT')" size="small" @click="openCreateDocument"><FileTextOutlined /></a-button></a-tooltip>
+                        <a-tooltip title="新建功能架构"><a-button v-if="stageManagedObjects.has('FUNCTIONAL')" size="small" @click="openCreateFunctional"><BranchesOutlined /></a-button></a-tooltip>
                       </template>
                       <template #bodyCell="{ column, record }">
                         <template v-if="column.key === 'checkout_status'">
@@ -370,13 +373,14 @@
                                 <a-menu-item v-if="record.entityType === 'PART'" key="saveAs"><CopyOutlined /> 另存为</a-menu-item>
                                 <a-menu-item key="history"><HistoryOutlined /> 查看历史版本</a-menu-item>
                                 <a-menu-item v-if="!record.checkedOut" key="checkout"><LockOutlined /> 检出</a-menu-item>
+                                <a-menu-item v-if="!record.checkedOut" key="checkoutEdit"><EditOutlined /> 检出并编辑</a-menu-item>
                                 <a-menu-item v-if="canUndoCheckout(record)" key="edit"><EditOutlined /> 编辑</a-menu-item>
                                 <a-menu-item v-if="canUndoCheckout(record)" key="checkin"><CheckOutlined /> 检入</a-menu-item>
                                 <a-menu-item v-if="canUndoCheckout(record)" key="undoCheckout"><RollbackOutlined /> 取消检出</a-menu-item>
                                 <a-menu-item v-if="record.ckfileOid" key="download"><DownloadOutlined /> 下载主文件</a-menu-item>
                                 <a-menu-divider />
                                 <a-menu-item key="move"><SwapOutlined /> 移动</a-menu-item>
-                                <a-menu-item key="newViewVersion"><BranchesOutlined /> 新建视图版本</a-menu-item>
+                                <a-menu-item v-if="record.entityType === 'PART'" key="newViewVersion"><BranchesOutlined /> 新建视图版本</a-menu-item>
                                 <a-menu-divider />
                                 <a-menu-item v-if="!record.checkedOut" key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
                                 <a-menu-item v-if="!record.checkedOut" key="workflow"><SendOutlined /> 发起流程</a-menu-item>
@@ -408,25 +412,30 @@
       <a-input v-model:value="folderModalName" placeholder="请输入文件夹名称" @keyup.enter="confirmFolder" />
     </a-modal>
 
-    <!-- 文档创建弹窗：先选类型 → 再按类型专属布局渲染表单 -->
+    <!-- 文档创建弹窗：先选类型 → 再按类型专属布局渲染表单（样式与新建零组件弹窗一致） -->
     <a-modal
       v-model:visible="docModalVisible"
-      title="创建文档"
+      title="新建文档"
       ok-text="创建"
       cancel-text="取消"
       :confirm-loading="docModalSaving"
       :ok-button-props="{ disabled: !selectedDocType }"
       @ok="confirmDocument"
       @cancel="resetDocModal"
-      width="620px"
+      width="640px"
+      centered
+      wrap-class-name="part-create-modal"
+      :body-style="{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', padding: '12px 16px 16px' }"
     >
-      <div style="margin-bottom: 16px">
-        <div style="margin-bottom:4px;font-size:12px;color:#666">选择文档类型</div>
-        <DocumentTypeSelect
-          v-model="docTypeSelectValue"
-          placeholder="请选择文档类型（必选）"
-          @change="onDocTypeChange"
-        />
+      <div style="margin-bottom:8px">
+        <span style="color:#8c8c8c">选择文档类型</span>
+        <div style="margin-top:4px">
+          <DocumentTypeSelect
+            v-model="docTypeSelectValue"
+            placeholder="请选择文档类型（必选）"
+            @change="onDocTypeChange"
+          />
+        </div>
       </div>
 
       <a-divider v-if="selectedDocType" style="margin:12px 0" />
@@ -455,7 +464,7 @@
     <!-- 零组件创建弹窗 -->
     <a-modal
       v-model:visible="partModalVisible"
-      title="创建零组件"
+      title="新建零组件"
       ok-text="创建"
       cancel-text="取消"
       :confirm-loading="partModalSaving"
@@ -463,17 +472,20 @@
       @ok="confirmPart"
       @cancel="resetPartModal"
       width="640px"
+      centered
+      wrap-class-name="part-create-modal"
+      :body-style="{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', padding: '12px 16px 16px' }"
     >
       <div style="margin-bottom:8px">
         <span style="color:#8c8c8c">选择零组件类型</span>
-        <a-select
+        <a-tree-select
           v-model:value="partTypeSelectValue"
           style="width:100%;margin-top:4px"
           placeholder="请选择零组件类型"
-          :options="partTypeOptions"
-          :field-names="{ label: 'name', value: 'code' }"
+          :tree-data="partTypeOptions"
+          :field-names="{ label: 'name', value: 'code', children: 'children' }"
+          tree-default-expand-all
           show-search
-          :filter-option="(input, option) => (option?.name || option?.label || '').toLowerCase().includes((input||'').toLowerCase())"
           @change="onPartTypeChange"
         />
       </div>
@@ -497,6 +509,57 @@
       <div v-else style="padding:24px 0;text-align:center;color:#999">
         <InboxOutlined style="font-size:32px;color:#d9d9d9;margin-bottom:8px;display:block" />
         请先选择零组件类型，系统将加载对应的创建表单
+      </div>
+    </a-modal>
+
+    <!-- 功能架构创建弹窗 -->
+    <a-modal
+      v-model:visible="functionalModalVisible"
+      title="新建功能架构"
+      ok-text="创建"
+      cancel-text="取消"
+      :confirm-loading="functionalSaving"
+      :ok-button-props="{ disabled: !selectedFunctionalType }"
+      @ok="confirmFunctional"
+      @cancel="resetFunctionalModal"
+      width="640px"
+      centered
+      wrap-class-name="part-create-modal"
+      :body-style="{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', padding: '12px 16px 16px' }"
+    >
+      <div style="margin-bottom:8px">
+        <span style="color:#8c8c8c">选择功能架构类型</span>
+        <a-tree-select
+          v-model:value="functionalTypeSelectValue"
+          style="width:100%;margin-top:4px"
+          placeholder="请选择功能架构类型"
+          :tree-data="functionalTypeOptions"
+          :field-names="{ label: 'name', value: 'code', children: 'children' }"
+          tree-default-expand-all
+          show-search
+          @change="onFunctionalTypeChange"
+        />
+      </div>
+
+      <a-divider v-if="selectedFunctionalType" style="margin:12px 0" />
+
+      <div v-if="selectedFunctionalType" style="margin-top:8px">
+        <a-tag color="blue" style="margin-bottom:12px">{{ selectedFunctionalType.name || selectedFunctionalType.code }} - 创建表单</a-tag>
+        <DynamicForm
+          ref="functionalFormRef"
+          :key="functionalFormEntityCode"
+          :entity-code="functionalFormEntityCode"
+          operation-code="create"
+          :fallback-entity-code="'FUNCTIONAL'"
+          :current-stage-oid="activeStage"
+          :stage-options="stageOptions"
+          :type-definition-oid="selectedFunctionalType?.oid"
+          v-model="functionalForm"
+        />
+      </div>
+      <div v-else style="padding:24px 0;text-align:center;color:#999">
+        <InboxOutlined style="font-size:32px;color:#d9d9d9;margin-bottom:8px;display:block" />
+        请先选择功能架构类型，系统将加载对应的创建表单
       </div>
     </a-modal>
 
@@ -588,12 +651,12 @@
     <a-modal
       v-model:visible="editModalVisible"
       :title="editTitle"
-      ok-text="保存"
-      cancel-text="取消"
       :confirm-loading="editModalSaving"
-      @ok="confirmEdit"
       @cancel="editModalVisible = false"
       width="640px"
+      centered
+      wrap-class-name="part-create-modal"
+      :body-style="{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', padding: '12px 16px 16px' }"
     >
       <DynamicForm
         ref="editFormRef"
@@ -606,6 +669,11 @@
         :stage-options="stageOptions"
         v-model="editForm"
       />
+      <template #footer>
+        <a-button @click="editModalVisible = false">取消</a-button>
+        <a-button @click="confirmEdit" :loading="editModalSaving">保存</a-button>
+        <a-button type="primary" @click="confirmSaveAndCheckin" :loading="editModalSaving">保存并检入</a-button>
+      </template>
     </a-modal>
 
     <!-- 删除弹窗（选择删除范围） -->
@@ -811,7 +879,7 @@ import {
 import { getProductLine, getProductLineChildren, getFolderTree, createFolder, updateFolder, deleteFolder,
          getDocuments, createDocument, deleteDocument, deleteDocumentLatestIteration, newViewVersionDocument, renameDocument, moveDocumentApi, checkoutDocument as checkoutDocApi, undoCheckoutDocument as undoCheckoutApi,
          checkoutPart as checkoutPartApi, undoCheckoutPart as undoCheckoutPartApi, checkinPart as checkinPartApi, checkinDocument as checkinDocApi,
-         getStages, getFolderDocumentDetails, getDocumentDownloadUrl, createPart, getTypeDefinitionTree, getPartsByFolder, deletePart, deletePartLatestIteration, newViewVersionPart, renamePart, saveAsPart, movePart,
+         getStages, getFolderDocumentDetails, getDocumentDownloadUrl, createPart, createFunctional, getTypeDefinitionTree, getPartsByFolder, deletePart, deletePartLatestIteration, newViewVersionPart, renamePart, saveAsPart, movePart,
          getPartIterations, getDocumentIterations, getClassification, getClassificationIBAs,
          updatePart, updateDocument, getProductLineTree, getProductModels } from '@/api'
 import { useUserStore } from '@/stores/user'
@@ -832,10 +900,21 @@ const modelCount = ref(0)
 const showChildren = ref(false)
 const activeStage = ref(null) // 存储当前阶段的 oid
 
-/** 当前阶段是否为市场验证阶段（不需要创建零组件，只需交付文档） */
-const isMarketValidation = computed(() => {
+/** 当前阶段管理的业务对象类型集合（按阶段模板的 managedObjectTypes 解析） */
+const stageManagedObjects = computed(() => {
   const stage = stageDefs.value.find(s => s.oid === activeStage.value)
-  return stage?.key === 'MARKET_VALIDATION'
+  if (!stage || !stage.managedObjectTypes) {
+    // 兜底：未配置时默认全部可见（向后兼容）
+    return new Set(['FUNCTIONAL', 'PART', 'DOCUMENT'])
+  }
+  try {
+    const arr = typeof stage.managedObjectTypes === 'string'
+      ? JSON.parse(stage.managedObjectTypes)
+      : stage.managedObjectTypes
+    return new Set(Array.isArray(arr) ? arr : [])
+  } catch {
+    return new Set()
+  }
 })
 
 const folderTree = ref([])
@@ -867,6 +946,19 @@ function setParentsRecursive(nodes, parent) {
   for (const n of nodes) {
     n._parent = parent
     if (n.children?.length) setParentsRecursive(n.children, n)
+  }
+}
+
+/** 递归按创建时间正序排序文件夹树（同级节点：最早创建的在前） */
+function sortFolderTreeByCreatedAtAsc(nodes) {
+  if (!nodes) return
+  nodes.sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0
+    return ta - tb
+  })
+  for (const n of nodes) {
+    if (n.children?.length) sortFolderTreeByCreatedAtAsc(n.children)
   }
 }
 
@@ -917,6 +1009,14 @@ const partModalVisible = ref(false)
 const partModalSaving = ref(false)
 const partFormRef = ref(null)
 const partForm = ref({ name: '', typeDefinitionCode: '', description: '', stageOid: '', folderOid: '', containerOid: '', containerType: '', clsOid: '', ckfileOid: '', attachmentOid: '' })
+const functionalModalVisible = ref(false)
+const functionalSaving = ref(false)
+const functionalFormRef = ref(null)
+const functionalForm = ref({ name: '', typeDefinitionCode: '', description: '', stageOid: '', folderOid: '', containerOid: '', containerType: '', clsOid: '', ckfileOid: '', attachmentOid: '' })
+const functionalTypeSelectValue = ref(undefined)
+const selectedFunctionalType = ref(null)
+const functionalFormEntityCode = ref('FUNCTIONAL')
+const functionalTypeOptions = ref([])
 const partTypeSelectValue = ref(undefined)
 const selectedPartType = ref(null)
 const partFormEntityCode = ref('PART')
@@ -943,18 +1043,20 @@ function openEditModal(record) {
   editModalVisible.value = true
 }
 
-async function confirmEdit() {
+/** 执行保存（不关闭弹窗/不提示，由调用方决定后续行为） */
+async function performSave() {
   if (editFormRef.value) {
     const errors = editFormRef.value.validate()
-    if (errors.length > 0) return message.warning(errors[0])
+    if (errors.length > 0) {
+      message.warning(errors[0])
+      return false
+    }
   }
   editModalSaving.value = true
   try {
     const isPart = editEntityType.value === 'PART'
-    // 优先使用 DynamicForm 的 getFormData()（避免依赖 v-model 同步时序）
     const formData = editFormRef.value?.getFormData() || editForm.value
     const payload = { ...formData }
-    // 分类 IBA 字段值单独提交到 ck_cls_iba_data（分类节点级）
     if (editFormRef.value) {
       const clsIbaFieldNames = editFormRef.value.getClsIbaFieldNames() || []
       clsIbaFieldNames.forEach(k => delete payload[k])
@@ -963,7 +1065,6 @@ async function confirmEdit() {
         payload.clsIbaValues = clsIbaValues
       }
     }
-    // 外键字段空字符串转 null
     ;['clsOid', 'stageOid', 'folderOid', 'containerOid', 'ckfileOid', 'attachmentOid'].forEach(k => {
       if (payload[k] != null && String(payload[k]).trim() === '') payload[k] = null
     })
@@ -971,18 +1072,54 @@ async function confirmEdit() {
       ? await updatePart(editEntityOid.value, payload)
       : await updateDocument(editEntityOid.value, payload)
     if (res.code === 200) {
-      message.success('保存成功')
+      if (selectedFolder.value) {
+        if (isPart) loadParts(selectedFolder.value.oid)
+        loadDocuments(selectedFolder.value.oid)
+      }
+      return true
+    }
+    message.error(res.message || '保存失败')
+    return false
+  } catch (e) {
+    message.error(e?.response?.data?.message || '保存失败')
+    return false
+  } finally {
+    editModalSaving.value = false
+  }
+}
+
+async function confirmEdit() {
+  const ok = await performSave()
+  if (ok) {
+    message.success('保存成功')
+    editModalVisible.value = false
+  }
+}
+
+/** 保存并检入：保存修改后立即解除检出版本 */
+async function confirmSaveAndCheckin() {
+  const ok = await performSave()
+  if (!ok) return
+  const isPart = editEntityType.value === 'PART'
+  editModalSaving.value = true
+  try {
+    const res = isPart
+      ? await checkinPartApi(editEntityOid.value)
+      : await checkinDocApi(editEntityOid.value)
+    if (res.code === 200) {
+      message.success('保存并检入成功')
       editModalVisible.value = false
-      // 刷新当前文件夹列表
       if (selectedFolder.value) {
         if (isPart) loadParts(selectedFolder.value.oid)
         loadDocuments(selectedFolder.value.oid)
       }
     } else {
-      message.error(res.message || '保存失败')
+      message.warning(res.message || '保存成功，但检入失败')
+      editModalVisible.value = false
     }
   } catch (e) {
-    message.error(e?.response?.data?.message || '保存失败')
+    message.warning(e?.response?.data?.message || '保存成功，但检入失败')
+    editModalVisible.value = false
   } finally {
     editModalSaving.value = false
   }
@@ -993,30 +1130,33 @@ async function loadPartTypes() {
   try {
     const res = await getTypeDefinitionTree()
     const tree = res?.data || res || []
-    // 找到 PART 根节点，收集它及其所有子孙类型
-    const flat = []
-    const findPartNode = (nodes) => {
-      for (const n of nodes) {
-        if (n.code === 'PART') {
-          collectAllDescendants(n, flat)
-          return
-        }
-        if (n.children) findPartNode(n.children)
-      }
-    }
-    findPartNode(Array.isArray(tree) ? tree : [])
-    partTypeOptions.value = flat
+    // 找到 PART 根节点，作为树形展示（含其子孙子类型）
+    const partNode = findPartNode(Array.isArray(tree) ? tree : [])
+    partTypeOptions.value = partNode ? [partNode] : []
   } catch { partTypeOptions.value = [] }
   finally { partTypeLoading.value = false }
 }
 
-function collectAllDescendants(node, result) {
-  if (node.oid && node.code) result.push(node)
-  if (node.children) {
-    for (const child of node.children) {
-      collectAllDescendants(child, result)
+function findPartNode(nodes) {
+  for (const n of nodes) {
+    if (n.code === 'PART') return n
+    if (n.children) {
+      const f = findPartNode(n.children)
+      if (f) return f
     }
   }
+  return null
+}
+
+function findNodeByCode(nodes, code) {
+  for (const n of nodes) {
+    if (n.code === code) return n
+    if (n.children) {
+      const f = findNodeByCode(n.children, code)
+      if (f) return f
+    }
+  }
+  return null
 }
 
 function openCreatePart() {
@@ -1043,7 +1183,7 @@ function openCreatePart() {
 
 function onPartTypeChange(typeCode) {
   if (typeCode) {
-    const found = partTypeOptions.value.find(t => t.code === typeCode)
+    const found = findNodeByCode(partTypeOptions.value, typeCode)
     selectedPartType.value = found || { code: typeCode, name: typeCode }
     partFormEntityCode.value = typeCode
     partForm.value.typeDefinitionCode = typeCode
@@ -1094,7 +1234,7 @@ async function confirmPart() {
       message.error(res.message || '创建失败')
     }
   } catch (e) {
-    message.error(e?.response?.data?.message || '创建零组件失败')
+    message.error(e?.response?.data?.message || '新建零组件失败')
   } finally { partModalSaving.value = false }
 }
 
@@ -1140,6 +1280,8 @@ const mapStageToDef = (stage) => ({
     catch { return [] }
   })(),
   showOnDashboard: stage.showOnDashboard,
+  // 阶段管理的业务对象类型（用于控制"新建零组件/文档/功能架构"按钮的显示）
+  managedObjectTypes: stage.managedObjectTypes,
   // 保留原始 stage 对象引用，用于后续更新
   _stage: stage,
 })
@@ -1249,24 +1391,63 @@ const inheritedDocColumns = [
 const parts = ref([])
 const partLoading = ref(false)
 
-/** 零组件 + 文档合并列定义（通过「类型」列区分，Part 用 geekblue 标签） */
+/** 零组件 + 文档合并列定义（紧凑列宽+操作列固定右侧，避免横向滚动条） */
 const mixedColumns = [
-  { title: '', dataIndex: 'checkedOut', key: 'checkout_status', width: 36, align: 'center' },
-  { title: '编码', dataIndex: 'code', key: 'code', width: 140 },
-  { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true, width: 180 },
-  { title: '类型', dataIndex: 'typeDefinitionName', key: 'typeDefinitionName', width: 130 },
-  { title: '版本', dataIndex: 'displayVersion', key: 'displayVersion', width: 70 },
-  { title: '单位', dataIndex: 'unit', key: 'unit', width: 70 },
-  { title: '生命周期状态', key: 'status', width: 100 },
-  { title: '检出状态', key: 'checkout', width: 100 },
-  { title: '操作', key: 'action', width: 110, fixed: 'right' }
+  { title: '', dataIndex: 'checkedOut', key: 'checkout_status', width: 32, align: 'center' },
+  { title: '编码', dataIndex: 'code', key: 'code', width: 110 },
+  { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true, width: 150 },
+  { title: '类型', dataIndex: 'typeDefinitionName', key: 'typeDefinitionName', width: 100 },
+  { title: '版本', dataIndex: 'displayVersion', key: 'displayVersion', width: 60 },
+  { title: '单位', dataIndex: 'unit', key: 'unit', width: 50 },
+  { title: '生命周期', key: 'status', width: 90 },
+  { title: '检出', key: 'checkout', width: 80 },
+  { title: '操作', key: 'action', width: 88, fixed: 'right' }
 ]
 
-/** 零组件 + 文档合并列表（Part 标记 entityType='PART'） */
+// ==================== 业务对象过滤（文件夹内容按业务对象类型过滤） ====================
+
+/** 当前业务对象过滤值：'ALL'=全部对象，否则为 TypeDefinition.code */
+const bizObjectFilter = ref('ALL')
+/** source=ootb 的业务对象类型清单（来自类型定义树，与其他来源/模型定义页面同源） */
+const ootbTypeOptions = ref([])
+
+/** 过滤下拉选项：全部对象 + source=ootb 的类型清单 */
+const bizObjectFilterOptions = computed(() => [
+  { value: 'ALL', label: '全部对象' },
+  ...ootbTypeOptions.value.map(t => ({ value: t.code, label: t.name || t.code })),
+])
+
+/** 拉取类型定义树，展平筛选 source 为 ootb（系统内置根类型 + 预置子类型，不含 USER 自定义） */
+async function loadBizObjectFilterOptions() {
+  try {
+    const res = await getTypeDefinitionTree()
+    const tree = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+    const flat = []
+    const walk = (nodes) => {
+      for (const n of (nodes || [])) {
+        flat.push(n)
+        if (n.children?.length) walk(n.children)
+      }
+    }
+    walk(tree)
+    // 只显示模型定义的顶层对象（source=OOTB 的根类型，如 PART/DOCUMENT/FUNCTIONAL）；
+    // 预置子类型（source=ootb 小写）与用户自定义（source=USER）不出现在下拉中，
+    // 但过滤时通过 rootTypeCode 自动包含顶层对象下的全部子类型
+    ootbTypeOptions.value = flat.filter(t => (t.source || '') === 'OOTB' || t.typeKind === 'OOTB')
+  } catch { ootbTypeOptions.value = [] }
+}
+
+/** 零组件 + 文档合并列表（Part 标记 entityType='PART'），按业务对象过滤：
+    选中根类型时同时匹配其子类型（rootTypeCode），选中子类型时精确匹配 */
 const filteredMixed = computed(() => {
   const partItems = parts.value.map(p => ({ ...p, entityType: 'PART' }))
   const docItems = documents.value.map(d => ({ ...d, entityType: 'DOC' }))
-  return [...partItems, ...docItems]
+  const all = [...partItems, ...docItems]
+  const selected = bizObjectFilter.value
+  if (!selected || selected === 'ALL') return all
+  return all.filter(i =>
+    i.typeDefinitionCode === selected || i.rootTypeCode === selected
+  )
 })
 
 async function loadParts(folderOid) {
@@ -1352,6 +1533,93 @@ const cloneInheritedFolder = async (node) => {
     message.success(`已在本产品创建同名文件夹「${name}」`)
     await loadFolders()
   } catch { message.error('克隆文件夹失败') }
+}
+
+function openCreateFunctional() {
+  functionalTypeSelectValue.value = undefined
+  selectedFunctionalType.value = null
+  functionalFormEntityCode.value = 'FUNCTIONAL'
+  const isModel = line.value?.nodeType === 'PRODUCT_MODEL'
+  const plOid = isModel ? line.value?.parentOid : line.value?.oid
+  functionalForm.value = {
+    name: '',
+    typeDefinitionCode: '',
+    description: '',
+    stageOid: activeStage.value || stageDefs.value[0]?.oid || '',
+    folderOid: selectedFolder.value?.oid || '',
+    containerOid: plOid || '',
+    containerType: isModel ? 'PRODUCT_MODEL' : 'PRODUCT_LINE',
+    clsOid: '',
+    ckfileOid: '',
+    attachmentOid: '',
+  }
+  loadFunctionalTypes()
+  functionalModalVisible.value = true
+}
+
+async function loadFunctionalTypes() {
+  try {
+    const res = await getTypeDefinitionTree()
+    const tree = res?.data || res || []
+    // 找到 FUNCTIONAL 根节点，作为树形展示（含其子类型：系统/子系统/CI）
+    const functionalNode = findNodeByCode(Array.isArray(tree) ? tree : [], 'FUNCTIONAL')
+    functionalTypeOptions.value = functionalNode ? [functionalNode] : []
+  } catch { functionalTypeOptions.value = [] }
+}
+
+function onFunctionalTypeChange(typeCode) {
+  if (typeCode) {
+    const found = findNodeByCode(functionalTypeOptions.value, typeCode)
+    selectedFunctionalType.value = found || { code: typeCode, name: typeCode }
+    functionalFormEntityCode.value = typeCode
+    functionalForm.value.typeDefinitionCode = typeCode
+  } else {
+    selectedFunctionalType.value = null
+    functionalFormEntityCode.value = 'FUNCTIONAL'
+    functionalForm.value.typeDefinitionCode = ''
+  }
+}
+
+function resetFunctionalModal() {
+  functionalTypeSelectValue.value = undefined
+  selectedFunctionalType.value = null
+  functionalFormEntityCode.value = 'FUNCTIONAL'
+  functionalForm.value = {
+    name: '', typeDefinitionCode: '', description: '',
+    stageOid: '', folderOid: '', containerOid: '', containerType: '',
+    clsOid: '', ckfileOid: '', attachmentOid: '',
+  }
+  functionalModalVisible.value = false
+}
+
+async function confirmFunctional() {
+  if (!selectedFunctionalType.value) { message.warning('请先选择功能架构类型'); return }
+  if (!functionalForm.value.name?.trim()) { message.warning('请输入功能架构名称'); return }
+  functionalSaving.value = true
+  try {
+    const payload = { ...functionalForm.value }
+    if (functionalFormRef.value) {
+      const clsIbaFieldNames = functionalFormRef.value.getClsIbaFieldNames() || []
+      clsIbaFieldNames.forEach(k => delete payload[k])
+      const clsIbaValues = functionalFormRef.value.getClsIbaValues() || {}
+      if (Object.keys(clsIbaValues).length > 0) {
+        payload.clsIbaValues = clsIbaValues
+      }
+    }
+    ;['clsOid', 'stageOid', 'folderOid', 'containerOid', 'ckfileOid', 'attachmentOid'].forEach(k => {
+      if (payload[k] != null && String(payload[k]).trim() === '') payload[k] = null
+    })
+    const res = await createFunctional(payload)
+    if (res.code === 200) {
+      message.success('功能架构创建成功')
+      functionalModalVisible.value = false
+      if (selectedFolder.value) loadDocuments(selectedFolder.value.oid)
+    } else {
+      message.error(res.message || '创建失败')
+    }
+  } catch (e) {
+    message.error(e?.response?.data?.message || '新建功能架构失败')
+  } finally { functionalSaving.value = false }
 }
 
 const openCreateDocument = () => {
@@ -1449,7 +1717,7 @@ const confirmDocument = async () => {
     } else {
       message.error(res.message || '创建失败')
     }
-  } catch { message.error('创建文档失败') }
+  } catch { message.error('新建文档失败') }
   finally { docModalSaving.value = false }
 }
 
@@ -1622,6 +1890,7 @@ const checkoutModalVisible = ref(false)
 const checkoutComment = ref('')
 const checkoutSaving = ref(false)
 const checkoutTargetDoc = ref(null)
+const checkoutThenEdit = ref(false)
 
 /** 确认检出 */
 async function confirmCheckout() {
@@ -1638,9 +1907,12 @@ async function confirmCheckout() {
         action: isPart ? '检出零组件' : '检出文档',
         target: checkoutTargetDoc.value.code + ' ' + checkoutTargetDoc.value.name
       })
+      const target = checkoutTargetDoc.value
+      const shouldEditAfter = checkoutThenEdit.value
       checkoutModalVisible.value = false
       checkoutComment.value = ''
       checkoutTargetDoc.value = null
+      checkoutThenEdit.value = false
       // 刷新当前文件夹列表
       if (selectedFolder.value) {
         if (isPart) loadParts(selectedFolder.value.oid)
@@ -1648,6 +1920,10 @@ async function confirmCheckout() {
           loadInheritedDocuments(selectedFolder.value._mergedInherited.oid)
         }
         loadDocuments(selectedFolder.value.oid)
+      }
+      // 检出并编辑：立即打开编辑对话框
+      if (shouldEditAfter && target) {
+        openEditModal(target)
       }
     } else {
       message.error(res.message || '检出失败')
@@ -1665,6 +1941,7 @@ function handleDocAction({ key }, doc) {
     case 'view': docViewerDoc.value = doc; docViewerVisible.value = true; break
     case 'rename': openRenameModal({ ...doc, entityType: 'DOC' }); break
     case 'checkout': checkoutDocument(doc); break
+    case 'checkoutEdit': checkoutAndEdit(doc); break
     case 'edit': editDocument(doc); break
     case 'checkin': checkinDocument(doc); break
     case 'undoCheckout': undoCheckoutDocument(doc); break
@@ -1701,6 +1978,9 @@ function handleMixedAction({ key }, record) {
       checkoutTargetDoc.value = record
       checkoutComment.value = ''
       checkoutModalVisible.value = true
+      break
+    case 'checkoutEdit':
+      checkoutAndEdit(record)
       break
     case 'edit':
       openEditModal(record)
@@ -1988,6 +2268,14 @@ async function checkoutDocument(doc) {
   checkoutModalVisible.value = true
 }
 
+/** 检出并编辑：检出成功后自动打开编辑对话框 */
+function checkoutAndEdit(record) {
+  checkoutTargetDoc.value = record
+  checkoutComment.value = ''
+  checkoutThenEdit.value = true
+  checkoutModalVisible.value = true
+}
+
 /** 编辑文档（检出后才可编辑） */
 function editDocument(doc) {
   openEditModal(doc)
@@ -2208,6 +2496,8 @@ const loadFolders = async () => {
     const res = await getFolderTree(line.value.oid, activeStage.value)
     if (res.code === 200) {
       folderTree.value = res.data || []
+      // 按创建时间正序排序（同级文件夹：最早创建的在前），并对每级子文件夹递归排序
+      sortFolderTreeByCreatedAtAsc(folderTree.value)
       setParentsRecursive(folderTree.value, null)
     }
   } catch { folderTree.value = [] }
@@ -2237,6 +2527,7 @@ const loadFolders = async () => {
         if (parentFolderRes.code === 200 && parentFolderRes.data?.length) {
           markInheritedRecursive(parentFolderRes.data, parentName.value)
           parentFolderTree.value = parentFolderRes.data
+          sortFolderTreeByCreatedAtAsc(parentFolderTree.value)
         }
       }
     } catch { /* 父系列加载失败不阻塞 */ }
@@ -2267,7 +2558,8 @@ const loadProductLine = async () => {
       parentLineName.value = ''
     }
     await loadStages(oid)  // 先加载阶段列表（含 activeStage 修正）
-    loadFolders()           // 再按当前阶段加载文件夹
+    await loadFolders()           // 再按当前阶段加载文件夹
+    ensureFirstFolderSelected()   // 默认选中第一个文件夹并展示其内容
   } catch { message.error('加载产品线信息失败') }
 }
 
@@ -2311,8 +2603,26 @@ const loadChildren = async (oid) => {
   catch { children.value = [] }
 }
 
-watch(activeStage, () => { selectedFolder.value = null; documents.value = []; inheritedDocuments.value = []; loadFolders() })
-onMounted(loadProductLine)
+/** 加载完成后，如果当前阶段存在文件夹且未选中任何文件夹，自动选中第一个并展示其内容 */
+function ensureFirstFolderSelected() {
+  if (folderTree.value.length === 0) { selectedFolder.value = null; return }
+  if (selectedFolder.value) return
+  selectFolder(folderTree.value[0])
+}
+
+watch(activeStage, async () => {
+  selectedFolder.value = null
+  documents.value = []
+  inheritedDocuments.value = []
+  parts.value = []
+  await loadFolders()
+  ensureFirstFolderSelected()
+})
+onMounted(() => {
+  loadProductLine()
+  // 业务对象过滤下拉：加载 source=ootb 的类型清单（与其他来源/模型定义页面同源）
+  loadBizObjectFilterOptions()
+})
 </script>
 
 <style scoped>
@@ -2471,11 +2781,14 @@ onMounted(loadProductLine)
 }
 .pl-stage-tabs {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.pl-stage-tabs :deep(.ant-tabs-content-holder) { flex: 1; overflow-y: auto; }
-.pl-stage-tabs :deep(.ant-tabs-nav) { margin-bottom: 12px; }
+.pl-stage-tabs :deep(.ant-tabs-content-holder) { flex: 1; min-height: 0; overflow-y: auto; }
+.pl-stage-tabs :deep(.ant-tabs-content) { height: 100%; }
+.pl-stage-tabs :deep(.ant-tabs-tabpane) { height: 100%; min-height: 0; }
+.pl-stage-tabs :deep(.ant-tabs-nav) { margin-bottom: 12px; flex-shrink: 0; }
 .pl-stage-tabs :deep(.ant-tabs-tab) { padding: 8px 16px; }
 
 .pl-tab-label {
@@ -2503,7 +2816,13 @@ onMounted(loadProductLine)
 .pl-stage-desc-items { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ===== 文件夹区域 ===== */
-.pl-folders { margin-top: 8px; }
+.pl-folders {
+  margin-top: 8px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 
 .pl-folders-header {
   display: flex;
@@ -2529,22 +2848,45 @@ onMounted(loadProductLine)
 .pl-folders-empty p { margin: 0; }
 .pl-folders-empty-icon { font-size: 40px; opacity: .3; }
 
-/* 两栏布局 */
+/* 两栏布局：撑满剩余高度，左右两栏各自内部滚动。
+   grid-template-rows: minmax(0,1fr) 让行高撑满 flex 分配的空间 */
 .pl-folders-body {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: minmax(0, 1fr);
   gap: 16px;
-  min-height: 360px;
 }
 
 /* 左侧树 */
 .pl-folders-tree {
   border: 1px solid var(--pl-border);
   border-radius: var(--pl-radius);
-  padding: 6px 0;
   background: #fff;
+  display: flex;
+  flex-direction: column;
+  max-height: 560px;
+}
+/* 树内容滚动区：固定最大高度，内容多时独立滚动 */
+.pl-folders-tree-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  max-height: 480px;
+  padding: 6px 0 8px;
+}
+/* 新建文件夹按钮：在滚动区下方，始终可见可点击 */
+.pl-folders-tree :deep(.pl-tree-new-btn) {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 8px;
+  border-top: 1px solid var(--pl-border);
+  border-radius: 0 0 6px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 /* 树内分组头 */
@@ -2569,6 +2911,7 @@ onMounted(loadProductLine)
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 
 .pl-folders-content-empty {
@@ -2606,11 +2949,11 @@ onMounted(loadProductLine)
 
 .pl-folders-content-files {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   color: var(--pl-text-muted);
   gap: 0;
-  overflow: hidden;
 }
 .pl-folders-content-files p { margin: 0; }
 .pl-folders-content-files-icon { font-size: 40px; opacity: .3; }
@@ -2618,6 +2961,56 @@ onMounted(loadProductLine)
 .pl-folders-content-hint {
   font-size: 12px;
   color: #ccc;
+}
+
+/* ===== 滚动条美化：纤细半透明，减少视觉干扰 ===== */
+/* webkit 浏览器（Chrome/Edge/Safari） */
+.pl-folders-tree-scroll::-webkit-scrollbar,
+.pl-folders-tree-scroll::-webkit-scrollbar-track,
+.pl-folders-tree-scroll::-webkit-scrollbar-thumb,
+.pl-folders-content-files::-webkit-scrollbar,
+.pl-folders-content-files::-webkit-scrollbar-track,
+.pl-folders-content-files::-webkit-scrollbar-thumb {
+  width: 6px;
+  height: 6px;
+}
+.pl-folders-tree-scroll::-webkit-scrollbar-track,
+.pl-folders-content-files::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pl-folders-tree-scroll::-webkit-scrollbar-thumb,
+.pl-folders-content-files::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.pl-folders-tree-scroll::-webkit-scrollbar-thumb:hover,
+.pl-folders-content-files::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* antd a-table 表体/表头/分页器区域滚动条 */
+.pl-folders-content-files :deep(.ant-table-body)::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.pl-folders-content-files :deep(.ant-table-body)::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pl-folders-content-files :deep(.ant-table-body)::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+.pl-folders-content-files :deep(.ant-table-body)::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Firefox 兼容 */
+.pl-folders-tree-scroll,
+.pl-folders-content-files,
+.pl-folders-content-files :deep(.ant-table-body) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
 }
 
 /* ===== 文档列表 ===== */
@@ -2791,5 +3184,44 @@ onMounted(loadProductLine)
   padding-left: 8px;
   border-left: 3px solid #1677ff;
   line-height: 1.2;
+}
+
+/* ===== 新建零组件弹窗：紧凑一屏展示 ===== */
+.part-create-modal .ant-modal-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--pl-border);
+}
+.part-create-modal .ant-modal-title {
+  font-size: 15px;
+}
+.part-create-modal .ant-modal-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--pl-border);
+}
+.part-create-modal :deep(.ant-form-item) {
+  margin-bottom: 12px;
+}
+.part-create-modal :deep(.ant-form-item-label) {
+  padding-bottom: 2px;
+}
+.part-create-modal :deep(.ant-form-item-label > label) {
+  font-size: 13px;
+  color: #595959;
+}
+.part-create-modal :deep(.df-cls-section) {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.part-create-modal :deep(.df-cls-section-header) {
+  margin-bottom: 8px;
+}
+.part-create-modal :deep(.df-cls-section-title) {
+  font-size: 14px;
+}
+.part-create-modal :deep(.dynamic-form) {
+  min-height: 0;
+}
+.part-create-modal :deep(.ant-form) {
+  padding-right: 4px;
 }
 </style>

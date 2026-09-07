@@ -555,6 +555,14 @@ async function loadEntityData() {
         if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object') continue
         data[key] = val
       }
+      // 合并分类 IBA 值（后端放在 entity.clsIba 嵌套字段，避免与实体字段 putAll 冲突）
+      if (entity.clsIba && typeof entity.clsIba === 'object' && !Array.isArray(entity.clsIba)) {
+        for (const [k, v] of Object.entries(entity.clsIba)) {
+          if (v === null || v === undefined || v === '') continue
+          if (typeof v === 'object') continue
+          data[k] = v
+        }
+      }
       // 先清空再批量赋值，确保 TreeSelect 等控件正确响应值变化
       Object.keys(localFormData).forEach(k => delete localFormData[k])
       Object.assign(localFormData, data)
@@ -643,9 +651,13 @@ function collectRequiredErrors(fields, errors) {
   }
 }
 
-/** 将实体 code 直接作为 IBA entityType（如 PRODUCT_LINE） */
+/** Part 子类型（SOFT_TYPE）统一归一为 'PART'，与 PartController.IBA_ENTITY_TYPE 一致 */
+const PART_SOFT_TYPE_IBA = new Set(['PART', 'FUNCTIONAL', 'ELECTRONIC', 'STRUCTURAL', 'ELECTRICAL', 'SOFTWARE', 'PCBA'])
+
+/** 将实体 code 映射为 IBA entityType（Part 子类型归一为 PART） */
 function entityCodeToLower(entityCode) {
-  return entityCode || ''
+  if (!entityCode) return ''
+  return PART_SOFT_TYPE_IBA.has(entityCode) ? 'PART' : entityCode
 }
 
 defineExpose({ getFormData, getClsIbaFieldNames, getClsIbaValues, validate, loading, entityLoading, layoutData })
