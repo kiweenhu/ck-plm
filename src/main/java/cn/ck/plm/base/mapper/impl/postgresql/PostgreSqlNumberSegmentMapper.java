@@ -94,7 +94,7 @@ public interface PostgreSqlNumberSegmentMapper extends NumberSegmentMapper {
     List<NumberSegment> selectByRuleCode(@Param("ruleCode") String ruleCode);
 
     @Override
-    @Update("UPDATE ck_number_segment SET current_value = current_value + 1 WHERE oid = #{oid}")
+    @Update("UPDATE ck_number_segment SET current_value = COALESCE(current_value, 0) + 1 WHERE oid = #{oid}")
     int incrementCurrentValue(@Param("oid") String oid);
 
     @Override

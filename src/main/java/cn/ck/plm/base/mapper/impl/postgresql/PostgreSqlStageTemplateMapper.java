@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2025 深圳乘恺科技有限公司
  * All rights reserved.
- *
- * @author Kiween.Hu; Roney.Liu
  */
 
 package cn.ck.plm.base.mapper.impl.postgresql;
@@ -23,15 +21,18 @@ public interface PostgreSqlStageTemplateMapper extends StageTemplateMapper {
 
     @Override
     @Insert("INSERT INTO ck_stage_template (oid, code, name, description, icon, color, sort_order, " +
-            "default_folders, tenant_oid, creator, created_at, updater, updated_at) " +
+            "default_folders, industry, managed_object_types, tenant_oid, " +
+            "creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{code}, #{name}, #{description}, #{icon}, #{color}, #{sortOrder}, " +
-            "#{defaultFolders}, #{tenantOid}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
+            "#{defaultFolders}, #{industry}, #{managedObjectTypes}, #{tenantOid}, " +
+            "#{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(StageTemplate template);
 
     @Override
     @Update("UPDATE ck_stage_template SET name = #{name}, description = #{description}, " +
             "icon = #{icon}, color = #{color}, sort_order = #{sortOrder}, " +
-            "default_folders = #{defaultFolders}, tenant_oid = #{tenantOid}, " +
+            "default_folders = #{defaultFolders}, industry = #{industry}, " +
+            "managed_object_types = #{managedObjectTypes}, tenant_oid = #{tenantOid}, " +
             "updater = #{updater}, updated_at = #{updatedAt} WHERE oid = #{oid}")
     int update(StageTemplate template);
 
@@ -41,28 +42,32 @@ public interface PostgreSqlStageTemplateMapper extends StageTemplateMapper {
 
     @Override
     @Select("SELECT oid, code, name, description, icon, color, sort_order, " +
-            "default_folders, tenant_oid, creator, created_at, updater, updated_at " +
+            "default_folders, industry, managed_object_types, tenant_oid, " +
+            "creator, created_at, updater, updated_at " +
             "FROM ck_stage_template WHERE oid = #{oid}")
     @Results(id = "stageTemplateResult", value = {
-            @Result(property = "oid",            column = "oid"),
-            @Result(property = "code",           column = "code"),
-            @Result(property = "name",           column = "name"),
-            @Result(property = "description",    column = "description"),
-            @Result(property = "icon",           column = "icon"),
-            @Result(property = "color",          column = "color"),
-            @Result(property = "sortOrder",      column = "sort_order"),
-            @Result(property = "defaultFolders", column = "default_folders"),
-            @Result(property = "tenantOid",      column = "tenant_oid"),
-            @Result(property = "creator",        column = "creator"),
-            @Result(property = "createdAt",      column = "created_at"),
-            @Result(property = "updater",        column = "updater"),
-            @Result(property = "updatedAt",      column = "updated_at")
+            @Result(property = "oid",                   column = "oid"),
+            @Result(property = "code",                  column = "code"),
+            @Result(property = "name",                  column = "name"),
+            @Result(property = "description",           column = "description"),
+            @Result(property = "icon",                  column = "icon"),
+            @Result(property = "color",                 column = "color"),
+            @Result(property = "sortOrder",             column = "sort_order"),
+            @Result(property = "defaultFolders",        column = "default_folders"),
+            @Result(property = "industry",              column = "industry"),
+            @Result(property = "managedObjectTypes",   column = "managed_object_types"),
+            @Result(property = "tenantOid",             column = "tenant_oid"),
+            @Result(property = "creator",               column = "creator"),
+            @Result(property = "createdAt",             column = "created_at"),
+            @Result(property = "updater",               column = "updater"),
+            @Result(property = "updatedAt",             column = "updated_at")
     })
     StageTemplate selectByOid(@Param("oid") String oid);
 
     @Override
     @Select("SELECT oid, code, name, description, icon, color, sort_order, " +
-            "default_folders, tenant_oid, creator, created_at, updater, updated_at " +
+            "default_folders, industry, managed_object_types, tenant_oid, " +
+            "creator, created_at, updater, updated_at " +
             "FROM ck_stage_template WHERE code = #{code} " +
             "AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
             "ORDER BY CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END LIMIT 1")
@@ -73,20 +78,22 @@ public interface PostgreSqlStageTemplateMapper extends StageTemplateMapper {
 
     @Override
     @Select("SELECT oid, code, name, description, icon, color, sort_order, " +
-            "default_folders, tenant_oid, creator, created_at, updater, updated_at " +
+            "default_folders, industry, managed_object_types, tenant_oid, " +
+            "creator, created_at, updater, updated_at " +
             "FROM ck_stage_template " +
             "WHERE tenant_oid = #{tenantOid} " +
-            "ORDER BY sort_order ASC")
+            "ORDER BY industry, sort_order ASC")
     @ResultMap("stageTemplateResult")
     List<StageTemplate> selectAll(@Param("tenantOid") String tenantOid,
                                    @Param("platformOid") String platformOid);
 
     @Override
     @Select("SELECT oid, code, name, description, icon, color, sort_order, " +
-            "default_folders, tenant_oid, creator, created_at, updater, updated_at " +
+            "default_folders, industry, managed_object_types, tenant_oid, " +
+            "creator, created_at, updater, updated_at " +
             "FROM ck_stage_template " +
             "WHERE tenant_oid = #{tenantOid} " +
-            "ORDER BY sort_order ASC")
+            "ORDER BY industry, sort_order ASC")
     @ResultMap("stageTemplateResult")
     List<StageTemplate> selectByTenant(@Param("tenantOid") String tenantOid);
 

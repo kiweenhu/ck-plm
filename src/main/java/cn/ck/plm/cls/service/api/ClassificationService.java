@@ -1,5 +1,6 @@
 package cn.ck.plm.cls.service.api;
 
+import cn.ck.plm.cls.dto.ClassificationCloneResult;
 import cn.ck.plm.cls.entity.Classification;
 import cn.ck.plm.cls.entity.ClassificationIBA;
 import cn.ck.plm.softtype.entity.IBA;
@@ -30,6 +31,12 @@ public interface ClassificationService {
 
     /** 获取以 rootOid 为根的子树（包含该节点及其所有后代） */
     Classification findSubtree(String rootOid);
+
+    /** 获取平台租户的分类树（用于克隆预览） */
+    List<Classification> findPlatformTree();
+
+    /** 从平台克隆指定根分类到当前租户（含 IBA 定义与关联），返回克隆统计 */
+    ClassificationCloneResult cloneFromPlatform(List<String> rootOids);
 
     // ===== 分类-IBA 关联 =====
 

@@ -42,4 +42,11 @@ public interface PostgreSqlClsIbaDataMapper extends ClsIbaDataMapper {
     String selectAttrValue(@Param("entityOid") String entityOid,
                            @Param("classificationOid") String classificationOid,
                            @Param("attrCode") String attrCode);
+
+    @Override
+    @Select("SELECT COUNT(*) FROM ck_cls_iba_data "
+            + "WHERE classification_oid = #{classificationOid} "
+            + "AND attr_value IS NOT NULL "
+            + "AND attr_value::text NOT IN ('null', '\"\"')")
+    int countNonEmptyByClassificationOid(@Param("classificationOid") String classificationOid);
 }

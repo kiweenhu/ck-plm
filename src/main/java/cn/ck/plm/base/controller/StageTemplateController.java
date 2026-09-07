@@ -73,14 +73,28 @@ public class StageTemplateController {
 
     /** 租户克隆平台级模板到本租户 */
     @PostMapping("/clone-from-platform")
-    public ApiResponse<Integer> cloneFromPlatform() {
+    public ApiResponse<Integer> cloneFromPlatform(@RequestParam(required = false) String industry) {
         try {
-            int count = service.cloneFromPlatform();
+            int count = industry == null || industry.isEmpty()
+                    ? service.cloneFromPlatform()
+                    : service.cloneFromPlatform(industry);
             return ApiResponse.ok(count);
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
         } catch (IllegalStateException e) {
             return ApiResponse.fail(403, e.getMessage());
         }
+    }
+
+    /** 查询平台提供的行业列表 */
+    @GetMapping("/platform-industries")
+    public ApiResponse<List<String>> listPlatformIndustries() {
+        return ApiResponse.ok(service.listPlatformIndustries());
+    }
+
+    /** 查询平台级模板（按 industry 过滤，空 industry 返回全部） */
+    @GetMapping("/platform")
+    public ApiResponse<List<StageTemplate>> findPlatformTemplates(@RequestParam(required = false) String industry) {
+        return ApiResponse.ok(service.findPlatformTemplates(industry));
     }
 }

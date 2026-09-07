@@ -41,6 +41,9 @@ public interface ClsIbaDataMapper {
      * 查询指定对象实例在指定分类下的单个 IBA 属性值。
      */
     String selectAttrValue(@Param("entityOid") String entityOid,
-                           @Param("classificationOid") String classificationOid,
-                           @Param("attrCode") String attrCode);
-}
+                              @Param("classificationOid") String classificationOid,
+                              @Param("attrCode") String attrCode);
+
+        /** 统计指定分类下存在非空属性值的记录数（任意实例 entity_oid） */
+        int countNonEmptyByClassificationOid(@Param("classificationOid") String classificationOid);
+    }

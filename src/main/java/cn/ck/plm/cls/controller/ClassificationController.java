@@ -2,6 +2,7 @@ package cn.ck.plm.cls.controller;
 
 import cn.ck.plm.base.util.TenantContext;
 import cn.ck.plm.base.util.UserContext;
+import cn.ck.plm.cls.dto.ClassificationCloneResult;
 import cn.ck.plm.cls.entity.Classification;
 import cn.ck.plm.cls.entity.ClassificationIBA;
 import cn.ck.plm.cls.service.api.ClassificationService;
@@ -108,6 +109,23 @@ public class ClassificationController {
         Classification subtree = classificationService.findSubtree(rootOid);
         if (subtree == null) return ApiResponse.fail(404, "分类不存在: " + rootOid);
         return ApiResponse.ok(subtree);
+    }
+
+    /** 获取平台租户的分类树（用于克隆预览） */
+    @GetMapping("/platform-tree")
+    public ApiResponse<List<Classification>> platformTree() {
+        return ApiResponse.ok(classificationService.findPlatformTree());
+    }
+
+    /** 从平台克隆指定根分类到当前租户（支持多选），返回克隆统计 */
+    @PostMapping("/clone-platform")
+    public ApiResponse<ClassificationCloneResult> clonePlatform(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> rootOids = body != null ? (List<String>) body.get("rootOids") : null;
+        if (rootOids == null || rootOids.isEmpty()) {
+            return ApiResponse.fail(400, "rootOids 不能为空");
+        }
+        return ApiResponse.ok(classificationService.cloneFromPlatform(rootOids));
     }
 
     // ==================== 分类-IBA 关联 ====================

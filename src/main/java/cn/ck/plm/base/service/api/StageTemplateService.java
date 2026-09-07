@@ -28,12 +28,24 @@ public interface StageTemplateService {
 
     List<StageTemplate> findAll();
 
+    /** 查询本租户指定行业的阶段模板（industry 为空返回全部） */
+    List<StageTemplate> findAll(String industry);
+
     /** 初始化平台级默认阶段模板（幂等） */
     int initPlatformDefaults();
 
     /** 租户克隆平台级模板到本租户（幂等：已存在同code的租户模板则跳过） */
     int cloneFromPlatform();
 
+    /** 按行业克隆平台模板到本租户（industry 为空时克隆全部） */
+    int cloneFromPlatform(String industry);
+
     /** 查询平台级模板（用于 fallback 初始化） */
     List<StageTemplate> findPlatformTemplates();
+
+    /** 查询平台级模板（按 industry 过滤，空 industry 返回全部） */
+    List<StageTemplate> findPlatformTemplates(String industry);
+
+    /** 查询平台提供的行业列表（distinct industry） */
+    List<String> listPlatformIndustries();
 }
