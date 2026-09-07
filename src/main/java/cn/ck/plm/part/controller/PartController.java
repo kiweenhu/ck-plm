@@ -197,36 +197,41 @@ public class PartController {
         return ApiResponse.ok();
     }
 
-    /** 按 OID 查询（附加最新迭代的版本/unit/source/视图/生命周期及分类 IBA 值，便于详情展示与编辑回填） */
+    /** 按 OID 查询（附加最新迭代或指定迭代的版本/unit/source/视图/生命周期及分类 IBA 值） */
     @GetMapping("/{oid}")
-    public ApiResponse<Map<String, Object>> getByOid(@PathVariable String oid) {
+    public ApiResponse<Map<String, Object>> getByOid(@PathVariable String oid,
+                                                      @RequestParam(required = false) String iterationOid) {
         Part part = partService.findByOid(oid);
         if (part == null) {
             return ApiResponse.fail(404, "零组件不存在: " + oid);
         }
         Map<String, Object> result = objectMapper.convertValue(part,
                 new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-        PartIteration latest = partService.findLatestIteration(oid);
-        if (latest != null) {
-            result.put("revision", latest.getRevision());
-            result.put("iteration", latest.getIteration());
-            result.put("displayVersion", latest.getDisplayVersion());
-            result.put("checkedOut", latest.isCheckedOut());
-            result.put("checkedOutBy", latest.getCheckedOutBy());
-            result.put("checkedOutComment", latest.getCheckedOutComment());
-            result.put("unit", latest.getUnit());
-            result.put("source", latest.getSource());
-            result.put("view", latest.getView() != null ? latest.getView().getCode() : null);
-            if (latest.getStatus() != null) {
-                result.put("statusCode", latest.getStatus().getCode());
-                result.put("statusName", latest.getStatus().getDisplayName());
+        // 指定迭代时返回该迭代，否则返回最新迭代
+        PartIteration iteration = iterationOid != null
+                ? partService.findIterationByOid(iterationOid)
+                : partService.findLatestIteration(oid);
+        if (iteration != null) {
+            result.put("iterationOid", iteration.getOid());
+            result.put("revision", iteration.getRevision());
+            result.put("iteration", iteration.getIteration());
+            result.put("displayVersion", iteration.getDisplayVersion());
+            result.put("checkedOut", iteration.isCheckedOut());
+            result.put("checkedOutBy", iteration.getCheckedOutBy());
+            result.put("checkedOutComment", iteration.getCheckedOutComment());
+            result.put("unit", iteration.getUnit());
+            result.put("source", iteration.getSource());
+            result.put("view", iteration.getView() != null ? iteration.getView().getCode() : null);
+            if (iteration.getStatus() != null) {
+                result.put("statusCode", iteration.getStatus().getCode());
+                result.put("statusName", iteration.getStatus().getDisplayName());
             }
-        }
-        // 附加最新迭代的分类 IBA 属性值（entity_oid = 最新迭代 oid）
-        if (part.getClsOid() != null && latest != null) {
-            Map<String, Object> clsIba = clsIbaDataService.getValues(latest.getOid(), part.getClsOid());
-            if (clsIba != null) {
-                result.putAll(clsIba);
+            // 附加该迭代的分类 IBA 属性值
+            if (part.getClsOid() != null) {
+                Map<String, Object> clsIba = clsIbaDataService.getValues(iteration.getOid(), part.getClsOid());
+                if (clsIba != null) {
+                    result.put("clsIba", clsIba);
+                }
             }
         }
         return ApiResponse.ok(result);
@@ -258,9 +263,13 @@ public class PartController {
         return ApiResponse.ok(result);
     }
 
-    /** 按容器查询 */
+    /** 按容器查询（支持名称/编码关键字模糊过滤） */
     @GetMapping("/by-container")
-    public ApiResponse<List<Part>> listByContainer(@RequestParam String containerOid) {
+    public ApiResponse<List<Part>> listByContainer(@RequestParam String containerOid,
+                                                    @RequestParam(required = false) String keyword) {
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            return ApiResponse.ok(partService.findByContainerAndKeyword(containerOid, keyword.trim()));
+        }
         return ApiResponse.ok(partService.findByContainerOid(containerOid));
     }
 }

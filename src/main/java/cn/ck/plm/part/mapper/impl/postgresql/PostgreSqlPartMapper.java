@@ -63,6 +63,20 @@ public interface PostgreSqlPartMapper extends PartMapper {
     List<Part> selectByContainerOid(@Param("containerOid") String containerOid);
 
     @Override
+    @Select("<script>" +
+            "SELECT oid, name, number, description, type_definition_code, " +
+            "container_oid, container_type, folder_oid, stage_oid, cls_oid, " +
+            "creator, created_at, updater, updated_at FROM ck_part " +
+            "WHERE container_oid = #{containerOid} " +
+            "<if test='keyword != null and keyword != \"\"'>" +
+            "AND (name ILIKE '%' || #{keyword} || '%' OR number ILIKE '%' || #{keyword} || '%') " +
+            "</if>" +
+            "ORDER BY created_at DESC" +
+            "</script>")
+    @ResultMap("partResult")
+    List<Part> selectByContainerAndKeyword(@Param("containerOid") String containerOid, @Param("keyword") String keyword);
+
+    @Override
     @Select(SELECT_COLUMNS + "WHERE container_oid = #{containerOid} AND stage_oid = #{stageOid} ORDER BY created_at DESC")
     @ResultMap("partResult")
     List<Part> selectByContainerAndStage(@Param("containerOid") String containerOid,
@@ -77,6 +91,10 @@ public interface PostgreSqlPartMapper extends PartMapper {
     @Select(SELECT_COLUMNS + "WHERE cls_oid = #{clsOid} ORDER BY created_at DESC")
     @ResultMap("partResult")
     List<Part> selectByClassificationOid(@Param("clsOid") String clsOid);
+
+    @Override
+    @Select("SELECT COUNT(*) FROM ck_part WHERE cls_oid = #{classificationOid}")
+    int countByClassificationOid(@Param("classificationOid") String classificationOid);
 
     @Override
     @Select(SELECT_COLUMNS + "ORDER BY created_at DESC")

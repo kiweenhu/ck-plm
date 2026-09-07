@@ -41,6 +41,9 @@ public interface PartService extends MasterService {
     /** 查询部件主对象的最新迭代（用于回填迭代级字段，如 unit/source） */
     PartIteration findLatestIteration(String masterOid);
 
+    /** 按迭代 oid 查询指定迭代（用于查看历史版本详情） */
+    PartIteration findIterationByOid(String iterationOid);
+
     /** 删除部件及其全部子版本 */
     void delete(String oid);
 
@@ -55,6 +58,9 @@ public interface PartService extends MasterService {
 
     /** 按所属容器查询全部部件 */
     List<Part> findByContainerOid(String containerOid);
+
+    /** 按所属容器 + 关键字（名称/编码）查询部件 */
+    List<Part> findByContainerAndKeyword(String containerOid, String keyword);
 
     /** 按所属容器 + 阶段查询 */
     List<Part> findByContainerAndStage(String containerOid, String stageOid);

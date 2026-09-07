@@ -71,6 +71,7 @@ public class PartServiceImpl implements PartService {
         iter.setIteration(1);
         iter.setLatest(true);
         iter.setCheckedOut(false);
+        iter.setBranchId("master");
         iter.setCreatedAt(LocalDateTime.now());
         iter.setUpdatedAt(LocalDateTime.now());
         iter.setCreator(master.getCreator());
@@ -90,6 +91,7 @@ public class PartServiceImpl implements PartService {
         derived.setCheckedOut(false);
         derived.setDerivedFromOid(src.getOid());
         derived.setDerivedAt(LocalDateTime.now());
+        derived.setBranchId(src.getBranchId() != null ? src.getBranchId() : "master");
         derived.setCreatedAt(LocalDateTime.now());
         derived.setUpdatedAt(LocalDateTime.now());
         derived.setUnit(src.getUnit());
@@ -126,6 +128,7 @@ public class PartServiceImpl implements PartService {
         iter.setIteration(1);
         iter.setLatest(true);
         iter.setCheckedOut(false);
+        iter.setBranchId("master");
         iter.setCreatedAt(LocalDateTime.now());
         iter.setUpdatedAt(LocalDateTime.now());
         iter.setCreator(part.getCreator());
@@ -215,6 +218,7 @@ public class PartServiceImpl implements PartService {
         iter.setIteration(1);
         iter.setLatest(true);
         iter.setCheckedOut(false);
+        iter.setBranchId("master");
         iter.setCreatedAt(LocalDateTime.now());
         iter.setUpdatedAt(LocalDateTime.now());
         iter.setCreator(source.getCreator());
@@ -326,6 +330,7 @@ public class PartServiceImpl implements PartService {
         copy.setIteration(1);
         copy.setLatest(true);
         copy.setCheckedOut(false);
+        copy.setBranchId(currentIter.getBranchId() != null ? currentIter.getBranchId() : "master");
         copy.setCreatedAt(LocalDateTime.now());
         copy.setUpdatedAt(LocalDateTime.now());
         copy.setCreator(currentIter.getCreator());
@@ -364,6 +369,11 @@ public class PartServiceImpl implements PartService {
     @Override
     public List<Part> findByContainerOid(String containerOid) {
         return partMapper.selectByContainerOid(containerOid);
+    }
+
+    @Override
+    public List<Part> findByContainerAndKeyword(String containerOid, String keyword) {
+        return partMapper.selectByContainerAndKeyword(containerOid, keyword);
     }
 
     @Override
@@ -483,6 +493,11 @@ public class PartServiceImpl implements PartService {
     @Override
     public PartIteration findLatestIteration(String masterOid) {
         return iterationMapper.selectLatestByMasterOid(masterOid);
+    }
+
+    @Override
+    public PartIteration findIterationByOid(String iterationOid) {
+        return iterationMapper.selectByOid(iterationOid);
     }
 
     @Override

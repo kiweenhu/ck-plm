@@ -10,8 +10,11 @@ import cn.ck.plm.part.mapper.PartMapper;
 import cn.ck.plm.part.entity.Part;
 import cn.ck.plm.base.entity.UserActivity;
 import cn.ck.plm.base.mapper.UserActivityMapper;
+import cn.ck.plm.bom.entity.BomLinks;
+import cn.ck.plm.bom.mapper.BomLinksMapper;
 import cn.ck.plm.checkout.dto.CheckoutVO;
 import cn.ck.plm.checkout.service.api.CheckoutProvider;
+import cn.ck.plm.cls.service.api.ClsIbaDataService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -20,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -33,12 +37,18 @@ public class PartCheckoutProvider implements CheckoutProvider {
     private final PartMapper partMapper;
     private final PartIterationMapper iterationMapper;
     private final UserActivityMapper activityMapper;
+    private final ClsIbaDataService clsIbaDataService;
+    private final BomLinksMapper bomLinksMapper;
 
     public PartCheckoutProvider(PartMapper partMapper, PartIterationMapper iterationMapper,
-                                 UserActivityMapper activityMapper) {
+                                 UserActivityMapper activityMapper,
+                                 ClsIbaDataService clsIbaDataService,
+                                 BomLinksMapper bomLinksMapper) {
         this.partMapper = partMapper;
         this.iterationMapper = iterationMapper;
         this.activityMapper = activityMapper;
+        this.clsIbaDataService = clsIbaDataService;
+        this.bomLinksMapper = bomLinksMapper;
     }
 
     @Override
@@ -111,6 +121,7 @@ public class PartCheckoutProvider implements CheckoutProvider {
         copy.setCheckedOutComment(comment);
         copy.setDerivedFromOid(currentIter.getOid());      // 记录来源版本
         copy.setDerivedAt(LocalDateTime.now());
+        copy.setBranchId(currentIter.getBranchId() != null ? currentIter.getBranchId() : "master");
         copy.setView(currentIter.getView());
         copy.setStatus(currentIter.getStatus());
         copy.setLifecycleTemplateIterationOid(currentIter.getLifecycleTemplateIterationOid());
@@ -118,11 +129,47 @@ public class PartCheckoutProvider implements CheckoutProvider {
         copy.setSource(currentIter.getSource());
         iterationMapper.insert(copy);
 
+        // 复制分类 IBA 数据到新小版本（避免检出后编辑页面分类属性值丢失）
+        if (part.getClsOid() != null) {
+            Map<String, Object> clsIba = clsIbaDataService.getValues(currentIter.getOid(), part.getClsOid());
+            if (clsIba != null && !clsIba.isEmpty()) {
+                clsIbaDataService.saveValues(copy.getOid(), part.getClsOid(), clsIba);
+            }
+        }
+
+        // 复制源版本的下挂 BOM 行到新版本（否则检出后 BOM 结构会丢失）
+        copyBomLinksToIteration(currentIter.getOid(), copy.getOid());
+
         log.info("检出成功: partOid={}, {}.{} -> {}.{}, user={}", entityOid,
                 currentIter.getRevision(), currentIter.getIteration(),
                 copy.getRevision(), copy.getIteration(), user);
 
         recordActivity(user, "检出部件", part);
+    }
+
+    /** 将源迭代的全部 BOM 行复制到目标迭代（检出时保留 BOM 结构） */
+    private void copyBomLinksToIteration(String sourceIterationOid, String targetIterationOid) {
+        List<BomLinks> sourceLinks = bomLinksMapper.selectByParentIterationOid(sourceIterationOid);
+        for (BomLinks source : sourceLinks) {
+            BomLinks copy = new BomLinks();
+            copy.setOid(UUID.randomUUID().toString());
+            copy.setCode(source.getCode());
+            copy.setName(source.getName());
+            copy.setDescription(source.getDescription());
+            copy.setParentIterationOid(targetIterationOid);
+            copy.setChildPartOid(source.getChildPartOid());
+            copy.setChildIterationOid(source.getChildIterationOid());
+            copy.setResolvedIterationOid(source.getResolvedIterationOid());
+            copy.setQuantity(source.getQuantity());
+            copy.setUnit(source.getUnit());
+            copy.setLineNumber(source.getLineNumber());
+            copy.setUnitCost(source.getUnitCost());
+            copy.setTenantOid(source.getTenantOid());
+            copy.setCreatedAt(LocalDateTime.now());
+            copy.setUpdatedAt(LocalDateTime.now());
+            bomLinksMapper.insert(copy);
+        }
+        log.info("检出复制 BOM 行: source={}, target={}, count={}", sourceIterationOid, targetIterationOid, sourceLinks.size());
     }
 
     @Override
@@ -152,16 +199,19 @@ public class PartCheckoutProvider implements CheckoutProvider {
             throw new IllegalStateException("只有检出人 " + checkedOutIter.getCheckedOutBy() + " 才能取消检出");
         }
 
-        // 1. 删除检出时创建的新版本
+        // 1. 清除检出后版本的下挂 BOM 行（撤销检出后，检出后版本的修改作废）
+        int deletedLinks = bomLinksMapper.deleteByParentIterationOid(checkedOutIter.getOid());
+
+        // 2. 删除检出时创建的新版本
         iterationMapper.deleteByOid(checkedOutIter.getOid());
 
-        // 2. 恢复源版本 latest = true
+        // 3. 恢复源版本 latest = true
         if (sourceIter != null) {
             sourceIter.setLatest(true);
             iterationMapper.update(sourceIter);
         }
 
-        log.info("取消检出成功: partOid={}, user={}", entityOid, user);
+        log.info("取消检出成功: partOid={}, user={}, deletedBomLinks={}", entityOid, user, deletedLinks);
 
         recordActivity(user, "取消检出", part);
     }
