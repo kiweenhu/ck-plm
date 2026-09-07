@@ -18,6 +18,9 @@ import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * 应用启动时自动为 OOTB 实体创建默认页面布局。
  *
@@ -127,6 +130,9 @@ public class PageLayoutInitializer implements CommandLineRunner {
                 failed++;
             }
 
+            // ==== Part 子类型继承 PART 当前定义的布局 ====
+            clonePartLayoutToSoftTypes();
+
         } catch (Exception e) {
             log.error("初始化页面布局失败: {}", e.getMessage(), e);
             return;
@@ -172,6 +178,59 @@ public class PageLayoutInitializer implements CommandLineRunner {
         pageLayoutMapper.insert(layout);
         log.info("  √ {}/{} (oid={}, tenantOid={})", entityCode, operationCode, layout.getOid(), layout.getTenantOid());
         return true;
+    }
+
+    /**
+     * 将 PART 当前定义的布局复制到其 SOFT_TYPE 子类型（电子元器件、结构件、电气件、软件）。
+     * <p>子类型继承 PART 的 create/update 等布局定义，减少实施工作量。幂等：已存在的布局跳过。
+     */
+    private void clonePartLayoutToSoftTypes() {
+        try {
+            // 1. 查询 PART 当前的布局定义
+            List<Map<String, Object>> partLayouts = jdbcTemplate.queryForList(
+                    "SELECT operation_code, operation_name, layout_json::text AS layout_json " +
+                    "FROM ck_type_page_layout WHERE entity_code = 'PART' ORDER BY operation_code");
+            if (partLayouts.isEmpty()) {
+                log.warn("未找到 PART 布局，跳过 Part 子类型布局复制");
+                return;
+            }
+
+            // 2. 查询 Part 的 SOFT_TYPE 子类型
+            List<Map<String, Object>> softTypes = jdbcTemplate.queryForList(
+                    "SELECT oid, code FROM ck_type_definition " +
+                    "WHERE code IN ('ELECTRONIC','STRUCTURAL','ELECTRICAL','SOFTWARE','PCBA','FUNCTIONAL') " +
+                    "AND tenant_oid = ? ORDER BY sort_order",
+                    TenantContext.PLATFORM_TENANT_OID);
+
+            int copied = 0, skipped = 0;
+            for (Map<String, Object> softType : softTypes) {
+                String softTypeOid = (String) softType.get("oid");
+                String softTypeCode = (String) softType.get("code");
+                for (Map<String, Object> partLayout : partLayouts) {
+                    String opCode = (String) partLayout.get("operation_code");
+                    String opName = (String) partLayout.get("operation_name");
+                    String layoutJson = (String) partLayout.get("layout_json");
+
+                    // 幂等：已存在则跳过
+                    Integer count = jdbcTemplate.queryForObject(
+                            "SELECT COUNT(*) FROM ck_type_page_layout WHERE entity_oid = ? AND operation_code = ?",
+                            Integer.class, softTypeOid, opCode);
+                    if (count != null && count > 0) {
+                        skipped++;
+                        continue;
+                    }
+
+                    PageLayout layout = new PageLayout(softTypeOid, softTypeCode, opCode, opName, layoutJson);
+                    layout.setTenantOid(TenantContext.PLATFORM_TENANT_OID);
+                    pageLayoutMapper.insert(layout);
+                    copied++;
+                    log.info("  √ {}/{} 布局已从 PART 复制", softTypeCode, opCode);
+                }
+            }
+            log.info("Part 子类型布局复制完成: 复制 {} 个, 跳过 {} 个", copied, skipped);
+        } catch (Exception e) {
+            log.warn("复制 PART 布局到子类型失败: {}", e.getMessage());
+        }
     }
 
     // ==================== 布局 JSON 模板 ====================

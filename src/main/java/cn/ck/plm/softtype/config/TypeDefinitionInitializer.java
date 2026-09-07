@@ -123,12 +123,30 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
      */
     private static final Map<String, SoftTypeMeta> FUNCTIONAL_SOFT_TYPES = new LinkedHashMap<>();
     static {
-        fst("SYSTEM", "System", "系统", "ApartmentOutlined",
+        fst("SYSTEM", "系统", "系统", "ApartmentOutlined",
                 "装备级系统，对应军工领域的武器系统/火控系统/导航系统，或汽车领域的动力域/底盘域", 15);
-        fst("SUBSYSTEM", "Subsystem", "子系统", "BlockOutlined",
+        fst("SUBSYSTEM", "子系统", "子系统", "BlockOutlined",
                 "系统下的子功能模块，如武器系统下的发射子系统、制导子系统", 16);
         fst("CI", "CI", "配置/构型项目", "ControlOutlined",
                 "配置项(Configuration Item)，可独立管理、版本控制的构型单元", 17);
+    }
+
+    /**
+     * Part 实体下的自定义子类型（SOFT_TYPE，source=ootb，typeKind=SOFT_TYPE）。
+     * code → {name, displayName, icon, description, sortOrder}
+     */
+    private static final Map<String, SoftTypeMeta> PART_SOFT_TYPES = new LinkedHashMap<>();
+    static {
+        pst("ELECTRONIC", "电子元器件", "电子元器件", "ThunderboltOutlined",
+                "电子元器件，如电阻、电容、电感、二极管、IC、连接器等", 13);
+        pst("STRUCTURAL", "结构件", "结构件", "ToolOutlined",
+                "结构件，如钣金件、机加件、注塑件、铸造件、焊接件等", 14);
+        pst("ELECTRICAL", "电气件", "电气件", "BulbOutlined",
+                "电气件，如线束、连接器、继电器、开关、电机等", 15);
+        pst("SOFTWARE", "软件", "软件", "CodeOutlined",
+                "软件，如嵌入式软件、应用软件、固件、算法等", 16);
+        pst("PCBA", "PCBA", "PCBA组件", "AppstoreOutlined",
+                "印刷电路板组件，已完成电子元器件贴装的电路板", 17);
     }
 
     /**
@@ -154,6 +172,10 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
 
     private static void fst(String code, String name, String displayName, String icon, String description, int sortOrder) {
         FUNCTIONAL_SOFT_TYPES.put(code, new SoftTypeMeta(code, name, displayName, icon, description, sortOrder));
+    }
+
+    private static void pst(String code, String name, String displayName, String icon, String description, int sortOrder) {
+        PART_SOFT_TYPES.put(code, new SoftTypeMeta(code, name, displayName, icon, description, sortOrder));
     }
 
     // ==================== 构造注入 ====================
@@ -224,42 +246,58 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
 
         // 注册 Functional 实体下的自定义子类型（System、Subsystem、CI）
         ensureFunctionalSoftTypes();
+
+        // 注册 Part 实体下的自定义子类型（电子元器件、结构件、电气件、软件）
+        ensurePartSoftTypes();
     }
 
     /**
      * 注册 Functional 实体下的自定义子类型（SOFT_TYPE，source=ootb）。
      */
     private void ensureFunctionalSoftTypes() {
-        // 查找 FUNCTIONAL 父类型的 oid
-        TypeDefinition functionalParent = mapper.selectByCode("FUNCTIONAL",
+        ensureSoftTypes("FUNCTIONAL", "Functional", FUNCTIONAL_SOFT_TYPES);
+    }
+
+    /**
+     * 注册 Part 实体下的自定义子类型（SOFT_TYPE，source=ootb）。
+     */
+    private void ensurePartSoftTypes() {
+        ensureSoftTypes("PART", "Part", PART_SOFT_TYPES);
+    }
+
+    /**
+     * 注册指定 OOTB 实体下的自定义子类型（SOFT_TYPE，source=ootb）。
+     */
+    private void ensureSoftTypes(String parentCode, String parentLabel, Map<String, SoftTypeMeta> softTypes) {
+        // 查找父类型的 oid
+        TypeDefinition parent = mapper.selectByCode(parentCode,
                 TenantContext.PLATFORM_TENANT_OID, TenantContext.PLATFORM_TENANT_OID);
-        if (functionalParent == null) {
-            log.warn("未找到 FUNCTIONAL 父类型，跳过 Functional 子类型注册");
+        if (parent == null) {
+            log.warn("未找到 {} 父类型，跳过其子类型注册", parentCode);
             return;
         }
 
-        log.info("开始注册 Functional 子类型 (System/Subsystem/CI)...");
-        for (Map.Entry<String, SoftTypeMeta> entry : FUNCTIONAL_SOFT_TYPES.entrySet()) {
-            SoftTypeMeta meta = entry.getValue();
+        log.info("开始注册 {} 子类型...", parentLabel);
+        for (SoftTypeMeta meta : softTypes.values()) {
             try {
                 if (mapper.existsByCode(meta.code, TenantContext.PLATFORM_TENANT_OID,
                         TenantContext.PLATFORM_TENANT_OID) > 0) {
                     log.debug("  - {} (code={}) 已存在，跳过", meta.displayName, meta.code);
                     continue;
                 }
-                ensureFunctionalSoftType(functionalParent, meta);
+                ensureSoftType(parent, meta);
                 log.info("  √ {} (code={}) 注册成功", meta.displayName, meta.code);
             } catch (Exception e) {
-                log.error("  ✗ 注册 Functional 子类型 {} 失败: {}", meta.code, e.getMessage(), e);
+                log.error("  ✗ 注册 {} 子类型 {} 失败: {}", parentLabel, meta.code, e.getMessage(), e);
             }
         }
-        log.info("Functional 子类型注册完成");
+        log.info("{} 子类型注册完成", parentLabel);
     }
 
     /**
-     * 注册单个 Functional 子类型（SOFT_TYPE）。
+     * 注册单个 SOFT_TYPE 子类型。
      */
-    private void ensureFunctionalSoftType(TypeDefinition parent, SoftTypeMeta meta) {
+    private void ensureSoftType(TypeDefinition parent, SoftTypeMeta meta) {
         TypeDefinition td = new TypeDefinition(meta.code, meta.name, TypeDefinition.KIND_SOFT_TYPE);
         td.setIcon(meta.icon);
         td.setSource("ootb");
@@ -270,7 +308,7 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
         td.setRootTypeCode(parent.getRootTypeCode() != null ? parent.getRootTypeCode() : parent.getCode());
         mapper.insert(td);
 
-        // 继承父类型的规则和模板绑定（FUNCTIONAL 已绑定 PART_NUMBER、LETTER_8、STANDARD）
+        // 继承父类型的规则和模板绑定（PART/FUNCTIONAL 已绑定 PART_NUMBER、LETTER_8、STANDARD）
         bindNumberRule(td, "PART_NUMBER");
         bindVersionRule(td, "LETTER_8");
         bindLifecycleTemplate(td, "STANDARD");
