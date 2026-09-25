@@ -14,7 +14,9 @@ import cn.ck.plm.document.entity.Document;
 import cn.ck.plm.document.entity.DocumentIteration;
 import cn.ck.plm.document.service.api.DocumentService;
 import cn.ck.plm.iam.dto.ApiResponse;
+import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
 import cn.ck.plm.softtype.service.api.IBADataService;
+import cn.ck.plm.softtype.service.api.SoftTypeInstanceService;
 import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
@@ -38,36 +40,39 @@ public class DocumentController {
     private final IbaDataSupport ibaDataSupport;
     private final ClsIbaDataSupport clsIbaDataSupport;
     private final ObjectMapper objectMapper;
+    private final SoftTypeInstanceService softTypeInstanceService;
 
     public DocumentController(DocumentService documentService, IBADataService ibaDataService,
                               ClsIbaDataService clsIbaDataService,
                               IbaDataSupport ibaDataSupport,
                               ClsIbaDataSupport clsIbaDataSupport,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              SoftTypeInstanceService softTypeInstanceService) {
         this.documentService = documentService;
         this.ibaDataService = ibaDataService;
         this.clsIbaDataService = clsIbaDataService;
         this.ibaDataSupport = ibaDataSupport;
         this.clsIbaDataSupport = clsIbaDataSupport;
         this.objectMapper = objectMapper;
+        this.softTypeInstanceService = softTypeInstanceService;
     }
 
-    /** 创建文档 */
+    /**
+     * 创建文档。
+     *
+     * <p>创建编排已收敛到 {@code DocumentInstanceCreator}，本方法通过
+     * {@code createForHost("DOCUMENT", …)} 复用同一实现，避免与统一入口逻辑分叉。
+     *
+     * <p>宿主强校验：{@code /documents} 只创建 DOCUMENT 宿主对象；若类型宿主不是 DOCUMENT
+     * 将显式返回 400，而非静默写入 ck_document。
+     */
     @PostMapping
     public ApiResponse<Document> create(@RequestBody Map<String, Object> body) {
         try {
-            Document document = objectMapper.convertValue(body, Document.class);
-            // 提取 CKFile.oid 和 CKAttachment.oid（不属于 Document 实体字段）
-            String ckfileOid = ibaDataSupport.getString(body, "ckfileOid");
-            String attachmentOid = ibaDataSupport.getString(body, "attachmentOid");
-            Document created = documentService.create(document, ckfileOid, attachmentOid);
-            // 保存分类 IBA 属性值（迭代级，ck_cls_iba_data，entity_oid = 最新迭代 oid）
-            DocumentIteration latestIter = documentService.findLatestIteration(created.getOid());
-            String iterOid = latestIter != null ? latestIter.getOid() : created.getOid();
-            clsIbaDataSupport.saveClsIbaValues(iterOid, created.getClsOid(), body);
-            // 保存实体 IBA 动态属性值（实体级，ck_type_iba_data）
-            ibaDataSupport.saveIbaValues(IBA_ENTITY_TYPE, created.getOid(), body);
-            return ApiResponse.ok(created);
+            String typeCode = ibaDataSupport.getString(body, "typeDefinitionCode");
+            SoftTypeInstanceResult result = softTypeInstanceService.createForHost(
+                    IBA_ENTITY_TYPE, typeCode != null ? typeCode : IBA_ENTITY_TYPE, body);
+            return ApiResponse.ok((Document) result.getEntity());
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
         } catch (Exception e) {
@@ -79,18 +84,13 @@ public class DocumentController {
     @PutMapping("/{oid}")
     public ApiResponse<Document> update(@PathVariable String oid, @RequestBody Map<String, Object> body) {
         try {
-            Document document = objectMapper.convertValue(body, Document.class);
-            document.setOid(oid);
-            Document updated = documentService.update(document);
-            // 保存分类 IBA 属性值（迭代级，ck_cls_iba_data，entity_oid = 最新迭代 oid）
-            DocumentIteration latestIter = documentService.findLatestIteration(oid);
-            String iterOid = latestIter != null ? latestIter.getOid() : oid;
-            clsIbaDataSupport.saveClsIbaValues(iterOid, updated.getClsOid(), body);
-            // 合并保存实体 IBA 动态属性值（保留未提交的字段）
-            ibaDataSupport.mergeIbaValues(IBA_ENTITY_TYPE, oid, body);
-            return ApiResponse.ok(updated);
+            // 更新编排已收敛到 DocumentServiceImpl#updateInstance，与统一入口共用同一实现
+            Object entity = softTypeInstanceService.updateForHost(IBA_ENTITY_TYPE, oid, body);
+            return ApiResponse.ok((Document) entity);
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(404, e.getMessage());
+        } catch (UnsupportedOperationException e) {
+            return ApiResponse.fail(501, e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail(500, "更新文档失败: " + e.getMessage());
         }
@@ -172,25 +172,19 @@ public class DocumentController {
         }
     }
 
-    /** 查询单个文档（附加对象实例的分类 IBA 值，便于编辑回填） */
+    /**
+     * 查询单个文档（附加对象实例的分类 IBA 值，便于编辑回填）。
+     *
+     * <p>读取编排已收敛到 {@code DocumentInstanceCreator#get}，与统一入口共用同一实现。
+     */
     @GetMapping("/{oid}")
     public ApiResponse<Map<String, Object>> getByOid(@PathVariable String oid) {
-        Document doc = documentService.findByOid(oid);
-        if (doc == null) {
+        Object entity = softTypeInstanceService.getForHost(IBA_ENTITY_TYPE, oid, null);
+        if (entity == null) {
             return ApiResponse.fail(404, "文档不存在: " + oid);
         }
-        Map<String, Object> result = objectMapper.convertValue(doc,
-                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-        // 附加最新迭代的分类 IBA 属性值（entity_oid = 最新迭代 oid）
-        if (doc.getClsOid() != null) {
-            DocumentIteration latest = documentService.findLatestIteration(oid);
-            if (latest != null) {
-                Map<String, Object> clsIba = clsIbaDataService.getValues(latest.getOid(), doc.getClsOid());
-                if (clsIba != null) {
-                    result.putAll(clsIba);
-                }
-            }
-        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) entity;
         return ApiResponse.ok(result);
     }
 

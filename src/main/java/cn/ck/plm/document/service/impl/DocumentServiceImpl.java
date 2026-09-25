@@ -5,14 +5,22 @@ import cn.ck.plm.document.entity.Document;
 import cn.ck.plm.document.entity.DocumentIteration;
 import cn.ck.plm.document.mapper.DocumentMapper;
 import cn.ck.plm.document.mapper.DocumentIterationMapper;
+import cn.ck.plm.cls.service.api.ClsIbaDataService;
+import cn.ck.plm.cls.service.impl.ClsIbaDataSupport;
 import cn.ck.plm.document.service.api.DocumentService;
+import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
 import cn.ck.plm.softtype.entity.TypeDefinition;
 import cn.ck.plm.softtype.mapper.TypeDefinitionMapper;
+import cn.ck.plm.softtype.service.api.SoftTypeInstanceCapability;
+import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import cn.ck.plm.base.entity.MasterEntity;
 import cn.ck.plm.base.entity.IterationEntity;
 import cn.ck.plm.base.service.api.NumberService;
 import cn.ck.plm.base.service.api.VersionRuleService;
+import cn.ck.plm.base.service.api.LifecycleStatusService;
 import cn.ck.plm.base.service.api.LifecycleTemplateService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,12 +28,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
-public class DocumentServiceImpl implements DocumentService {
+public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCapability {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentServiceImpl.class);
+
+    /** 能力宿主 code（= type_definition.root_type_code） */
+    private static final String HOST = "DOCUMENT";
+
+    /** 实体 IBA 属性归属的实体类型编码 */
+    private static final String IBA_ENTITY_TYPE = "DOCUMENT";
 
     private final DocumentMapper documentMapper;
     private final DocumentIterationMapper iterationMapper;
@@ -33,19 +50,116 @@ public class DocumentServiceImpl implements DocumentService {
     private final NumberService numberService;
     private final VersionRuleService versionRuleService;
     private final LifecycleTemplateService lifecycleTemplateService;
+    /** 状态 code → 显示名（列表/详情都要给"人看得懂"的那个字，见 LifecycleStatusService#displayName） */
+    private final LifecycleStatusService lifecycleStatusService;
+    private final IbaDataSupport ibaDataSupport;
+    private final ClsIbaDataSupport clsIbaDataSupport;
+    private final ClsIbaDataService clsIbaDataService;
+    private final ObjectMapper objectMapper;
 
     public DocumentServiceImpl(DocumentMapper documentMapper,
                                 DocumentIterationMapper iterationMapper,
                                 TypeDefinitionMapper typeDefinitionMapper,
                                 NumberService numberService,
                                 VersionRuleService versionRuleService,
-                                LifecycleTemplateService lifecycleTemplateService) {
+                                LifecycleTemplateService lifecycleTemplateService,
+                                LifecycleStatusService lifecycleStatusService,
+                                IbaDataSupport ibaDataSupport,
+                                ClsIbaDataSupport clsIbaDataSupport,
+                                ClsIbaDataService clsIbaDataService,
+                                ObjectMapper objectMapper) {
         this.documentMapper = documentMapper;
         this.iterationMapper = iterationMapper;
         this.typeDefinitionMapper = typeDefinitionMapper;
         this.numberService = numberService;
         this.versionRuleService = versionRuleService;
         this.lifecycleTemplateService = lifecycleTemplateService;
+        this.lifecycleStatusService = lifecycleStatusService;
+        this.ibaDataSupport = ibaDataSupport;
+        this.clsIbaDataSupport = clsIbaDataSupport;
+        this.clsIbaDataService = clsIbaDataService;
+        this.objectMapper = objectMapper;
+    }
+
+    // ==================== 能力宿主策略（SoftTypeInstanceCapability）====================
+
+    @Override
+    public String hostCode() {
+        return HOST;
+    }
+
+    @Override
+    public Set<SoftTypeInstanceCapability.Operation> supportedOperations() {
+        return EnumSet.of(
+                SoftTypeInstanceCapability.Operation.CREATE,
+                SoftTypeInstanceCapability.Operation.READ,
+                SoftTypeInstanceCapability.Operation.UPDATE);
+    }
+
+    @Override
+    public SoftTypeInstanceResult createInstance(TypeDefinition type, Map<String, Object> payload) {
+        Document document = objectMapper.convertValue(payload, Document.class);
+        document.setTypeDefinitionCode(type.getCode());
+
+        String ckfileOid = ibaDataSupport.getString(payload, "ckfileOid");
+        String attachmentOid = ibaDataSupport.getString(payload, "attachmentOid");
+
+        Document created = create(document, ckfileOid, attachmentOid);
+
+        DocumentIteration latest = findLatestIteration(created.getOid());
+        String iterationOid = latest != null ? latest.getOid() : created.getOid();
+        clsIbaDataSupport.saveClsIbaValues(iterationOid, created.getClsOid(), payload);
+        ibaDataSupport.saveIbaValues(IBA_ENTITY_TYPE, created.getOid(), payload);
+
+        SoftTypeInstanceResult result = new SoftTypeInstanceResult();
+        result.setOid(created.getOid());
+        result.setNumber(created.getNumber());
+        result.setName(created.getName());
+        result.setIterationOid(iterationOid);
+        result.setDisplayVersion(latest != null ? latest.getDisplayVersion() : null);
+        result.setEntity(created);
+        return result;
+    }
+
+    @Override
+    public Object getInstance(String oid, Map<String, Object> params) {
+        Document doc = findByOid(oid);
+        if (doc == null) {
+            return null;
+        }
+        Map<String, Object> result = objectMapper.convertValue(doc,
+                new TypeReference<Map<String, Object>>() {});
+        DocumentIteration latest = findLatestIteration(oid);
+        // 版本字段：与原生 GET 端点 / 其他宿主（PART、ENG_DOCUMENT）保持一致 ——
+        // 调用方（如流程发起时记"业务对象大版本"）按这些键取当前版本，缺了就取不到
+        if (latest != null) {
+            result.put("iterationOid", latest.getOid());
+            result.put("revision", latest.getRevision());
+            result.put("iteration", latest.getIteration());
+            result.put("displayVersion", latest.getDisplayVersion());
+        }
+        // 附加最新迭代的分类 IBA 属性值（平铺到顶层，与原生端点一致）
+        if (doc.getClsOid() != null && latest != null) {
+            Map<String, Object> clsIba = clsIbaDataService.getValues(latest.getOid(), doc.getClsOid());
+            if (clsIba != null) {
+                result.putAll(clsIba);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Object updateInstance(String oid, Map<String, Object> body) {
+        Document document = objectMapper.convertValue(body, Document.class);
+        document.setOid(oid);
+        Document updated = update(document);
+        // 分类 IBA（迭代级，entity_oid = 最新迭代 oid）
+        DocumentIteration latest = findLatestIteration(oid);
+        String iterOid = latest != null ? latest.getOid() : oid;
+        clsIbaDataSupport.saveClsIbaValues(iterOid, updated.getClsOid(), body);
+        // 实体 IBA（合并保存，保留未提交字段）
+        ibaDataSupport.mergeIbaValues(IBA_ENTITY_TYPE, oid, body);
+        return updated;
     }
 
     @Override
@@ -211,6 +325,67 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     @Transactional
+    public void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode) {
+        Document document = documentMapper.selectByOid(oid);
+        if (document == null) {
+            throw new IllegalArgumentException("文档不存在: " + oid);
+        }
+        DocumentIteration iter = resolveVersion(oid, entityVersion);
+        lifecycleTemplateService.moveToState(iter, targetStateCode);
+        iter.setUpdatedAt(LocalDateTime.now());
+        iterationMapper.update(iter);
+        log.info("设置生命周期状态: documentOid={}, version={}.{}, status={}", oid,
+                iter.getRevision(), iter.getIteration(),
+                iter.getStatus() != null ? iter.getStatus().getCode() : null);
+    }
+
+    @Override
+    @Transactional
+    public void resetLifecycleStateInstance(String oid, String entityVersion) {
+        Document document = documentMapper.selectByOid(oid);
+        if (document == null) {
+            throw new IllegalArgumentException("文档不存在: " + oid);
+        }
+        DocumentIteration iter = resolveVersion(oid, entityVersion);
+        lifecycleTemplateService.moveToInitialState(iter);
+        iter.setUpdatedAt(LocalDateTime.now());
+        iterationMapper.update(iter);
+        log.info("退回初始状态: documentOid={}, version={}.{}, status={}", oid,
+                iter.getRevision(), iter.getIteration(),
+                iter.getStatus() != null ? iter.getStatus().getCode() : null);
+    }
+
+    /**
+     * 取「该大版本当前的最新小版本」—— 流程针对的是大版本，落到具体版本时统一按这个口径解析。
+     *
+     * <p>{@code selectByMasterOid} 已按 revision、iteration 降序，故同大版本里第一条即最新小版本。
+     */
+    private DocumentIteration resolveVersion(String masterOid, String entityVersion) {
+        List<DocumentIteration> all = iterationMapper.selectByMasterOid(masterOid);
+        if (all == null || all.isEmpty()) {
+            throw new IllegalStateException("文档没有可用版本: " + masterOid);
+        }
+        String want = entityVersion == null ? "" : entityVersion.trim();
+        if (want.isEmpty()) {
+            return all.get(0);
+        }
+        for (DocumentIteration iter : all) {
+            if (want.equalsIgnoreCase(iter.getRevision())) {
+                return iter;
+            }
+        }
+        throw new IllegalStateException("文档 " + masterOid + " 不存在大版本 " + want);
+    }
+
+    /** 新建视图版本（统一入口形态）：转调本宿主已有实现，供流程「object.promote」使用 */
+    @Override
+    @Transactional
+    public void newViewVersionInstance(String oid) {
+        newViewVersion(oid);
+    }
+
+    @Override
+    @Transactional
     public void newViewVersion(String oid) {
         Document document = documentMapper.selectByOid(oid);
         if (document == null) {
@@ -319,6 +494,9 @@ public class DocumentServiceImpl implements DocumentService {
                 vo.setCkfileOid(latestIter.getCkfileOid());
                 if (latestIter.getStatus() != null) {
                     vo.setStatusCode(latestIter.getStatus().getCode());
+                    // 旁边的 code 只是标识，界面显示要用显示名（草稿/已发布）
+                    vo.setStatusName(lifecycleStatusService.displayName(
+                            latestIter.getLifecycleTemplateIterationOid(), latestIter.getStatus().getCode()));
                 }
             }
             vos.add(vo);
