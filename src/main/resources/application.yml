@@ -65,7 +65,8 @@ plm:
         base-url: https://api.deepseek.com
         # 官方可用模型名：deepseek-flash（快）/ deepseek-v4-pro（强）
         model: deepseek-flash
-        api-key: ***REMOVED***
+        # 安全：凭据一律走环境变量，禁止在此文件写死（本文件受 git 跟踪）
+        api-key: ${PLM_AI_DEEPSEEK_API_KEY:}
         chat-path: ${PLM_AI_CHAT_PATH:/v1/chat/completions}
       # 想再加一个模型（同一个 key 下的 deepseek-v4-pro）就照着加一项，界面上可以直接切换：
       # - id: deepseek-pro
