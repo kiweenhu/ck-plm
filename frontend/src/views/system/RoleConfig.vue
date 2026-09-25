@@ -145,7 +145,14 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined, SafetyOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import { getRoles, createRole, updateRole, deleteRole } from '@/api'
+import { visibleRoles } from '@/utils/roleVisibility'
+import { useUserStore } from '@/stores/user'
 import DataTable from '@/components/DataTable.vue'
+
+/** 登录态：本页要按"当前登录人是谁"决定哪些角色可见（见下方 allRoles） */
+const userStore = useUserStore()
+// 直接刷新进本页时 store 可能还没水合，先从本地登录态恢复一次（内部只在空时填充）
+userStore.init()
 
 // ==================== 表格列定义 ====================
 const columns = [
@@ -160,7 +167,15 @@ const columns = [
 
 // ==================== 数据 ====================
 const loading = ref(false)
-const allRoles = ref([])
+/** 接口原样返回的角色清单 */
+const rawRoles = ref([])
+
+/**
+ * 页面可见的角色：租户管理员看不到「平台管理员」—— 租户下不可能出现平台管理员，
+ * 列出来只会引导误配（把自己加进去就跨租户了）。规则见 utils/roleVisibility。
+ * 表格与统计都基于它，避免"总数算上了、列表里却没有"这种自相矛盾。
+ */
+const allRoles = computed(() => visibleRoles(rawRoles.value, userStore.roles))
 
 const platformCount = computed(() =>
   allRoles.value.filter(r => r.roleType === 'PLATFORM').length
@@ -200,7 +215,7 @@ async function loadRoles() {
   try {
     const res = await getRoles()
     if (res.code === 200) {
-      allRoles.value = res.data || []
+      rawRoles.value = res.data || []
     }
   } catch {
     message.error('加载角色列表失败')

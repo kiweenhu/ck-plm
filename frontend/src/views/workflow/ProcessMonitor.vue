@@ -17,7 +17,12 @@
           <template v-if="column.key === 'process'">
             <div>
               <div style="font-weight:500;">{{ record.processDefinitionName || record.processDefinitionKey }}</div>
-              <div style="font-size:12px;color:#999;">{{ record.businessKey || '实例: ' + record.id?.substring(0, 8) }}</div>
+              <!-- 业务标识：编码 + 名称 + 版本 + 生命周期状态，点击进入该大版本的最新版本。
+                   渲染与流程详情页共用同一组件，避免两处长得不一样 -->
+              <div class="pm-biz">
+                <EntityRefLabel v-if="record._biz" :label="record._biz" />
+                <span v-else class="pm-biz--raw">{{ record.businessKey || '实例: ' + record.id?.substring(0, 8) }}</span>
+              </div>
             </div>
           </template>
           <template v-if="column.key === 'status'">
@@ -33,7 +38,7 @@
           </template>
           <template v-if="column.key === 'action'">
             <a-space v-if="record.status === 'running'">
-              <a-button size="small" @click="viewDetail(record)">详情</a-button>
+              <a-button size="small" @click="openDetail(record)">详情</a-button>
               <a-popconfirm title="确认挂起此流程实例？" @confirm="suspendInstance(record)">
                 <a-button size="small">挂起</a-button>
               </a-popconfirm>
@@ -48,7 +53,7 @@
               </a-popconfirm>
             </a-space>
             <a-space v-else>
-              <a-button size="small" @click="viewDetail(record)">详情</a-button>
+              <a-button size="small" @click="openDetail(record)">详情</a-button>
               <a-popconfirm title="确认删除此流程实例？" @confirm="deleteInstance(record)">
                 <a-button size="small" danger>删除</a-button>
               </a-popconfirm>
@@ -57,47 +62,24 @@
         </template>
       </a-table>
     </a-card>
-
-    <!-- 详情弹窗 -->
-    <a-modal v-model:visible="showDetailModal" title="流程实例详情" width="640px" :footer="null">
-      <a-descriptions bordered :column="2" v-if="currentDetail">
-        <a-descriptions-item label="实例 ID">{{ currentDetail.id?.substring(0, 12) }}...</a-descriptions-item>
-        <a-descriptions-item label="流程名称">{{ currentDetail.processDefinitionName }}</a-descriptions-item>
-        <a-descriptions-item label="流程 Key">{{ currentDetail.processDefinitionKey }}</a-descriptions-item>
-        <a-descriptions-item label="业务 Key">{{ currentDetail.businessKey || '—' }}</a-descriptions-item>
-        <a-descriptions-item label="发起人">{{ currentDetail.startUserId }}</a-descriptions-item>
-        <a-descriptions-item label="状态">
-          <a-tag :color="statusColor(currentDetail.status)">{{ statusText(currentDetail.status) }}</a-tag>
-        </a-descriptions-item>
-        <a-descriptions-item label="开始时间">{{ formatTime(currentDetail.startTime) }}</a-descriptions-item>
-        <a-descriptions-item label="结束时间">{{ currentDetail.endTime ? formatTime(currentDetail.endTime) : '—' }}</a-descriptions-item>
-        <a-descriptions-item label="终止原因" :span="2">{{ currentDetail.deleteReason || '—' }}</a-descriptions-item>
-      </a-descriptions>
-
-      <a-divider v-if="currentDetail?.variables && Object.keys(currentDetail.variables).length">流程变量</a-divider>
-      <div v-if="currentDetail?.variables && Object.keys(currentDetail.variables).length"
-        style="background:#f5f5f5;padding:12px;border-radius:4px;max-height:200px;overflow:auto;">
-        <div v-for="(val, key) in currentDetail.variables" :key="key" style="margin-bottom:4px;">
-          <strong>{{ key }}</strong>: {{ val }}
-        </div>
-      </div>
-    </a-modal>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import api from '@/api'
+import EntityRefLabel from '@/components/EntityRefLabel.vue'
+import { useEntityLabels } from '@/composables/useEntityLabels'
+
+const router = useRouter()
 
 const activeTab = ref('all-running')
 const instances = ref([])
 const loading = ref(false)
 const page = ref(1)
 const size = ref(10)
-
-const showDetailModal = ref(false)
-const currentDetail = ref(null)
 
 const apiMap = {
   'all-running': '/workflow/instance/all-running',
@@ -122,11 +104,21 @@ function statusText(status) {
   return status === 'running' ? '运行中' : status === 'suspended' ? '已挂起' : status === 'completed' ? '已完成' : '已终止'
 }
 
+/** 「业务标识」标签：与任务中心同一份回查与拼装（见 composables/useEntityLabels） */
+const { attach: attachBiz } = useEntityLabels()
+
+/** 详情走独立页面（此前是弹框：进度十几个节点、变量几十行，弹框里只能看一小条） */
+function openDetail(record) {
+  router.push({ name: 'ProcessInstanceDetail', params: { id: record.id } })
+}
+
 async function loadInstances() {
   loading.value = true
   try {
     const res = await api.get(apiMap[activeTab.value], { params: { page: page.value, size: size.value } })
-    if (res.code === 200) instances.value = res.data || []
+    const rows = res.code === 200 ? (res.data || []) : []
+    await attachBiz(rows)
+    instances.value = rows
   } finally {
     loading.value = false
   }
@@ -135,16 +127,6 @@ async function loadInstances() {
 function onPageChange(p) {
   page.value = p
   loadInstances()
-}
-
-async function viewDetail(record) {
-  try {
-    const res = await api.get(`/workflow/instance/${record.id}`)
-    if (res.code === 200) {
-      currentDetail.value = res.data
-      showDetailModal.value = true
-    }
-  } catch { message.error('获取详情失败') }
 }
 
 async function suspendInstance(record) {
@@ -199,5 +181,16 @@ onMounted(loadInstances)
 }
 .page-header h2 {
   margin: 0;
+}
+
+/* 「业务标识」单元格：具体的名称/编码/版本/状态样式在 EntityRefLabel 组件里（与详情页共用） */
+.pm-biz {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+/* 没有关联业务实体时的兜底：弱化显示，不喧宾夺主 */
+.pm-biz--raw {
+  color: #bfbfbf;
 }
 </style>

@@ -23,6 +23,7 @@
           :folder-tree="folderTree"
           :stage-options="stageOptions"
           :type-definition-oid="resolvedTypeOid || typeDefinitionOid"
+          :current-container-oid="currentContainerOid"
           @update="onFieldUpdate"
           @table-action="onTableAction"
         />
@@ -51,6 +52,7 @@
             :folder-tree="folderTree"
             :stage-options="stageOptions"
             :type-definition-oid="resolvedTypeOid || typeDefinitionOid"
+            :current-container-oid="currentContainerOid"
             @update="onFieldUpdate"
             @table-action="onTableAction"
           />

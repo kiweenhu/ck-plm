@@ -6,10 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
+    "@antv/x6": "^2.19.2",
+    "@antv/x6-plugin-keyboard": "^2.2.3",
+    "@antv/x6-plugin-selection": "^2.2.2",
+    "@antv/x6-plugin-snapline": "^2.1.7",
     "@bpmn-io/properties-panel": "^3.44.1",
     "@tiptap/extension-color": "^3.27.1",
     "@tiptap/extension-font-family": "^3.27.1",
@@ -37,10 +43,13 @@
     "bpmn-js-properties-panel": "^5.59.0",
     "pinia": "^3.0.4",
     "vue": "^3.4.21",
-    "vue-router": "^4.3.0"
+    "vue-router": "^4.3.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
-    "vite": "^5.2.8"
+    "typescript": "^5.4.5",
+    "vite": "^5.2.8",
+    "vitest": "^2.1.9"
   }
 }

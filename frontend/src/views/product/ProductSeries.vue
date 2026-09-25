@@ -194,11 +194,12 @@
           <a-select
             v-model:value="teamDrawer.newUserId"
             show-search
-            placeholder="输入用户名搜索..."
+            placeholder="选择或搜索用户"
             :filter-option="false"
             :loading="teamDrawer.userSearching"
             style="width: 260px"
             @search="searchUsersForTeam"
+            @dropdown-visible-change="onTeamUserDropdownOpen"
             size="middle"
           >
             <a-select-option v-for="u in teamDrawer.userOptions" :key="u.username" :value="u.username">
@@ -512,11 +513,12 @@
           <a-select
             v-model:value="modelTeamDrawer.newUserId"
             show-search
-            placeholder="输入用户名搜索..."
+            placeholder="选择或搜索用户"
             :filter-option="false"
             :loading="modelTeamDrawer.userSearching"
             style="width: 260px"
             @search="searchUsersForModelTeam"
+            @dropdown-visible-change="onModelTeamUserDropdownOpen"
             size="middle"
           >
             <a-select-option v-for="u in modelTeamDrawer.userOptions" :key="u.username" :value="u.username">
@@ -1205,17 +1207,36 @@ async function openModelTeamDrawer(model) {
   }
 }
 
-async function searchUsersForModelTeam(keyword) {
-  if (!keyword || keyword.length < 1) { modelTeamDrawer.userOptions = []; return }
-  modelTeamDrawer.userSearching = true
+/**
+ * 团队候选人清单（value 用 username，见模板里的 a-select-option）。
+ *
+ * <p>keyword 为空 = 「默认清单」。原来关键字为空直接把选项清空，于是打开下拉是空的 ——
+ * 必须先敲字才出结果，等于要求用户先知道名字怎么拼；而常见动作是"在名单里挑一个"。
+ */
+async function loadTeamUserOptions(drawer, keyword = '') {
+  drawer.userSearching = true
   try {
-    const res = await getAllUsers({ keyword })
+    const res = await getAllUsers(keyword ? { keyword } : {})
     if (res.code === 200) {
-      const all = res.data || []
-      const memberUsernames = new Set(modelTeamDrawer.members.map(m => m.username))
-      modelTeamDrawer.userOptions = all.filter(u => !memberUsernames.has(u.username))
+      const memberUsernames = new Set(drawer.members.map(m => m.username))
+      drawer.userOptions = (res.data || []).filter(u => !memberUsernames.has(u.username))
     }
-  } catch { /* ignore */ } finally { modelTeamDrawer.userSearching = false }
+  } catch { /* ignore */ } finally { drawer.userSearching = false }
+}
+
+/**
+ * 打开下拉就回到默认清单。
+ *
+ * <p>每次打开都重新取（而不是"空才取"）：否则搜过一次之后关闭再打开，输入框空了、
+ * 列表还是上次的子集；而且刚加完人重开也能立刻反映最新的候选。
+ */
+function onModelTeamUserDropdownOpen(open) {
+  if (open) loadTeamUserOptions(modelTeamDrawer)
+}
+
+/** 输入即搜索；清空回到默认清单 */
+function searchUsersForModelTeam(keyword) {
+  return loadTeamUserOptions(modelTeamDrawer, keyword?.trim() || '')
 }
 
 async function loadModelRoleOptions() {
@@ -1436,24 +1457,14 @@ async function openTeamDrawer(line) {
   }
 }
 
-async function searchUsersForTeam(keyword) {
-  if (!keyword || keyword.length < 1) {
-    teamDrawer.userOptions = []
-    return
-  }
-  teamDrawer.userSearching = true
-  try {
-    const res = await getAllUsers({ keyword })
-    if (res.code === 200) {
-      const all = res.data || []
-      const memberUsernames = new Set(teamDrawer.members.map(m => m.username))
-      teamDrawer.userOptions = all.filter(u => !memberUsernames.has(u.username))
-    }
-  } catch {
-    // ignore
-  } finally {
-    teamDrawer.userSearching = false
-  }
+/** 打开下拉就回到默认清单（理由同 onModelTeamUserDropdownOpen） */
+function onTeamUserDropdownOpen(open) {
+  if (open) loadTeamUserOptions(teamDrawer)
+}
+
+/** 输入即搜索；清空回到默认清单 —— 见 loadTeamUserOptions 的说明 */
+function searchUsersForTeam(keyword) {
+  return loadTeamUserOptions(teamDrawer, keyword?.trim() || '')
 }
 
 async function loadRoleOptions() {

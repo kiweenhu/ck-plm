@@ -122,11 +122,19 @@ const routes = [
         meta: { title: '租户审核' }
       },
       // 工作流
+      // 「流程清单」已由新一代设计器承载（DSL + X6 画布，spec: docs/ck-plm-flow-designer-spec.md）：
+      // 该页自带模板库（列表/新建/复制/启停/删除）+ 设计器 + 版本历史 + 部署，
+      // 原先的 bpmn-js 实现与其 Activiti 属性面板已退役。
       {
         path: 'workflow/design',
         name: 'ProcessDesign',
-        component: () => import('@/views/workflow/ProcessDesign.vue'),
+        component: () => import('@/views/workflow/FlowDesignerPage.vue'),
         meta: { title: '流程清单' }
+      },
+      // 兼容旧链接（含带 ?templateOid= 的深链）：重定向到「流程清单」并保留查询参数
+      {
+        path: 'workflow/designer',
+        redirect: (to) => ({ path: '/workflow/design', query: to.query })
       },
       {
         path: 'workflow/monitor',
@@ -135,10 +143,38 @@ const routes = [
         meta: { title: '流程监控' }
       },
       {
+        // 流程实例详情：独立页面（此前是从监控列表弹的模态框，进度/变量在弹框里看不清）
+        path: 'workflow/instance/:id',
+        name: 'ProcessInstanceDetail',
+        component: () => import('@/views/workflow/ProcessInstanceDetail.vue'),
+        meta: { title: '流程详情' }
+      },
+      {
         path: 'workflow/task',
         name: 'TaskCenter',
         component: () => import('@/views/workflow/TaskCenter.vue'),
         meta: { title: '任务中心' }
+      },
+      // 任务办理：任务中心「办理」在新窗口打开的就是这个路径（独立页面，不是弹窗）
+      {
+        path: 'workflow/task/:id',
+        name: 'TaskHandle',
+        component: () => import('@/views/workflow/TaskHandle.vue'),
+        meta: { title: '办理任务' }
+      },
+      // 通知中心（铃铛"查看全部"落这里；以前错落到租户审核页）
+      {
+        path: 'notifications',
+        name: 'NotificationCenter',
+        component: () => import('@/views/NotificationCenter.vue'),
+        meta: { title: '通知公告' }
+      },
+      // 企业公告：与通知中心同一个组件，靠 meta 只显示公告（挂「企业组织」下，管理员可在此发布）
+      {
+        path: 'org/announcements',
+        name: 'OrgAnnouncements',
+        component: () => import('@/views/NotificationCenter.vue'),
+        meta: { title: '企业公告', notificationType: 'ANNOUNCEMENT' }
       },
       // 企业组织
       {

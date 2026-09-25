@@ -10,6 +10,7 @@
 import { h } from 'vue'
 import { Input, Select, DatePicker, InputNumber, Switch, TreeSelect, Button, Table } from 'ant-design-vue'
 import { UploadOutlined, TableOutlined } from '@ant-design/icons-vue'
+import { CAD_TOOL_OPTIONS } from './cadTools'
 
 /**
  * 渲染单个控件的预览外观
@@ -288,12 +289,55 @@ export function renderWidgetPreview(type, mode = 'design', options = {}) {
         h('span', { style: 'color:#1677ff' }, '草稿')
       ])
 
+    case 'version-display':
+      // 设计态预览：编辑态外观（创建态运行时显示「由系统生成」）
+      return h('div', {
+        style: 'display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:4px 11px;border:1px solid #d9d9d9;border-radius:6px;background:#f5f5f5;color:#8c8c8c;font-size:12px'
+      }, [
+        h('span', { style: 'color:#1677ff;font-weight:600;letter-spacing:0.5px' }, 'A.1'),
+        h('span', {}, '当前对象版本（只读）')
+      ])
+
     case 'number-preview':
       return h('div', {
         style: 'display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:4px 11px;border:1px solid #d9d9d9;border-radius:6px;background:#f5f5f5;color:#8c8c8c;font-size:12px'
       }, [
         h('span', { style: 'color:#1677ff;font-weight:600;letter-spacing:0.5px' }, 'PART-2026-****')
       ])
+
+    case 'resource-container-select':
+      // 设计态预览：企业资源库下的子库（运行时由 getResourceChildren() 动态加载）
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        placeholder: '请选择构建容器',
+        options: [
+          { label: '元器件库', value: 'COMPONENT' },
+          { label: '标准件库', value: 'STD_PART' },
+          { label: '通用件库', value: 'GEN_PART' }
+        ]
+      })
+
+    case 'mcad-tool-select':
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        placeholder: '请选择 MCAD 工具',
+        showSearch: true,
+        options: CAD_TOOL_OPTIONS.MCAD
+      })
+
+    case 'ecad-tool-select':
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        placeholder: '请选择 ECAD 工具',
+        showSearch: true,
+        options: CAD_TOOL_OPTIONS.ECAD
+      })
 
     default:
       return h(Input, {

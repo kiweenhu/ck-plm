@@ -13,6 +13,9 @@ import UnitSelect from './UnitSelect.vue'
 import SourceSelect from './SourceSelect.vue'
 import LifecycleDisplay from './LifecycleDisplay.vue'
 import NumberPreview from './NumberPreview.vue'
+import ResourceContainerSelect from './ResourceContainerSelect.vue'
+import CadToolSelect from './CadToolSelect.vue'
+import VersionDisplay from './VersionDisplay.vue'
 
 /** 去除 HTML 标签，保留纯文本 */
 const stripHtml = (html) => {
@@ -48,6 +51,8 @@ const RenderFields = {
     stageOptions: { type: Array, default: () => [] },
     /** 类型定义 oid，用于 classification-bound-select 组件获取绑定分类子树 */
     typeDefinitionOid: { type: String, default: null },
+    /** 当前所处容器 oid，用于 resource-container-select（已进入资源库时锁定构建容器） */
+    currentContainerOid: { type: String, default: null },
   },
   emits: ['update', 'table-action'],
   render() {
@@ -76,6 +81,7 @@ const RenderFields = {
                   folderTree: this.folderTree,
                   stageOptions: this.stageOptions,
                   typeDefinitionOid: this.typeDefinitionOid,
+                  currentContainerOid: this.currentContainerOid,
                   onUpdate: (key, val) => this.$emit('update', key, val),
                   'onTable-action': (payload) => this.$emit('table-action', payload),
                 })
@@ -102,6 +108,7 @@ const RenderFields = {
               folderTree: this.folderTree,
               stageOptions: this.stageOptions,
               typeDefinitionOid: this.typeDefinitionOid,
+              currentContainerOid: this.currentContainerOid,
               onUpdate: (key, val) => this.$emit('update', key, val),
               'onTable-action': (payload) => this.$emit('table-action', payload),
             }),
@@ -414,9 +421,37 @@ const RenderFields = {
             'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
           })
 
+        case 'mcad-tool-select':
+          return h(CadToolSelect, {
+            modelValue: value,
+            kind: 'MCAD',
+            disabled: isReadonly,
+            placeholder: placeholder || '请选择 MCAD 工具',
+            allowClear: true,
+            'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
+          })
+
+        case 'ecad-tool-select':
+          return h(CadToolSelect, {
+            modelValue: value,
+            kind: 'ECAD',
+            disabled: isReadonly,
+            placeholder: placeholder || '请选择 ECAD 工具',
+            allowClear: true,
+            'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
+          })
+
         case 'lifecycle-display':
           return h(LifecycleDisplay, {
             typeDefinitionOid: this.typeDefinitionOid || field.typeDefinitionOid,
+            disabled: isReadonly,
+          })
+
+        case 'version-display':
+          return h(VersionDisplay, {
+            value,
+            // 传入整份表单数据：displayVersion 缺失时回退 revision/iteration，保证编辑态能显示当前版本
+            formData: this.formData,
             disabled: isReadonly,
           })
 
@@ -458,6 +493,17 @@ const RenderFields = {
             'onUpdate:value': (val) => this.$emit('update', fieldName, val),
           })
         }
+
+        case 'resource-container-select':
+          return h(ResourceContainerSelect, {
+            value,
+            disabled: isReadonly,
+            placeholder: placeholder || '请选择构建容器',
+            currentContainerOid: this.currentContainerOid,
+            'onUpdate:value': (val) => this.$emit('update', fieldName, val),
+            // 选中资源库时同步 containerType，供 containerType 字段落库
+            'onUpdate:containerType': (val) => this.$emit('update', 'containerType', val),
+          })
 
         case 'input':
         default:

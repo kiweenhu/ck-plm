@@ -24,8 +24,20 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   response => {
     const res = response.data
-    // 后端 ApiResponse 统一包装 { code, message, data }
-    if (res.code !== 200) {
+    /**
+     * 只有"长得像统一包装"的响应才按 { code, message, data } 判成败。
+     *
+     * <p>判据是 <b>code 与 data 两个键同时存在</b>，缺一不可：
+     * <ul>
+     *   <li>有些接口返回的是<b>裸实体</b>（如 BomDiff），实体自己也带 code 字段
+     *       （BomLinks.code 是编码）；只要写死 `res.code !== 200`，HTTP 200 的成功请求
+     *       也会被弹成「请求失败」—— BOM 对比就踩过这个坑；</li>
+     *   <li>真正的包装体一定有 data 键（值可能是 null），据此区分不会漏掉真实错误
+     *       （`{code:500, message, data:null}` 照样会被提示）。</li>
+     * </ul>
+     */
+    const enveloped = res && typeof res === 'object' && 'code' in res && 'data' in res
+    if (enveloped && res.code !== 200) {
       message.error(res.message || '请求失败')
     }
     return res
@@ -92,9 +104,56 @@ export function getUnreadCount() {
   return request.get('/notifications/unread-count')
 }
 
-/** 获取通知列表 */
-export function getNotifications(limit = 20) {
-  return request.get('/notifications', { params: { limit } })
+/**
+ * 获取通知列表。
+ *
+ * @param {number} limit 条数
+ * @param {boolean} unreadOnly 只看未读（在库里过滤，不是取一批再筛）
+ * @param {string=} type 只看某一类（如 'ANNOUNCEMENT' → 企业公告页）
+ */
+export function getNotifications(limit = 20, unreadOnly = false, type = undefined) {
+  return request.get('/notifications', { params: { limit, unreadOnly, type } })
+}
+
+// ==================== CK-PLM 助手 API ====================
+
+/**
+ * 助手状态：是否启用、是否配置完整、可选模型清单、认证方式。
+ *
+ * @returns {Promise<{code, data: {
+ *   enabled: boolean, configured: boolean, state: 'ready'|'disabled'|'no-models',
+ *   hint: string|null, defaultModel: string, model: string, authMode: string,
+ *   models: Array<{ id, label, model, authMode }>
+ * }}>}
+ *   models  后端"实际可用"的清单（没填 base-url 或已停用的不会返回），前端下拉直接用；
+ *   state   为什么不能用 —— disabled=总开关关着（改 plm.ai.enabled）/ no-models=没有可用模型；
+ *   hint    直接可显示的一句说明（已包含"该改哪个配置键"），前端不要自己拼文案；
+ *   configured=false 表示还没接上（提示一句，入口照常可用）。
+ */
+export function getAiStatus() {
+  return request.get('/ai/status')
+}
+
+/**
+ * 与助手聊一轮。工具查询以「当前登录用户」的身份执行，看到的数据与本人手动查的一致。
+ *
+ * @param {object} data { message, history: [{ role, content }], modelId? }
+ *   modelId 可空 = 用后端的 default-model；传了没配置的 id，后端会明确回一句"没有这个模型"，
+ *   而不是静默换一个模型回答
+ * @returns {Promise<{code, data: {answer, tools: string[], configured: boolean}}>}
+ */
+export function askAi(data) {
+  return request.post('/ai/chat', data)
+}
+
+/**
+ * 发布公告（管理员）—— 发给发布人所在租户的全部启用用户。
+ *
+ * @param {object} data { title, content }
+ * @returns {Promise<{code, data: number}>} data = 实际送达人数
+ */
+export function publishAnnouncement(data) {
+  return request.post('/notifications/announcement', data)
 }
 
 /** 标记已读 */
@@ -419,6 +478,38 @@ export function deletePageLayout(entityOid, operationCode) {
   return request.delete('/page-layouts', { params: { entityOid, operationCode } })
 }
 
+// ==================== 流程表单模板 API（业务配置 → 流程表单） ====================
+
+/**
+ * 全部流程表单模板（平台内置 + 本租户自定义）。
+ *
+ * <p>内置模板由后端启动器自动登记（属平台租户），所以这个列表里天然包含它们在列 ——
+ * 不需要前端再拼一份"内置清单"（那样两处必然漂移）。
+ */
+export function listFormTemplates() {
+  return request.get('/form-templates')
+}
+
+/** 某节点类型在设计期可选的模板（仅启用项；设计器下拉用） */
+export function listFormTemplatesForNode(nodeType) {
+  return request.get('/form-templates/for-node', { params: { nodeType } })
+}
+
+/** 新建自定义流程表单模板 */
+export function createFormTemplate(data) {
+  return request.post('/form-templates', data)
+}
+
+/** 修改流程表单模板（内置模板只允许改名称/说明/启用/排序） */
+export function updateFormTemplate(oid, data) {
+  return request.put(`/form-templates/${oid}`, data)
+}
+
+/** 删除流程表单模板（内置模板不可删除） */
+export function deleteFormTemplate(oid) {
+  return request.delete(`/form-templates/${oid}`)
+}
+
 // ==================== 角色管理 API（admin 模块） ====================
 
 /** 获取角色列表 */
@@ -466,10 +557,9 @@ export function removeRoleMember(roleOid, userOid) {
   return request.delete(`/roles/${roleOid}/members/${userOid}`)
 }
 
-/** 获取当前租户的 ADMIN 角色及成员 */
-export function getAdminMembers() {
-  return request.get('/roles/admin-members')
-}
+// 注：原 getAdminMembers（GET /roles/admin-members，写死 TENANT_ADMIN）已随
+// 「企业管理员」页改造成「角色成员」页退役 —— 角色成员改用通用的
+// getRoles() + getRoleMembers(roleOid)（见上方角色管理 API），后端端点保留。
 
 // ==================== 产品线管理 API ====================
 
@@ -486,16 +576,69 @@ export function getProductLine(oid) {
 /**
  * 根据实体编码 + OID 获取实体详情（统一框架入口）
  * 用于 DynamicForm 等通用组件的 edit 场景自动加载实体数据
- * @param {string} entityCode 实体编码，如 PRODUCT_LINE
+ *
+ * 走服务端统一入口：由后端按 type_definition.root_type_code 路由到宿主读取策略，
+ * 与创建（POST /softtype-instances）完全对称。前端因此不再需要为「读取」维护
+ * 「类型 → 端点」映射 —— 新增软类型（FOOTPRINT / SYMBOL 等）无需改前端即可读详情。
+ *
+ * @param {string} entityCode 实体编码，如 PRODUCT_LINE / FOOTPRINT
  * @param {string} oid 实体 ID
  * @param {object} [params] 额外查询参数（如 { iterationOid } 用于查看历史版本）
  */
 export function getEntityByCode(entityCode, oid, params) {
-  const path = ENTITY_API_PATH[entityCode] || entityCode.toLowerCase().replace(/_/g, '-')
-  return request.get(`/${path}/${oid}`, { params })
+  return request.get(`/softtype-instances/${oid}`, {
+    params: { ...(params || {}), typeDefinitionCode: entityCode },
+  })
 }
 
-/** 实体编码 → API 路径映射，新增实体类型时在此添加即可 */
+/**
+ * 「设置生命周期状态」的候选项 —— 依据该类型绑定的生命周期模板。
+ *
+ * 返回 { templateCode, templateName, current, initial, states:[{code,name,reachable,reason}] }：
+ * 状态清单、初始状态、以及"从当前状态能否一步迁到它"（不可达的带原因，界面据此禁用）。
+ * 与执行侧（后端 moveToState / moveToInitialState）用同一份模板，不会"界面让选、后端拒收"。
+ */
+export function getLifecycleStateOptions(oid, typeDefinitionCode) {
+  return request.get(`/softtype-instances/${oid}/lifecycle-states`, {
+    params: { typeDefinitionCode },
+  })
+}
+
+/**
+ * 设置生命周期状态。
+ *
+ * @param {object} data { typeDefinitionCode, mode, targetStateCode? }
+ *   mode=INITIAL：退回模板初始状态（沿模板回退规则逐跳，如 已发布 → 工作中 → 草稿）
+ *   mode=SPECIFIED：设到 targetStateCode（要求当前状态能一步迁到它）
+ */
+export function setLifecycleState(oid, data) {
+  return request.post(`/softtype-instances/${oid}/lifecycle-state`, data)
+}
+
+/**
+ * 解析实体编码 → API 路径（未登记时按 code 小写转连字符推断）。
+ *
+ * <p>供通用组件按「记录所属实体」分派接口。例如行操作组件可据
+ * ENG_DOCUMENT / FOOTPRINT / SYMBOL → 'eng-documents' 判定走工程数据接口。
+ *
+ * <p><b>适用范围</b>：仅用于创建/读取之外的写操作（更新、删除、历史版本等）
+ * 分派 —— 创建走 {@code createSoftTypeInstance}、读取（详情）走
+ * {@code getEntityByCode}，二者均已统一到 {@code /softtype-instances}。
+ *
+ * @param {string} entityCode 实体编码，如 PART / ENG_DOCUMENT / FOOTPRINT
+ * @returns {string} API 路径片段，如 'parts' / 'eng-documents'
+ */
+export function resolveEntityApiPath(entityCode) {
+  if (!entityCode) return ''
+  return ENTITY_API_PATH[entityCode] || entityCode.toLowerCase().replace(/_/g, '-')
+}
+
+/**
+ * 实体编码 → API 路径映射。
+ *
+ * <p>仅服务于更新/删除/历史版本等尚未统一的写操作分派；
+ * 创建与详情读取已由 {@code /softtype-instances} 统一路由，不再依赖本表。
+ */
 const ENTITY_API_PATH = {
   PRODUCT_LINE: 'product-lines',
   PRODUCT_MODEL: 'product-models',
@@ -510,6 +653,10 @@ const ENTITY_API_PATH = {
   PCBA: 'parts',
   // 文档子类型（SOFT_TYPE）共用 ck_document 表，按 typeDefinitionCode 区分，均走 documents 端点
   'SUMMARY-SOLUATION': 'documents',
+  // 工程数据（OOTB）与其子类型（SOFT_TYPE）共用 ck_eng_document 表，均走 eng-documents 端点
+  ENG_DOCUMENT: 'eng-documents',
+  FOOTPRINT: 'eng-documents',
+  SYMBOL: 'eng-documents',
 }
 
 /** 创建产品线 */
@@ -584,9 +731,15 @@ export function getProductLineStats() {
 
 // ==================== 研发阶段 API ====================
 
-/** 获取产品线的阶段列表 */
-export function getStages(productLineOid) {
-  return request.get(`/product-lines/${productLineOid}/stages`)
+/**
+ * 获取某个容器（产品系列/型号、企业资源库子库）的阶段列表。
+ *
+ * <p>后端按 `ck_stage.owner_oid` 过滤，并不限于"产品线"：资源库也有自己的阶段
+ * （如「封装·图符库」的「封装图符」），它的文件夹就挂在该阶段下 ——
+ * 所以入参的语义是"阶段的归属者"。实测 `/product-lines/{资源库 oid}/stages` 可正常返回。
+ */
+export function getStages(ownerOid) {
+  return request.get(`/product-lines/${ownerOid}/stages`)
 }
 
 /** 为产品线初始化默认阶段 */
@@ -854,6 +1007,102 @@ export function deleteFolder(oid) {
   return request.delete(`/folders/${oid}`)
 }
 
+// ==================== 软类型实例统一入口 API ====================
+
+/**
+ * 创建软类型实例（统一入口）。
+ *
+ * 后端依据 typeDefinitionCode 对应的 root_type_code 自动路由到能力宿主
+ * （PART → ck_part / DOCUMENT → ck_document / ENG_DOCUMENT → ck_eng_document …），
+ * 前端无需再硬编码「类型 → 端点」映射。
+ *
+ * @param {object} data 载荷，须含 typeDefinitionCode（如 FOOTPRINT / SYMBOL / ELECTRONIC）
+ * @returns {Promise} 响应 data 含 hostCode / oid / number / name / iterationOid / displayVersion
+ */
+export function createSoftTypeInstance(data) {
+  return request.post('/softtype-instances', data)
+}
+
+/** 解析某类型所属的能力宿主（诊断：可验证 root_type_code 路由是否符合预期） */
+export function resolveSoftTypeHost(typeDefinitionCode) {
+  return request.get('/softtype-instances/host', { params: { typeDefinitionCode } })
+}
+
+/** 已实现创建策略的能力宿主列表 */
+export function getSoftTypeHosts() {
+  return request.get('/softtype-instances/hosts')
+}
+
+// ==================== 工程数据（EngineeringDocument）API ====================
+// 工程数据 = CAD 设计数据（3D 数模 / 2D 工程图 / 封装 FOOTPRINT / 图符 SYMBOL …），
+// 与通用文档（/documents）并列，数据落 ck_eng_document + ck_eng_document_iteration。
+// 注意：创建不在本组，统一走 createSoftTypeInstance（POST /softtype-instances）。
+
+/** 更新工程数据（含 CAD 属性 / 分类 IBA / 实体 IBA） */
+export function updateEngineeringDocument(oid, data) {
+  return request.put(`/eng-documents/${oid}`, data)
+}
+
+/** 重命名工程数据 */
+export function renameEngineeringDocument(oid, name) {
+  return request.put(`/eng-documents/${oid}/rename`, { name })
+}
+
+/** 移动工程数据到新的容器/阶段/文件夹 */
+export function moveEngineeringDocument(oid, data) {
+  return request.put(`/eng-documents/${oid}/move`, data)
+}
+
+/** 删除工程数据（含全部子版本） */
+export function deleteEngineeringDocument(oid) {
+  return request.delete(`/eng-documents/${oid}`)
+}
+
+/** 删除工程数据的最新小版本（仅删除最新 iteration） */
+export function deleteEngineeringDocumentLatestIteration(oid) {
+  return request.delete(`/eng-documents/${oid}/latest-iteration`)
+}
+
+/** 新建视图版本（revision+1，iteration=1） */
+export function newViewVersionEngineeringDocument(oid) {
+  return request.post(`/eng-documents/${oid}/new-view-version`)
+}
+
+/** 查询工程数据详情（params = { iterationOid } 可选，用于查看指定历史版本） */
+export function getEngineeringDocument(oid, params) {
+  return request.get(`/eng-documents/${oid}`, { params })
+}
+
+/** 查询工程数据列表（params = { containerOid, stageOid, folderOid }） */
+export function getEngineeringDocuments(params = {}) {
+  return request.get('/eng-documents', { params })
+}
+
+/** 查询文件夹下的工程数据详情（含迭代、生命周期、类型名、CAD 属性），用于列表展示 */
+export function getFolderEngineeringDocumentDetails(folderOid) {
+  return request.get('/eng-documents/folder-details', { params: { folderOid } })
+}
+
+/** 查询工程数据历史版本（含主对象 clsOid、实体 IBA、迭代级分类 IBA） */
+export function getEngineeringDocumentIterations(oid) {
+  return request.get(`/eng-documents/${oid}/iterations`)
+}
+
+/** 检出工程数据（通用入口，entityType=ENG_DOCUMENT） */
+export function checkoutEngineeringDocument(oid, comment) {
+  return request.post('/checkout/checkout', { entityType: 'ENG_DOCUMENT', entityOid: oid, comment })
+}
+
+/** 检入工程数据（解除检出，将副本保存为新版本） */
+export function checkinEngineeringDocument(oid) {
+  return request.post('/checkout/checkin', { entityType: 'ENG_DOCUMENT', entityOid: oid })
+}
+
+/** 取消检出工程数据（撤销检出，不保留修改） */
+export function undoCheckoutEngineeringDocument(oid) {
+  return request.post('/checkout/undo-checkout', { entityType: 'ENG_DOCUMENT', entityOid: oid })
+}
+
 // ==================== 零组件 API ====================
 
 /** 创建零组件 */
@@ -1030,6 +1279,32 @@ export function getDocumentIterations(oid) {
   return request.get(`/documents/${oid}/iterations`)
 }
 
+// ==================== 自动化服务清单 API ====================
+// 流程设计器「函数调用」节点的候选清单以后端为准（后端实现了哪些服务/函数）。
+// 前端白名单只保留显示名与参数声明 —— 两份清单会漂移，而漂移的表现是
+// "函数明明部署了，下拉里选不到"。
+
+export function getAutomationServices() {
+  return request.get('/plm/automation-services')
+}
+
+// ==================== 目标系统注册表 API ====================
+// 流程「REST 接口调用」节点的下拉清单，同时供「系统配置 → 目标系统」维护页使用。
+// 凭据只写不读：接口不回传 secret，编辑时留空表示不修改（见后端 TargetSystemController）。
+
+export function getTargetSystems() {
+  return request.get('/plm/target-systems')
+}
+export function createTargetSystem(data) {
+  return request.post('/plm/target-systems', data)
+}
+export function updateTargetSystem(oid, data) {
+  return request.put(`/plm/target-systems/${oid}`, data)
+}
+export function deleteTargetSystem(oid) {
+  return request.delete(`/plm/target-systems/${oid}`)
+}
+
 // ==================== 文件存储配置 API ====================
 
 export function getFileStorageConfigs() {
@@ -1154,6 +1429,27 @@ export function bindTypeLifecycleTemplate(typeOid, lifecycleTemplateCode) {
 /** 解绑类型生命周期模板 */
 export function unbindTypeLifecycleTemplate(typeOid) {
   return request.delete(`/type-lifecycle-template-links/type/${typeOid}`)
+}
+
+// ==================== 类型-生命周期状态-流程模板 关联 ====================
+//
+// 契约见 src/main/java/cn/ck/plm/softtype/controller/TypeLifecycleStateProcessLinkController.java
+// 语义：**该类型所绑生命周期模板**里的某个状态「用哪个流程模板」（1:1）。
+// 主键含类型：同一个生命周期模板（如 STANDARD）会被多个类型复用，各自可绑不同流程。
+// 绑的是模板 code（配置层，不带版本），编辑生命周期模板不影响绑定。
+// 该类型用的是哪个模板、归属哪个租户由后端自行解析，前端只需给类型 oid 与状态。
+// 本期只做配置与展示（发起流程仍由人工手动发起，运行期自动触发未接入）。
+
+/** 该类型（按其当前所绑生命周期模板）的「状态 → 流程模板」映射：{ statusCode: processTemplateOid } */
+export function getTypeLifecycleStateProcesses(typeOid) {
+  return request.get(`/type-lifecycle-state-process-links/type/${typeOid}`)
+}
+
+/** 绑定 / 改绑 / 解绑某状态的流程模板（processTemplateOid 传 null 或 '' 即解绑） */
+export function bindTypeLifecycleStateProcess(typeOid, statusCode, processTemplateOid) {
+  return request.put(`/type-lifecycle-state-process-links/type/${typeOid}/${statusCode}`, {
+    processTemplateOid,
+  })
 }
 
 // ==================== 生命周期状态 API ====================
@@ -1447,6 +1743,313 @@ export function convertUnit(from, to) {
 }
 
 // ==================== 阶段模板 API ====================
+// ==================== 流程模板 API（流程设计器，spec §2.3 / §4-H）====================
+//
+// 契约见 src/main/java/cn/ck/plm/process/controller/ProcessTemplateController.java
+// 注意：baseURL 已含 /api，故此处路径不带 /api 前缀。
+
+/** 模板列表（keyword / category / enabled 均可选） */
+export function listProcessTemplates(params = {}) {
+  return request.get('/plm/process-templates', { params })
+}
+
+/** 模板详情（含最新版 dslJson） */
+export function getProcessTemplate(oid) {
+  return request.get(`/plm/process-templates/${oid}`)
+}
+
+/** 新建模板（body: key,name,…,dslJson） */
+export function createProcessTemplate(data) {
+  return request.post('/plm/process-templates', data)
+}
+
+/** 保存（body: { dslJson, changeNote }）→ 后端生成新版本 */
+export function saveProcessTemplate(oid, data) {
+  return request.put(`/plm/process-templates/${oid}`, data)
+}
+
+/**
+ * 按版本删除（**流程删除的唯一方式**）
+ *
+ * @param {string} oid 模板 oid
+ * @param {number[]} versions 要删除的版本号，如 [2, 3]
+ * @returns {Promise<{code, message, data: {templateOid, deleted, templateRemoved, latestVersion}}>}
+ *
+ * 只允许删未部署的版本（已部署的整批拒绝）；删完最后一个版本 → 该流程整体消失。
+ * 刻意没有"删除模板"接口：删除必须按版本进行。
+ */
+export function deleteProcessTemplateVersions(oid, versions) {
+  return request.post(`/plm/process-templates/${oid}/versions/delete`, { versions })
+}
+
+/** 复制/另存（body: { key, name }） */
+export function copyProcessTemplate(oid, data) {
+  return request.post(`/plm/process-templates/${oid}/copy`, data)
+}
+
+/**
+ * 允许部署 / 停止部署（原「启用 / 禁用」）
+ *
+ * 语义是**发布闸门**：停止部署后不能发布新版本，但已部署的流程定义与在途实例不受影响，
+ * 也不阻止按 key 直接发起新实例（那是运行期的事，不在本开关范围内）。
+ */
+export function enableProcessTemplate(oid) {
+  return request.post(`/plm/process-templates/${oid}/enable`)
+}
+
+export function disableProcessTemplate(oid) {
+  return request.post(`/plm/process-templates/${oid}/disable`)
+}
+
+/** 版本历史 */
+export function listProcessTemplateVersions(oid) {
+  return request.get(`/plm/process-templates/${oid}/versions`)
+}
+
+/** 指定版本（含 DSL 与部署快照） */
+export function getProcessTemplateVersion(oid, version) {
+  return request.get(`/plm/process-templates/${oid}/versions/${version}`)
+}
+
+/** 部署（body: { version?, bpmnXml }；BPMN 的 process id 必须等于模板 key） */
+export function deployProcessTemplate(oid, data) {
+  return request.post(`/plm/process-templates/${oid}/deploy`, data)
+}
+
+// ==================== 发起流程（所有业务对象行操作共用）====================
+//
+// 契约见 src/main/java/cn/ck/plm/process/controller/ProcessInstanceController.java
+// 用法：业务对象页面的「发起流程」弹框（components/StartProcessModal.vue）
+//   1) 先 start-options 解析"该类型 + 该状态"绑定的流程模板及其最新版本信息；
+//   2) 用户确认后调 start，由 Flowable 按 key 启动（用引擎里该 key 最新已部署的定义）。
+
+/**
+ * 发起前解析：该业务对象（类型 + 状态）该发起哪个流程，以及该流程的最新版本信息。
+ *
+ * @param {object} params { typeDefinitionCode, statusCode, iterationOid?, entityOid? }
+ *   iterationOid 传业务对象迭代固化的生命周期模板子版本（可空）——
+ *   传了就优先按"对象出生时那一版"的配置解析。
+ *   entityOid 传业务对象主 oid（可空）—— 传了就一并判定"该对象是否已有流程在执行"，
+ *   有在跑的则 startable=false（同一业务对象同时只允许一个流程）。
+ * @returns {Promise<{code, message, data:{
+ *   startable: boolean, reason: string|null,
+ *   typeDefinitionCode, typeDefinitionName, typeOid, statusCode,
+ *   processTemplate: { oid, key, name, displayName, description, enabled,
+ *                      latestVersion, deployedVersion, deployedInCurrentTenant },
+ *   processVersion: { version, changeNote, deployed, createdAt }
+ * }}>}
+ *
+ * 未配置 / 模板已删 / 尚未部署 / 该对象已有流程在执行时同样返回 code=200，
+ * 但 startable=false 且带 reason，弹框据此说明"为什么不能发起"，而不是让用户点了才报错。
+ */
+export function getProcessStartOption(params) {
+  return request.get('/workflow/instance/start-options', { params })
+}
+
+/**
+ * 通过 Flowable 发起流程实例。
+ *
+ * @param {object} data {
+ *   processKey,
+ *   businessKey,             // 业务对象 oid —— 流程实例据此与业务对象关联
+ *   entityOid?,              // 业务对象 oid；给了才写 ck_process_entity_set（实例 ↔ 实体 关联）
+ *   entityVersion?,          // 业务对象的【大版本】（如 A）；不传则后端按对象当前大版本解析
+ *   typeCode?,               // 类型编码（后端据此补 rootTypeCode）
+ *   rootTypeCode?,           // 能力宿主（可省）
+ *   variables?,
+ * }
+ * @returns {Promise<{code, data: string}>} data = 流程实例 id
+ */
+export function startProcessInstance(data) {
+  return request.post('/workflow/instance/start', data)
+}
+
+/**
+ * 某个业务对象关联的流程实例 —— 所有业务对象详情页「关联流程」两栏共用。
+ *
+ * @param {object} params { entityOid, entityVersion? }
+ *   entityOid     业务对象主 oid（必填）
+ *   entityVersion 业务对象大版本（可空 = 该对象全部大版本；大版本之间是两轮工作）
+ * @returns {Promise<{code, data: Array}>} 执行中的在前、已执行的在后（各自按时间倒序）；
+ *   每行含 status / entityVersion / startTime / endTime / currentActivityName / currentAssignees
+ */
+export function getEntityProcesses(params) {
+  return request.get('/workflow/instance/by-entity', { params })
+}
+
+/** 流程实例详情（含流程变量） */
+export function getProcessInstanceDetail(id) {
+  return request.get(`/workflow/instance/${id}`)
+}
+
+/**
+ * 我的待办任务（任务中心「待办任务」页签 + 个人中心待办卡片共用）。
+ *
+ * @param {object} params { page, size }
+ * @returns {Promise<{code, data: Array}>} 每项含 id / name / processDefinitionName /
+ *   processDefinitionKey / processInstanceId / businessKey / formKey /
+ *   taskDefinitionKey / assignee / createTime / dueDate / overdue
+ */
+export function getMyTodoTasks(params) {
+  return request.get('/workflow/task/todo', { params })
+}
+
+/** 我的任务统计：{ todoCount, claimableCount, overdueCount, doneCount } */
+export function getMyTaskStats() {
+  return request.get('/workflow/task/stats')
+}
+
+/**
+ * 单个在办任务 —— 办理页（新窗口冷启动）用它拿任务上下文。
+ *
+ * @param {string} id 任务 id
+ * @returns {Promise<{code, data}>} 200 + 任务；任务已被办理或不存在时 code=404
+ *   （两个人同时打开同一任务是正常的，后到的人应看到"已办理"，而不是报错）
+ */
+export function getTaskDetail(id) {
+  return request.get(`/workflow/task/${id}`)
+}
+
+/**
+ * 任务办理页的**渲染上下文** —— 「通用信息 + 任务表单 + 完整进度」一次给齐。
+ *
+ * <p>办理页是冷启动的独立窗口，只有任务 id；让前端自己串行拼 4~5 个请求会引入
+ * 半加载状态与口径漂移，所以由后端聚合。
+ *
+ * @param {string} id 任务 id
+ * @returns {Promise<{code, data: {
+ *   task: object, process: object|null,
+ *   entities: Array<{ entityOid, entityVersion, typeCode, rootTypeCode, businessKey }>,
+ *   form: { formKey, taskDefinitionKey, taskName, dslJson },
+ *   activities: Array
+ * }}>} 任务已被办理或不存在时 code=404
+ */
+export function getTaskContext(id) {
+  return request.get(`/workflow/task/${id}/context`)
+}
+
+/**
+ * 任务办理表单上下文：{ formKey, taskDefinitionKey, dslJson, processDefinitionKey/version }
+ * 前端按 formKey 派发表单（内置表单 / 通用同意-驳回）。
+ */
+export function getTaskForm(id) {
+  return request.get(`/workflow/task/${id}/form`)
+}
+
+/**
+ * 办理任务。
+ *
+ * @param {string} id 任务 id
+ * @param {object} data { action: 'approve'|'reject', comment, variables? }
+ *   variables 是节点表单填的流程变量（如「设置流程参与者」选的人）
+ */
+export function completeTask(id, data) {
+  return request.post(`/workflow/task/${id}/complete`, data)
+}
+
+/** 任务评论列表 */
+export function getTaskComments(id) {
+  return request.get(`/workflow/task/${id}/comment`)
+}
+
+/** 添加任务评论 */
+export function addTaskComment(id, comment) {
+  return request.post(`/workflow/task/${id}/comment`, { comment })
+}
+
+/**
+ * 批量判定：这些业务对象里哪些正在流程中（发起弹窗过滤候选用）。
+ *
+ * <p>由后端判定而不是前端拿状态猜：依据是"关联表 + 引擎运行时"，且是**大版本粒度**
+ * （同一对象的 A 版在跑，B 版照样能发起）—— 口径与发起闸门同一份实现。
+ *
+ * @param {string} typeCode 类型编码（解析对象当前大版本用）
+ * @param {string[]} entityOids 业务对象 oid 列表
+ * @returns {Promise<{code:number, data:string[]}>} data = 已在流程中的对象 oid
+ */
+export function getRunningEntityOids(typeCode, entityOids) {
+  return request.get('/workflow/instance/running-entities', {
+    params: { typeCode, entityOids: (entityOids || []).join(',') },
+  })
+}
+
+/**
+ * 我最近创建/修改过的业务对象（个人中心）。
+ *
+ * @param {object} params { days = 5, limit = 20 }
+ * @returns {Promise<{code, data: Array}>} 每项含 oid / name / code / entityType / entityTypeName /
+ *   displayVersion / touchType（CREATED 创建 / UPDATED 修改 / CREATED_UPDATED 创建后又改过）/
+ *   createdAt / updatedAt / touchedAt / linkPath
+ */
+export function getMyRecentObjects(params) {
+  return request.get('/home/recent-objects', { params })
+}
+
+/**
+ * 某流程实例的节点经路 —— "走到哪了"（关联流程里展开进度用）。
+ *
+ * @returns {Promise<{code, data: Array}>} 按时间顺序的节点，每项：
+ *   status = completed（已办）/ running（当前在办）/ pending（尚未到达）
+ *   name / type（审批活动、设置流程参与者…）/ assignees / assigneeNames
+ *   startTime / endTime / comment（意见）/ outcome（实际走的分支名，如「同意」）
+ */
+export function getInstanceActivities(id) {
+  return request.get(`/workflow/instance/${id}/activities`)
+}
+
+/**
+ * 系统通知渠道 —— 「系统当前能怎么发通知」（服务端 plm.notification 配置）。
+ *
+ * 返回每个渠道的 { code, label, enabled, usable, missing }：设计器只应从 usable 的渠道里挑，
+ * 管理员也能一眼看到"邮件为什么没发出去"（缺哪个配置项）。
+ */
+export function getNotificationChannels() {
+  return request.get('/notifications/channels')
+}
+
+/**
+ * 某流程实例的**节点执行日志** —— 「这个节点后台到底跑了什么、报了什么错」。
+ *
+ * 自动服务（设置状态 / 自动服务 / 通知）由后台执行，失败时用户只看到"流程卡住了"；
+ * 这里把执行痕迹（含错误堆栈）读出来，详情页点开节点即可看。
+ *
+ * @param {string} id 流程实例 id
+ * @param {{activityId?: string}} [params] 传 activityId 只看某个节点；不传返回整个实例的
+ */
+export function getInstanceNodeLogs(id, params) {
+  return request.get(`/workflow/instance/${id}/node-logs`, { params })
+}
+
+/** 移动到指定分组（body: { categoryOid }；不产生新版本） */
+export function moveProcessTemplateCategory(oid, categoryOid) {
+  return request.post(`/plm/process-templates/${oid}/category`, { categoryOid })
+}
+
+// ==================== 流程分组 API（清单页左侧导航）====================
+//
+// 契约见 src/main/java/cn/ck/plm/process/controller/ProcessCategoryController.java
+// 用法：先建分组 → 选中分组 → 在组内新建并设计流程；分组名在租户内唯一。
+
+/** 分组列表（按 sort_order、name） */
+export function listProcessCategories() {
+  return request.get('/plm/process-categories')
+}
+
+/** 新建分组（body: { name, sortOrder?, description? }） */
+export function createProcessCategory(data) {
+  return request.post('/plm/process-categories', data)
+}
+
+/** 修改分组（改名会同步组内模板） */
+export function updateProcessCategory(oid, data) {
+  return request.put(`/plm/process-categories/${oid}`, data)
+}
+
+/** 删除分组（组内仍有流程时后端拒绝） */
+export function deleteProcessCategory(oid) {
+  return request.delete(`/plm/process-categories/${oid}`)
+}
+
 export function listStageTemplates() { return request.get('/stage-templates') }
 export function createStageTemplate(data) { return request.post('/stage-templates', data) }
 export function updateStageTemplate(oid, data) { return request.put(`/stage-templates/${oid}`, data) }
@@ -1472,6 +2075,15 @@ export function getBomLinksByParentIteration(parentIterationOid) {
 /** 递归查询某父迭代下的完整多层 BOM 树（含子件展示信息） */
 export function getBomTree(parentIterationOid) {
   return request.get(`/bom-links/tree/${parentIterationOid}`)
+}
+
+/**
+ * BOM 成本报告（卷积）：后端一次给出总成本与逐层明细（含每行的单位成本/本层金额/累计金额）。
+ *
+ * <p>入参是<b>父件迭代 oid</b>：成本是有版本的口径（BOM 行挂在迭代上）。
+ */
+export function getBomCostReport(parentIterationOid) {
+  return request.get(`/bom-links/cost-report/${parentIterationOid}`)
 }
 
 /** 创建 BOM 行（把指定 Part 添加为子件） */
@@ -1536,68 +2148,85 @@ export function getPartAlternateLinksByPart(partOid) {
   return request.get(`/part-alternate-links/by-part/${partOid}`)
 }
 
-// ==================== 部件关联文档 API（参考 REFERENCE / 说明 DESCRIPTION） ====================
+// ============ 零件-文档关联 API（Windchill 两分模型：DESCRIBES 定义 / REFERENCE 参考） ============
+// 已废弃原 part-document-links（主数据级），统一到 part-doc-links（迭代级，支持版本锁定与晋升）
 
-/** 创建部件-文档关联 */
-export function createPartDocumentLink(data) {
-  return request.post('/part-document-links', data)
+/** 查询关联：params = { partOid | partIterationOid, linkType? }（linkType 为空返回全部） */
+export function getPartDocLinks(params = {}) {
+  return request.get('/part-doc-links', { params })
 }
 
-/** 删除部件-文档关联 */
-export function deletePartDocumentLink(oid) {
-  return request.delete(`/part-document-links/${oid}`)
+/** 创建关联：{ partOid | partIterationOid, docMasterOid, docIterationOid?, linkType, category? } */
+export function createPartDocLink(data) {
+  return request.post('/part-doc-links', data)
 }
 
-/** 查询某部件的关联文档（linkType 可选：REFERENCE / DESCRIPTION，不传返回全部） */
-export function getPartDocumentLinksByPart(partOid, linkType) {
-  return request.get(`/part-document-links/by-part/${partOid}`, { params: linkType ? { linkType } : {} })
+/** 删除关联：linkType 指明类别（DESCRIBES / REFERENCE） */
+export function deletePartDocLink(oid, linkType = 'REFERENCE') {
+  return request.delete(`/part-doc-links/${oid}`, { params: { linkType } })
+}
+
+/** 晋升：REFERENCE → DESCRIBES（进入技术状态基线） */
+export function promotePartDocLink(oid) {
+  return request.post(`/part-doc-links/${oid}/promote`)
 }
 
 // ==================== 企业资源库-电子元器件库 API ====================
+// 元器件为 ELECTRONIC 软类型的 Part（创建走 /parts），本模块仅负责分类绑定与清单查询
 
-/** 查询完整分类树 */
-export function getComponentCategoryTree() {
-  return request.get('/component-categories/tree')
+/** 查询企业资源库根节点下的全部资源子库（按 sort_order 排序） */
+export function getResourceChildren() {
+  return request.get('/resource-containers/children')
 }
 
-/** 创建分类 */
-export function createComponentCategory(data) {
-  return request.post('/component-categories', data)
+/**
+ * 资源库分类树（来自分类管理，未绑定时 data 为 null）。
+ * resourceCode: COMPONENT 元器件库 / STD_PART 标准件库 / GEN_PART 通用件库
+ */
+export function getLibraryCategoryTree(resourceCode) {
+  return request.get('/resource-libraries/category-tree', { params: resourceCode ? { resourceCode } : {} })
 }
 
-/** 更新分类 */
-export function updateComponentCategory(oid, data) {
-  return request.put(`/component-categories/${oid}`, data)
+/** 查询指定资源库绑定的根分类 oid（供业务配置回显） */
+export function getLibraryCategoryBinding(resourceCode) {
+  return request.get('/resource-libraries/category-binding', { params: resourceCode ? { resourceCode } : {} })
 }
 
-/** 删除分类 */
-export function deleteComponentCategory(oid) {
-  return request.delete(`/component-categories/${oid}`)
+/**
+ * 一次性查询所有资源库（COMPONENT / STD_PART / GEN_PART）的分类根节点绑定，
+ * 含平台租户回退。返回 { COMPONENT: oid, STD_PART: oid, GEN_PART: oid }，
+ * 缺失的 key 表示该资源库未绑定。
+ * 用于「业务配置 → 资源库分类」页面加载（替代 N 次单条调用）。
+ */
+export function getAllCategoryBindings() {
+  return request.get('/resource-libraries/category-bindings')
 }
 
-/** 按分类 + 关键字查询元器件（categoryOid 可空 = 全部分类） */
+/** 绑定资源库的分类根节点（仅业务配置调用）：resourceCode = COMPONENT/STD_PART/GEN_PART */
+export function bindLibraryCategory(resourceCode, rootClassificationOid) {
+  return request.post('/resource-libraries/category-binding', { resourceCode, rootClassificationOid })
+}
+
+/** 企业资源容器上下文（containerOid/containerType/stageOid），元器件新建时使用 */
+export function getElectronicComponentContext() {
+  return request.get('/resource-libraries/context')
+}
+
+/** 按分类集合查询元器件清单（categoryOids 逗号分隔，可空 = 全部；返回 { items, context }） */
 export function getElectronicComponents(params = {}) {
-  return request.get('/electronic-components', { params })
+  return request.get('/resource-libraries', { params })
 }
 
-/** 创建元器件（编码为空时后端自动生成） */
-export function createElectronicComponent(data) {
-  return request.post('/electronic-components', data)
+// ==================== 封装·图符库 API（PACKAGE_SYMBOL 资源子库） ====================
+
+/** 封装·图符库归属上下文（containerOid / containerType / containerCode / containerName / stageOid） */
+export function getPackageSymbolContext() {
+  return request.get('/package-symbols/context')
 }
 
-/** 更新元器件 */
-export function updateElectronicComponent(oid, data) {
-  return request.put(`/electronic-components/${oid}`, data)
-}
-
-/** 删除元器件 */
-export function deleteElectronicComponent(oid) {
-  return request.delete(`/electronic-components/${oid}`)
-}
-
-/** 元器件库统计（总数/库存总数） */
-export function getElectronicComponentStats() {
-  return request.get('/electronic-components/stats')
+/** 封装 / 图符清单：folderOid 可空=全部；typeCode 可选 FOOTPRINT / SYMBOL；keyword 名称或编码 */
+export function getPackageSymbols(params = {}) {
+  return request.get('/package-symbols', { params })
 }
 
 export default request

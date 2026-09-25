@@ -46,27 +46,34 @@
             <template #prefix><SearchOutlined /></template>
           </a-input>
         </div>
-        <a-spin :spinning="treeLoading" class="st-tree-spin">
-          <a-tree
-            v-if="filteredTree.length > 0"
-            :tree-data="filteredTree"
-            :field-names="{ children: 'children', title: 'name', key: 'oid' }"
-            v-model:selectedKeys="selectedKeys"
-            v-model:expandedKeys="expandedKeys"
-            block-node
-            @select="onTreeSelect"
-          >
-            <template #title="nodeData">
-              <div class="st-tree-node">
-                <component :is="getIconComponent(nodeData.icon)" class="st-tree-icon" />
-                <span class="st-tree-name">{{ nodeData.name }}</span>
-                <a-tag v-if="nodeData.typeKind === 'OOTB'" color="purple" size="small" class="st-tree-tag">内置</a-tag>
-                <a-tag v-else-if="nodeData.source === 'USER'" color="green" size="small" class="st-tree-tag">自定义</a-tag>
-              </div>
-            </template>
-          </a-tree>
-          <a-empty v-else description="暂无类型定义" :image-style="{ height: '40px' }" />
-        </a-spin>
+        <!--
+          滚动容器必须是普通 div：a-spin 会额外渲染 .ant-spin-nested-loading / .ant-spin-container
+          包装层，若把 flex/overflow 直接加在 a-spin 上，高度分配会失真导致滚动条不出现。
+        -->
+        <div class="st-tree-spin">
+          <a-spin :spinning="treeLoading">
+            <a-tree
+              v-if="filteredTree.length > 0"
+              :tree-data="filteredTree"
+              :field-names="{ children: 'children', title: 'name', key: 'oid' }"
+              v-model:selectedKeys="selectedKeys"
+              v-model:expandedKeys="expandedKeys"
+              block-node
+              @select="onTreeSelect"
+            >
+              <template #title="nodeData">
+                <div class="st-tree-node">
+                  <component :is="getIconComponent(nodeData.icon)" class="st-tree-icon" />
+                  <span class="st-tree-name">{{ nodeData.name }}</span>
+                  <a-tag v-if="nodeData.typeKind === 'OOTB'" color="purple" size="small" class="st-tree-tag">内置</a-tag>
+                  <a-tag v-else-if="nodeData.typeKind === 'DOMAIN'" color="gold" size="small" class="st-tree-tag">域锚点</a-tag>
+                  <a-tag v-else-if="nodeData.source === 'USER'" color="green" size="small" class="st-tree-tag">自定义</a-tag>
+                </div>
+              </template>
+            </a-tree>
+            <a-empty v-else description="暂无类型定义" :image-style="{ height: '40px' }" />
+          </a-spin>
+        </div>
       </div>
 
       <!-- 右侧内容区 -->
@@ -109,8 +116,8 @@
                   <div class="st-info-item">
                     <span class="st-info-label"><ApartmentOutlined class="st-info-icon" /> 类型</span>
                     <span class="st-info-value">
-                      <a-tag :color="detail.typeKind === 'OOTB' ? 'purple' : 'blue'">
-                        {{ detail.typeKind === 'OOTB' ? '系统内置' : '自定义类型' }}
+                      <a-tag :color="detail.typeKind === 'OOTB' ? 'purple' : (detail.typeKind === 'DOMAIN' ? 'gold' : 'blue')">
+                        {{ detail.typeKind === 'OOTB' ? '系统内置' : (detail.typeKind === 'DOMAIN' ? '域锚点（业务域命名空间）' : '自定义类型') }}
                       </a-tag>
                     </span>
                   </div>
@@ -286,10 +293,31 @@
                         <div class="st-rule-detail-section">
                           <span class="st-rule-detail-label">状态列表</span>
                           <div class="st-state-list">
-                            <a-tag v-for="(s, i) in (lcDetail?.states || [])" :key="i" :color="i === 0 ? 'green' : 'default'" style="margin:2px">
-                              {{ s.statusDisplayName || s.statusCode }}
-                              <span v-if="lcDetail?.initialStateCode === s.statusCode" style="font-size:10px;margin-left:2px">(初始)</span>
-                            </a-tag>
+                            <!--
+                              就地配置「状态 → 流程模板」：每个状态可绑定一个流程模板。
+                              选中即保存（与编码规则 / 版本规则同一交互）；清空即解绑。
+                            -->
+                            <div
+                              v-for="(s, i) in (lcDetail?.states || [])"
+                              :key="i"
+                              class="st-state-row"
+                            >
+                              <a-tag :color="i === 0 ? 'green' : 'default'" style="margin:0">
+                                {{ s.statusDisplayName || s.statusCode }}
+                                <span v-if="lcDetail?.initialStateCode === s.statusCode" style="font-size:10px;margin-left:2px">(初始)</span>
+                              </a-tag>
+                              <a-select
+                                :value="lcStateProcesses[s.statusCode] || undefined"
+                                :options="processTemplateOptions"
+                                size="small"
+                                allow-clear
+                                show-search
+                                option-filter-prop="label"
+                                placeholder="选择该状态使用的流程模板"
+                                style="flex:1;min-width:200px"
+                                @change="(v) => handleBindStateProcess(s, v)"
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -517,6 +545,17 @@
         <a-form-item label="名称" required>
           <a-input v-model:value="createForm.name" placeholder="类型名称" size="large" />
         </a-form-item>
+        <!-- 在域锚点（DOMAIN）下创建子类型时必须指定能力宿主：决定数据落在 ck_part 还是 ck_document -->
+        <a-form-item v-if="isCreatingUnderDomain" label="能力宿主（所属根类型）" required>
+          <a-select
+            v-model:value="createForm.rootTypeCode"
+            placeholder="选择能力宿主（PART=部件 / DOCUMENT=文档）"
+            :options="rootTypeOptions"
+          />
+          <div style="color:#8c8c8c;font-size:12px;margin-top:4px">
+            域锚点本身不携带能力，需由子类型声明宿主：PART → 落 ck_part（部件编码/版本/生命周期）；DOCUMENT → 落 ck_document
+          </div>
+        </a-form-item>
         <a-form-item label="显示名">
           <a-input v-model:value="createForm.displayName" placeholder="显示名称" />
         </a-form-item>
@@ -637,6 +676,8 @@ import {
   getNumberRules, getNumberRule,
   getVersionRules, getVersionRuleByCode,
   getLifecycleTemplates, getLifecycleTemplate,
+  getTypeLifecycleStateProcesses, bindTypeLifecycleStateProcess,
+  listProcessTemplates,
   getTypeClassificationLink, bindTypeClassification, unbindTypeClassification,
   getClassificationTree, getClassification,
 } from '@/api'
@@ -915,7 +956,8 @@ function flattenTree(nodes) {
 }
 const flatTypes = computed(() => flattenTree(treeData.value))
 const ootbCount = computed(() => flatTypes.value.filter(t => t.typeKind === 'OOTB').length)
-const softCount = computed(() => flatTypes.value.filter(t => t.typeKind !== 'OOTB').length)
+// 域锚点（DOMAIN）是业务域命名空间根，不属于「自定义类型」，单独排除
+const softCount = computed(() => flatTypes.value.filter(t => t.typeKind !== 'OOTB' && t.typeKind !== 'DOMAIN').length)
 
 function buildTree(nodes) {
   return (nodes || []).map(n => ({ ...n, key: n.oid, children: n.children ? buildTree(n.children) : undefined }))
@@ -1018,18 +1060,40 @@ async function handleDeleteType() {
 
 // ============ 创建子类型 ============
 const createModalVisible = ref(false)
-const createForm = reactive({ code: '', name: '', displayName: '', description: '' })
+const createForm = reactive({ code: '', name: '', displayName: '', description: '', rootTypeCode: null })
+
+/** 当前是否正在域锚点（DOMAIN）下创建子类型：此时必须显式指定能力宿主 rootTypeCode */
+const isCreatingUnderDomain = computed(() => selectedNode.value?.typeKind === 'DOMAIN')
+
+/** 可选能力宿主：类型树中的 OOTB 根类型（PART / DOCUMENT / FUNCTIONAL…） */
+const rootTypeOptions = computed(() =>
+  flatTypes.value
+    .filter(t => t.typeKind === 'OOTB')
+    .map(t => ({ value: t.code, label: `${t.name || t.code}（${t.code}）` }))
+)
 
 function openCreateChild() {
-  Object.assign(createForm, { code: '', name: '', displayName: '', description: '' })
+  Object.assign(createForm, { code: '', name: '', displayName: '', description: '', rootTypeCode: null })
   createModalVisible.value = true
 }
 
 async function handleCreateChild() {
   if (!createForm.code || !createForm.name) { message.warning('请填写编码和名称'); return }
+  // 域锚点下创建必须指定能力宿主（后端亦会校验，此处前置提示以免调用失败）
+  if (isCreatingUnderDomain.value && !createForm.rootTypeCode) {
+    message.warning('在域锚点下创建子类型，必须选择能力宿主（PART / DOCUMENT）')
+    return
+  }
   saving.value = true
   try {
-    const res = await createTypeDefinition({ ...createForm, parentOid: selectedNode.value.oid, typeKind: 'SOFT_TYPE' })
+    const payload = {
+      ...createForm,
+      parentOid: selectedNode.value.oid,
+      typeKind: 'SOFT_TYPE',
+    }
+    // 非域锚点下不传能力宿主：后端会沿父链自动追溯，避免空值覆盖
+    if (!isCreatingUnderDomain.value) delete payload.rootTypeCode
+    const res = await createTypeDefinition(payload)
     const childOid = res?.data?.oid || res?.oid
     message.success('创建成功')
     createModalVisible.value = false
@@ -1125,6 +1189,44 @@ const vrDetailLoading = ref(false)
 const lcDetail = ref(null)
 const lcDetailLoading = ref(false)
 
+// ============ 生命周期状态 → 流程模板 绑定（就地配置）============
+/** statusCode → 流程模板 oid（后端返回的是映射，模板名称由下面的全量列表解析） */
+const lcStateProcesses = ref({})
+/** 全量流程模板：既用来解析名称，也用来标注「未部署 / 停止部署」 */
+const processTemplates = ref([])
+// 绑定本身允许选未部署的模板（先配生命周期、后部署流程是常见顺序），
+// 但要让用户一眼看出这个模板还不能发起
+const processTemplateOptions = computed(() =>
+  processTemplates.value.map((t) => ({
+    value: t.oid,
+    label: `${t.displayName || t.name}（${t.key}）${t.deployedVersion ? '' : ' · 未部署'}${
+      t.enabled === false ? ' · 停止部署' : ''
+    }`,
+  })),
+)
+async function loadProcessTemplateOptions() {
+  if (processTemplates.value.length) return
+  try { const r = await listProcessTemplates(); processTemplates.value = r?.data || r || [] } catch { /* ignore */ }
+}
+/** 绑定挂在【类型】上：同一生命周期模板被多个类型复用时，各自可绑不同流程 */
+async function loadStateProcesses(typeOid) {
+  if (!typeOid) { lcStateProcesses.value = {}; return }
+  try { const r = await getTypeLifecycleStateProcesses(typeOid); lcStateProcesses.value = (r?.data || r) || {} }
+  catch { lcStateProcesses.value = {} }
+}
+/** 选中即保存（清空即解绑）；后端返回整张映射，此处直接替换 */
+async function handleBindStateProcess(state, templateOid) {
+  const typeOid = selectedNode.value?.oid
+  if (!typeOid) return
+  try {
+    const r = await bindTypeLifecycleStateProcess(typeOid, state.statusCode, templateOid || null)
+    lcStateProcesses.value = (r?.data || r) || {}
+    message.success(templateOid
+      ? `已为「${state.statusDisplayName || state.statusCode}」绑定流程模板`
+      : '已解绑流程模板')
+  } catch { message.error('绑定失败') }
+}
+
 // 监听编码规则绑定变化，加载详情
 watch(selectedNumberRuleCode, async (code) => {
   if (!code) { nrDetail.value = null; return }
@@ -1139,10 +1241,12 @@ watch(selectedVersionRuleCode, async (code) => {
   catch { vrDetail.value = null } finally { vrDetailLoading.value = false }
 })
 watch(selectedLifecycleTemplateCode, async (code) => {
-  if (!code) { lcDetail.value = null; return }
+  if (!code) { lcDetail.value = null; lcStateProcesses.value = {}; return }
   lcDetailLoading.value = true
   try { const r = await getLifecycleTemplate(code); lcDetail.value = r?.data || r || null }
   catch { lcDetail.value = null } finally { lcDetailLoading.value = false }
+  // 「状态 → 流程模板」绑定就地配置：绑定主语是类型，与详情一起加载（流程模板清单只拉一次）
+  await Promise.all([loadProcessTemplateOptions(), loadStateProcesses(selectedNode.value?.oid)])
 })
 
 // ==================== 分类绑定 ====================
@@ -1453,10 +1557,25 @@ function formatConstraints(record) {
   if (record.defaultValue) parts.push(`默认: ${record.defaultValue}`)
   return parts.length > 0 ? parts.join('; ') : '-'
 }
+/**
+ * OOTB 属性集 —— 按「根类型（root_type_code）」取，而非类型自身 code。
+ *
+ * ck_attribute_definition 以【根类型 code】为 entity_name 注册
+ * （PART / DOCUMENT / ENG_DOCUMENT / FUNCTIONAL / PRODUCT_LINE / PRODUCT_MODEL），
+ * 而软类型自身 code（如 FOOTPRINT / STD_PART / SCHEMATIC）在该表中没有记录。
+ * 若用自身 code 查询，任何子类型的「OOTB 属性」都会恒为 0 项 —— 必须回落到 rootTypeCode。
+ */
 async function loadAttributeDefs() {
-  if (!selectedNode.value) return; attrLoading.value = true; attrChanged.value = false
-  try { const r = await getAttributeDefinitions(selectedNode.value.code || selectedNode.value.name, selectedNode.value.oid, 'SoftType'); attributeDefs.value = (r?.data || r || []).map(d => ({ ...d })) }
-  catch { attributeDefs.value = [] } finally { attrLoading.value = false }
+  if (!selectedNode.value) return
+  attrLoading.value = true; attrChanged.value = false
+  const rootCode = detail.value?.rootTypeCode
+    || selectedNode.value.rootTypeCode
+    || selectedNode.value.code
+    || selectedNode.value.name
+  try {
+    const r = await getAttributeDefinitions(rootCode, selectedNode.value.oid, 'SoftType')
+    attributeDefs.value = (r?.data || r || []).map(d => ({ ...d }))
+  } catch { attributeDefs.value = [] } finally { attrLoading.value = false }
 }
 function markAttrChanged() { attrChanged.value = true }
 async function saveAttrLayouts() {
@@ -1559,6 +1678,11 @@ onMounted(() => { loadTree() })
   gap: 12px;
   overflow: hidden;
   min-height: 0;
+  /* 兜底：祖先高度链失效时（如内嵌在「业务配置中心」），height:100% 无法解析，
+     面板会被内容撑高、再被 overflow:hidden 裁掉且不出现滚动条。
+     此处按视口限高，强制面板有界，使左树与右内容各自内部滚动。
+     链正常时该项由 flex 分配高度，本上限约等于可用高度，不产生空档。 */
+  max-height: calc(100vh - 220px);
 }
 
 /* 左侧树 */
@@ -1571,9 +1695,19 @@ onMounted(() => { loadTree() })
   flex-direction: column;
   overflow: hidden;
   background: #fff;
+  min-height: 0;      /* 允许在 flex 行内收缩，避免被内容撑高 */
+  max-height: 100%;   /* 永不超出 .st-body，确保内部滚动而非被裁切 */
 }
-.st-tree-search { padding: 8px; border-bottom: 1px solid #f0f0f0; }
-.st-tree-spin { flex: 1; overflow: auto; padding: 6px; }
+.st-tree-search { padding: 8px; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
+/* 树区域独立滚动：搜索框固定，仅类型树滚动。
+   min-height:0 允许该 flex 项收缩到 0，overflow 才会真正生效（否则内容会把它撑高→无滚动条）。 */
+.st-tree-spin {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px;
+}
 .st-tree-node { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .st-tree-icon { font-size: 13px; color: #8c8c8c; flex-shrink: 0; }
 .st-tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1643,6 +1777,8 @@ onMounted(() => { loadTree() })
 .st-rule-def { font-size: 12px; background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }
 .st-segment-list { margin-top: 4px; }
 .st-state-list { margin-top: 4px; }
+/* 状态 → 流程模板：一行一个状态，右侧是该状态使用的流程模板下拉 */
+.st-state-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
 .st-rule-preview-row { margin-top: 4px; padding-top: 6px; border-top: 1px dashed #f0f0f0; }
 .st-rule-preview-code { font-size: 13px; font-weight: 600; color: #1677ff; background: #e6f4ff; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; }
 

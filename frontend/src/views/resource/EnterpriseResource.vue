@@ -6,138 +6,111 @@
       <span class="er-subtitle">统一管理企业图片、元器件、标准件、文档等核心资源</span>
     </div>
 
-    <!-- Tab 切换 -->
-    <a-tabs v-model:activeKey="activeTab" class="er-tabs">
-      <a-tab-pane key="component" tab="电子元器件库">
-        <ComponentLibrary />
-      </a-tab-pane>
-
-      <a-tab-pane key="stdPart" tab="结构标准件图库">
-        <div class="placeholder-module">
-          <a-result status="info" title="结构标准件图库" sub-title="管理螺钉、螺母、垫圈、销钉等国家标准件图纸与型号">
-            <template #extra>
-              <a-space>
-                <a-button type="primary">开始使用</a-button>
-                <a-button>了解更多</a-button>
-              </a-space>
-            </template>
-          </a-result>
-          <div class="feature-grid">
-            <a-row :gutter="16">
-              <a-col :span="6" v-for="f in features.stdPart" :key="f.title">
-                <a-card :title="f.title" size="small" hoverable><p>{{ f.desc }}</p></a-card>
-              </a-col>
-            </a-row>
+    <a-spin :spinning="loadingChildren">
+      <!-- 动态页签：从 ck_container 资源子库加载 -->
+      <a-tabs v-model:activeKey="activeTab" class="er-tabs">
+        <a-tab-pane
+          v-for="lib in resourceChildren"
+          :key="lib.code"
+          :tab="lib.name"
+        >
+          <!-- 元器件库 / 标准件库 / 通用件库：复用同一资源库组件（按 libCode 区分类型与容器） -->
+          <component
+            v-if="lib.code === 'COMPONENT' || lib.code === 'STD_PART' || lib.code === 'GEN_PART'"
+            :is="componentLibraryView"
+            :lib-code="lib.code"
+          />
+          <!-- 封装·图符库 -->
+          <component
+            v-else-if="lib.code === 'PACKAGE_SYMBOL'"
+            :is="footprintSymbolView"
+          />
+          <!-- 产品图册 -->
+          <MediaSpace v-else-if="lib.code === 'MEDIA'" />
+          <!-- 其它资源子库：通用占位（自定义资源库入口） -->
+          <div v-else class="er-resource-placeholder">
+            <component
+              :is="lib.icon || ExperimentOutlined"
+              :style="{ fontSize: '48px', color: '#bfbfbf' }"
+            />
+            <h3>{{ lib.name }}</h3>
+            <p v-if="lib.description" class="er-resource-desc">{{ lib.description }}</p>
+            <p class="er-resource-hint">
+              资源子库 code：<code>{{ lib.code }}</code>　·　
+              排序：<code>{{ lib.sortOrder }}</code>　·　
+              创建：{{ formatTime(lib.createdAt) }}
+            </p>
+            <a-tag color="processing">该子库暂未配置专属页面</a-tag>
+            <div class="er-resource-actions">
+              <a-button size="small" @click="onOpenChildren">查看子节点</a-button>
+            </div>
           </div>
-        </div>
-      </a-tab-pane>
+        </a-tab-pane>
 
-      <a-tab-pane key="genPart" tab="结构通用件图库">
-        <div class="placeholder-module">
-          <a-result status="info" title="结构通用件图库" sub-title="管理企业自定义的通用结构件、机加件、钣金件等图纸库">
-            <template #extra>
-              <a-space>
-                <a-button type="primary">开始使用</a-button>
-                <a-button>了解更多</a-button>
-              </a-space>
-            </template>
-          </a-result>
-          <div class="feature-grid">
-            <a-row :gutter="16">
-              <a-col :span="6" v-for="f in features.genPart" :key="f.title">
-                <a-card :title="f.title" size="small" hoverable><p>{{ f.desc }}</p></a-card>
-              </a-col>
-            </a-row>
-          </div>
-        </div>
-      </a-tab-pane>
-
-      <a-tab-pane key="doc" tab="企业技术文档知识库">
-        <div class="placeholder-module">
-          <a-result status="info" title="企业技术文档知识库" sub-title="管理产品规格书、工艺规范、检验标准、操作手册等技术文档">
-            <template #extra>
-              <a-space>
-                <a-button type="primary">开始使用</a-button>
-                <a-button>了解更多</a-button>
-              </a-space>
-            </template>
-          </a-result>
-          <div class="feature-grid">
-            <a-row :gutter="16">
-              <a-col :span="6" v-for="f in features.doc" :key="f.title">
-                <a-card :title="f.title" size="small" hoverable><p>{{ f.desc }}</p></a-card>
-              </a-col>
-            </a-row>
-          </div>
-        </div>
-      </a-tab-pane>
-
-      <a-tab-pane key="media" tab="产品图册">
-        <MediaSpace />
-      </a-tab-pane>
-
-      <a-tab-pane key="other" tab="其他">
-        <div class="placeholder-module">
-          <a-result status="info" title="其他资源" sub-title="管理其他未分类的企业资源，支持自定义扩展">
-            <template #extra>
-              <a-space>
-                <a-button type="primary">开始使用</a-button>
-                <a-button>了解更多</a-button>
-              </a-space>
-            </template>
-          </a-result>
-          <div class="feature-grid">
-            <a-row :gutter="16">
-              <a-col :span="6" v-for="f in features.other" :key="f.title">
-                <a-card :title="f.title" size="small" hoverable><p>{{ f.desc }}</p></a-card>
-              </a-col>
-            </a-row>
-          </div>
-        </div>
-      </a-tab-pane>
-    </a-tabs>
+        <!-- 加载失败 / 无任何资源子库时的占位 -->
+        <a-tab-pane
+          v-if="!loadingChildren && !resourceChildren.length"
+          key="__empty"
+          tab="暂未配置"
+        >
+          <a-result
+            status="warning"
+            title="尚未初始化企业级资源库"
+            sub-title="请联系平台管理员检查后端启动初始化日志（ResourceContainerInitializer）"
+          />
+        </a-tab-pane>
+      </a-tabs>
+    </a-spin>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, markRaw } from 'vue'
+import { ExperimentOutlined } from '@ant-design/icons-vue'
 import MediaSpace from '@/views/media/MediaSpace.vue'
-import ComponentLibrary from './ComponentLibrary.vue'
+import ComponentLibrary from '@/views/resource/ComponentLibrary.vue'
+import FootprintSymbolLibrary from '@/views/resource/FootprintSymbolLibrary.vue'
+import { getResourceChildren } from '@/api'
 
-const activeTab = ref('component')
+const loadingChildren = ref(false)
+const resourceChildren = ref([])
+// 默认激活第一个子库
+const activeTab = ref(undefined)
+// 电子元器件库页（markRaw 避免响应式开销，组件无需变化）
+const componentLibraryView = markRaw(ComponentLibrary)
+// 封装·图符库页（左侧文件夹树 + 右侧封装/图符清单）
+const footprintSymbolView = markRaw(FootprintSymbolLibrary)
 
-const features = {
-  component: [
-    { title: '元器件分类', desc: '按类型、封装、参数分类管理' },
-    { title: '规格参数', desc: '电压、功率、精度等完整参数表' },
-    { title: '库存管理', desc: '安全库存预警与批次追溯' },
-    { title: 'BOM 关联', desc: '与产品 BOM 自动关联引用' },
-  ],
-  stdPart: [
-    { title: '国标库', desc: '内置 GB 标准件参数化模型' },
-    { title: '3D 预览', desc: '在线预览 STEP/IGES 三维模型' },
-    { title: '一键调用', desc: 'CAD 插件直接调用标准件' },
-    { title: '版本管理', desc: '标准更新后自动版本切换' },
-  ],
-  genPart: [
-    { title: '企业件库', desc: '企业自定义通用件图纸集中管理' },
-    { title: '分类标签', desc: '按功能、材料、工艺多维分类' },
-    { title: '借用管理', desc: '跨产品借用与变更影响分析' },
-    { title: '生命周期', desc: '从试制到量产全生命周期跟踪' },
-  ],
-  doc: [
-    { title: '文档模板', desc: '标准化技术文档模板库' },
-    { title: '全文检索', desc: '文档内容全文搜索与标签检索' },
-    { title: '权限控制', desc: '按部门/角色控制查看与下载' },
-    { title: '版本追溯', desc: '文档修订历史与差异对比' },
-  ],
-  other: [
-    { title: '自定义分类', desc: '支持自行创建资源分类与属性' },
-    { title: '灵活扩展', desc: '动态表单适应不同资源类型' },
-    { title: '统一检索', desc: '跨资源类型全局模糊搜索' },
-    { title: '导入导出', desc: 'Excel 批量导入与数据导出' },
-  ],
+async function loadResourceChildren() {
+  loadingChildren.value = true
+  try {
+    const res = await getResourceChildren()
+    if (res?.code === 200) {
+      const list = res.data || []
+      resourceChildren.value = list
+      if (list.length && !activeTab.value) {
+        activeTab.value = list[0].code
+      }
+    } else {
+      resourceChildren.value = []
+    }
+  } catch {
+    resourceChildren.value = []
+  } finally {
+    loadingChildren.value = false
+  }
 }
+
+function formatTime(str) {
+  if (!str) return '-'
+  return String(str).replace('T', ' ').substring(0, 19)
+}
+
+function onOpenChildren() {
+  // 预留：将来可跳转到该子库下的子节点/分类绑定等管理页
+}
+
+onMounted(loadResourceChildren)
 </script>
 
 <style scoped>
@@ -186,11 +159,42 @@ const features = {
   overflow: auto;
 }
 
-.placeholder-module {
-  padding: 8px 0;
+/* 自定义资源库占位 */
+.er-resource-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 16px;
+  gap: 12px;
+  color: #8c8c8c;
+  text-align: center;
 }
-
-.feature-grid {
-  margin-top: 32px;
+.er-resource-placeholder h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #434343;
+}
+.er-resource-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #8c8c8c;
+  max-width: 520px;
+  line-height: 1.5;
+}
+.er-resource-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #bfbfbf;
+}
+.er-resource-hint code {
+  font-size: 11px;
+  background: #f5f5f5;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: #595959;
+}
+.er-resource-actions {
+  margin-top: 8px;
 }
 </style>

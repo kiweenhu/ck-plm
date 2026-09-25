@@ -1,75 +1,85 @@
 <template>
   <div class="cl-page">
-    <!-- 两栏布局：左分类树 + 右元器件清单（参考阶段页面布局） -->
+    <!-- 两栏布局：左分类树（来自分类管理绑定的子树） + 右元器件清单 -->
     <div class="cl-body">
-      <!-- 左侧：分类树 -->
+      <!-- 左侧：分类树（只读，来自分类管理） -->
       <div class="cl-tree">
         <div class="cl-tree-scroll">
-          <div
-            v-for="node in categoryTree"
-            :key="node.oid"
-            class="cl-tree-branch"
-          >
+          <div v-if="!categoryTree" class="cl-tree-empty">
+            <a-empty
+              :image="aEmptyImage.PRESENTED_IMAGE_SIMPLE"
+              description="尚未绑定元器件分类，请联系企业管理员在「系统配置 → 业务配置 → 元器件库分类」中绑定分类管理中的元器件分类节点"
+            />
+          </div>
+          <template v-else>
+            <div class="cl-tree-search">
+              <a-input-search
+                v-model:value="treeSearchKeyword"
+                size="small"
+                placeholder="搜索分类定位..."
+                allow-clear
+              />
+            </div>
             <div
               class="cl-tree-node"
-              :class="{ 'cl-tree-node--active': selectedCategoryOid === node.oid }"
-              @click="selectCategory(node.oid)"
+              :class="{ 'cl-tree-node--active': !selectedCategoryOids.length }"
+              @click="selectCategory(null)"
             >
-              <span
-                v-if="node.children?.length"
-                class="cl-tree-toggle"
-                @click.stop="toggleNode(node.oid)"
-              >{{ expandedNodes.has(node.oid) ? '▾' : '▸' }}</span>
-              <span v-else class="cl-tree-toggle cl-tree-toggle--leaf"></span>
-              <FolderOutlined class="cl-tree-icon" />
-              <span class="cl-tree-name">{{ node.name }}</span>
-              <a-dropdown :trigger="['click']">
-                <a-button type="text" size="small" class="cl-tree-more" @click.stop>
-                  <MoreOutlined style="font-size:11px" />
-                </a-button>
-                <template #overlay>
-                  <a-menu @click="(e) => onCategoryMenu(e, node)">
-                    <a-menu-item key="addSub">新建子分类</a-menu-item>
-                    <a-menu-item key="rename">重命名</a-menu-item>
-                    <a-menu-divider />
-                    <a-menu-item key="delete" danger>删除</a-menu-item>
-                  </a-menu>
-                </template>
-              </a-dropdown>
+              <span class="cl-tree-toggle cl-tree-toggle--leaf"></span>
+              <ApartmentOutlined class="cl-tree-icon" style="color:#1677ff" />
+              <span class="cl-tree-name">{{ categoryTree.displayName || categoryTree.name }}（全部）</span>
             </div>
-            <template v-if="node.children?.length && expandedNodes.has(node.oid)">
+            <div
+              class="cl-tree-branch"
+              v-for="node in (categoryTree.children || [])"
+              :key="node.oid"
+            >
               <div
-                v-for="child in node.children"
-                :key="child.oid"
-                class="cl-tree-node cl-tree-node--child"
-                :class="{ 'cl-tree-node--active': selectedCategoryOid === child.oid }"
-                @click="selectCategory(child.oid)"
+                class="cl-tree-node"
+                :class="{
+                  'cl-tree-node--active': isNodeSelected(node) && !expandedNodes.has(node.oid),
+                  'cl-tree-node--match': isNodeMatch(node),
+                }"
+                :ref="el => setNodeRef(node.oid, el)"
+                @click="selectCategory(node)"
               >
-                <span class="cl-tree-toggle cl-tree-toggle--leaf"></span>
+                <span
+                  v-if="node.children?.length"
+                  class="cl-tree-toggle"
+                  @click.stop="toggleNode(node.oid)"
+                >
+                  <CaretDownOutlined :class="{ rotated: !expandedNodes.has(node.oid) }" />
+                </span>
+                <span v-else class="cl-tree-toggle cl-tree-toggle--leaf"></span>
                 <FolderOutlined class="cl-tree-icon" />
-                <span class="cl-tree-name">{{ child.name }}</span>
-                <a-dropdown :trigger="['click']">
-                  <a-button type="text" size="small" class="cl-tree-more" @click.stop>
-                    <MoreOutlined style="font-size:11px" />
-                  </a-button>
-                  <template #overlay>
-                    <a-menu @click="(e) => onCategoryMenu(e, child)">
-                      <a-menu-item key="rename">重命名</a-menu-item>
-                      <a-menu-divider />
-                      <a-menu-item key="delete" danger>删除</a-menu-item>
-                    </a-menu>
-                  </template>
-                </a-dropdown>
+                <span class="cl-tree-name">{{ node.displayName || node.name }}</span>
+                <span class="cl-tree-count">{{ nodeCount(node) }}</span>
               </div>
-            </template>
-          </div>
+              <template v-if="node.children?.length && expandedNodes.has(node.oid)">
+                <div
+                  v-for="child in flattenLevel(node.children)"
+                  :key="child.oid"
+                  class="cl-tree-node cl-tree-node--child"
+                  :style="{ paddingLeft: `${24 + (child._depth - 1) * 14}px` }"
+                  :class="{
+                    'cl-tree-node--active': isNodeSelected(child) && !hasChildren(child),
+                    'cl-tree-node--match': isNodeMatch(child),
+                  }"
+                  :ref="el => setNodeRef(child.oid, el)"
+                  @click="selectCategory(child)"
+                >
+                  <span class="cl-tree-toggle cl-tree-toggle--leaf"></span>
+                  <FolderOutlined class="cl-tree-icon" />
+                  <span class="cl-tree-name">{{ child.displayName || child.name }}</span>
+                  <span class="cl-tree-count">{{ nodeCount(child) }}</span>
+                </div>
+              </template>
+            </div>
+          </template>
         </div>
-        <a-button type="dashed" size="small" block class="cl-tree-new-btn" @click="openCategoryModal(null)">
-          <PlusOutlined /> 新建分类
-        </a-button>
       </div>
 
-      <!-- 右侧：元器件清单 -->
+      <!-- 右侧：元器件清单（ELECTRONIC 软类型的 Part） -->
       <div class="cl-content">
         <DataTable
           :columns="componentColumns"
@@ -79,184 +89,191 @@
           row-key="oid"
           size="small"
           searchable
-          search-placeholder="搜索编码/名称/型号/厂商..."
+          search-placeholder="搜索编码/名称..."
+          :search-fields="['number', 'name']"
         >
           <template #toolbar-left>
             <div class="cl-content-bar-inline">
               <FolderOutlined style="color:#faad14;font-size:14px" />
               <span style="color:#999;font-size:12px;margin-right:4px">当前位置：</span>
               <strong style="font-size:13px">{{ currentCategoryPath }}</strong>
-              <a-button size="small" type="link" v-if="selectedCategoryOid" @click="selectCategory(null)">
+              <a-button size="small" type="link" v-if="selectedCategoryOids.length" @click="selectCategory(null)">
                 查看全部
               </a-button>
             </div>
           </template>
           <template #toolbar>
-            <a-button type="primary" size="small" @click="openComponentModal(null)">
-              <PlusOutlined /> 新建元器件
+            <a-button type="primary" size="small" :disabled="!resourceCtx?.containerOid" @click="openCreateModal">
+              <PlusOutlined /> {{ libLabel }}{{ libAction }}
             </a-button>
           </template>
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'code'">
-              <a-tag color="blue" size="small">{{ record.code || '-' }}</a-tag>
-            </template>
-            <template v-else-if="column.key === 'stockQty'">
-              <span :class="{ 'cl-stock-warn': isLowStock(record) }">
-                {{ record.stockQty ?? 0 }} {{ record.unit || 'ea' }}
-              </span>
-              <a-tooltip v-if="isLowStock(record)" title="低于安全库存">
-                <WarningOutlined style="color:#fa8c16;margin-left:4px" />
+            <template v-if="column.key === 'checkout_status'">
+              <a-tooltip
+                v-if="record.checkedOut"
+                :title="`已检出：${record.checkedOutBy || '-'}${record.checkedOutComment ? '\n注释：' + record.checkedOutComment : ''}`"
+              >
+                <LockOutlined style="color:#fa8c16;font-size:13px" />
               </a-tooltip>
             </template>
-            <template v-else-if="column.key === 'unitCost'">
-              ¥{{ record.unitCost ?? 0 }}
+            <template v-else-if="column.key === 'number'">
+              <router-link
+                class="cl-part-link"
+                :to="`/part/${record.oid}`"
+                :title="`查看 ${record.name || ''} 详情`"
+              >{{ record.number || '-' }}</router-link>
+            </template>
+            <template v-else-if="column.key === 'displayVersion'">
+              <a-tag color="blue" size="small">{{ record.displayVersion || '-' }}</a-tag>
+            </template>
+            <template v-else-if="column.key === 'status'">
+              <a-tag :color="statusColor(record.statusCode)" size="small">
+                {{ record.statusName || record.statusCode || '-' }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.key === 'checkout'">
+              <a-tag v-if="record.checkedOut" color="orange" size="small">已检出: {{ record.checkedOutBy || '-' }}</a-tag>
+              <a-tag v-else color="green" size="small">已检入</a-tag>
+            </template>
+            <template v-else-if="column.key === 'category'">
+              <a-tag v-if="record.clsOid && categoryNameMap[record.clsOid]" size="small" color="geekblue">
+                {{ categoryNameMap[record.clsOid] }}
+              </a-tag>
+              <span v-else style="color:#bfbfbf">-</span>
+            </template>
+            <template v-else-if="column.key === 'name'">
+              <span style="color:#262626">{{ record.name }}</span>
             </template>
             <template v-else-if="column.key === 'action'">
-              <a-space size="small">
-                <a-button type="link" size="small" @click="openComponentModal(record)">编辑</a-button>
-                <a-button type="link" size="small" danger @click="onRemoveComponent(record)">删除</a-button>
-              </a-space>
+              <!-- 复用 Part 行操作组件（元器件即 ELECTRONIC 软类型的 Part）：
+                   无主文件故关闭下载；移动语义为「变更分类」 -->
+              <PartRowActionMenu
+                :record="record"
+                :show-download="false"
+                move-mode="category"
+                @success="loadComponents"
+              />
             </template>
           </template>
         </DataTable>
       </div>
     </div>
 
-    <!-- 新建/编辑分类弹窗 -->
+    <!-- 元器件申请弹窗（ELECTRONIC 软类型的 Part，规格参数按所选分类 IBA 动态渲染） -->
     <a-modal
-      v-model:visible="categoryModalVisible"
-      :title="categoryModalParent ? '新建子分类' : '新建分类'"
+      v-model:visible="createModalVisible"
+      :title="`${libLabel}${libAction}`"
       ok-text="创建"
       cancel-text="取消"
-      width="420px"
-      centered
-      @ok="confirmCategory"
-    >
-      <div style="margin-bottom:8px;color:#8c8c8c;font-size:12px" v-if="categoryModalParent">
-        父分类：{{ categoryModalParent.name }}
-      </div>
-      <a-input v-model:value="categoryModalName" placeholder="请输入分类名称" @pressEnter="confirmCategory" />
-    </a-modal>
-
-    <!-- 新建/编辑元器件弹窗 -->
-    <a-modal
-      v-model:visible="componentModalVisible"
-      :title="componentModalEditing ? '编辑元器件' : '新建元器件'"
-      ok-text="保存"
-      cancel-text="取消"
-      :confirm-loading="componentSaving"
+      :confirm-loading="createSaving"
       width="640px"
       centered
       wrap-class-name="part-create-modal"
       :body-style="{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', padding: '12px 16px 16px' }"
-      @ok="confirmComponent"
+      @ok="confirmCreate"
     >
-      <a-form layout="vertical">
-        <a-row :gutter="12">
-          <a-col :span="12">
-            <a-form-item label="元器件编码" help="留空则自动生成">
-              <a-input v-model:value="componentForm.code" placeholder="如 EC-202609-000001" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="名称" required>
-              <a-input v-model:value="componentForm.name" placeholder="如 贴片电阻 10KΩ" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="12">
-          <a-col :span="12">
-            <a-form-item label="所属分类">
-              <a-tree-select
-                v-model:value="componentForm.categoryOid"
-                :tree-data="categoryTreeSelectData"
-                :field-names="{ label: 'name', value: 'oid', children: 'children' }"
-                placeholder="请选择分类"
-                tree-default-expand-all
-                allow-clear
-                style="width:100%"
-              />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="型号规格">
-              <a-input v-model:value="componentForm.model" placeholder="如 STM32F103C8T6" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="12">
-          <a-col :span="12">
-            <a-form-item label="封装">
-              <a-input v-model:value="componentForm.packageType" placeholder="如 0805 / LQFP48" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="关键参数/值">
-              <a-input v-model:value="componentForm.valueSpec" placeholder="如 10KΩ ±1% / 100nF 16V" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="12">
-          <a-col :span="12">
-            <a-form-item label="厂商">
-              <a-input v-model:value="componentForm.manufacturer" placeholder="如 Yageo / TI" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="单位">
-              <a-input v-model:value="componentForm.unit" placeholder="默认 ea" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="12">
-          <a-col :span="8">
-            <a-form-item label="库存数量">
-              <a-input-number v-model:value="componentForm.stockQty" :min="0" :precision="0" style="width:100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="安全库存">
-              <a-input-number v-model:value="componentForm.safeStockQty" :min="0" :precision="0" style="width:100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="单位成本(¥)">
-              <a-input-number v-model:value="componentForm.unitCost" :min="0" :precision="4" style="width:100%" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item label="描述">
-          <a-textarea v-model:value="componentForm.description" :rows="2" placeholder="选填" />
-        </a-form-item>
-      </a-form>
+      <div v-if="!resourceCtx?.containerOid" class="cl-create-warn">
+        企业资源容器尚未初始化，请联系平台管理员检查后端初始化日志。
+      </div>
+
+      <!-- 申请类型固定为电子元器件（ELECTRONIC 软类型），不可修改 -->
+      <div class="cl-create-type">
+        <span class="cl-create-type-label">入库类型</span>
+        <a-tag color="blue">{{ typeCodeName }}</a-tag>
+        <code class="cl-create-type-code">{{ resourceCtx?.typeCode || 'ELECTRONIC' }}</code>
+        <span class="cl-create-type-hint">使用{{ typeCodeName }}软类型的专属布局，编码留空时按编码规则自动生成</span>
+      </div>
+
+      <!-- Part 动态表单：entity-code 固定 ELECTRONIC，自动带出其页面布局与分类 IBA 字段 -->
+      <DynamicForm
+        v-if="createModalVisible && resourceCtx?.containerOid"
+        ref="dynamicFormRef"
+        :key="dynamicFormKey"
+        :entity-code="resourceCtx?.typeCode || 'ELECTRONIC'"
+        operation-code="create"
+        fallback-entity-code="PART"
+        :current-container-oid="resourceCtx.containerOid"
+        :current-stage-oid="resourceCtx.stageOid"
+        v-model="form"
+      />
     </a-modal>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { message, Modal } from 'ant-design-vue'
-import { FolderOutlined, PlusOutlined, MoreOutlined, WarningOutlined } from '@ant-design/icons-vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { message, Empty } from 'ant-design-vue'
+import { FolderOutlined, PlusOutlined, ApartmentOutlined, LockOutlined, CaretDownOutlined } from '@ant-design/icons-vue'
 import DataTable from '@/components/DataTable.vue'
+import DynamicForm from '@/components/DynamicForm.vue'
+import PartRowActionMenu from '@/components/PartRowActionMenu.vue'
 import {
-  getComponentCategoryTree, createComponentCategory, updateComponentCategory, deleteComponentCategory,
-  getElectronicComponents, createElectronicComponent, updateElectronicComponent, deleteElectronicComponent,
+  getLibraryCategoryTree, getElectronicComponents,
+  createPart,
 } from '@/api'
 
-// ==================== 分类树 ====================
-const categoryTree = ref([])
-const selectedCategoryOid = ref(null)
+const aEmptyImage = Empty
+
+const props = defineProps({
+  /** 资源子库 code：COMPONENT（元器件库）/ STD_PART（标准件库）/ GEN_PART（通用件库） */
+  libCode: { type: String, default: 'COMPONENT' },
+})
+
+/** 资源库中文名（用于按钮 / 弹窗文案） */
+const libLabel = computed(() => {
+  const map = { COMPONENT: '元器件', STD_PART: '标准件', GEN_PART: '通用件' }
+  return map[props.libCode] || '元器件'
+})
+
+/**
+ * 入库动作文案：
+ * 元器件走「申请」（由设计/采购发起申请），标准件与通用件走「入库」（采购/标准化后直接入库）。
+ */
+const libAction = computed(() => (props.libCode === 'COMPONENT' ? '申请' : '入库'))
+
+/** 当前资源库的对象类型中文名（基于后端返回的 typeCode） */
+const typeCodeName = computed(() => {
+  const code = resourceCtx.value?.typeCode || 'ELECTRONIC'
+  const map = { ELECTRONIC: '电子元器件', STRUCTURAL: '结构件' }
+  return map[code] || code
+})
+
+// ==================== 分类树（来自分类管理绑定的子树，只读） ====================
+const categoryTree = ref(null)
+const selectedCategoryOids = ref([])
 const expandedNodes = ref(new Set())
+/** clsOid → 分类名 映射（用于列表展示与分类路径） */
+const categoryNameMap = ref({})
+/** 分类树搜索关键字（高亮 + 展开 + 滚动定位） */
+const treeSearchKeyword = ref('')
+/** 节点 DOM 引用映射（用于滚动到首个匹配） */
+const nodeRefs = new Map()
+function setNodeRef(oid, el) {
+  if (el) nodeRefs.set(oid, el)
+  else nodeRefs.delete(oid)
+}
 
 async function loadCategoryTree() {
   try {
-    const res = await getComponentCategoryTree()
-    categoryTree.value = res?.code === 200 ? (res.data || []) : []
-    // 默认展开第一层
-    for (const n of categoryTree.value) {
-      if (n.children?.length) expandedNodes.value.add(n.oid)
+    const res = await getLibraryCategoryTree(props.libCode)
+    categoryTree.value = res?.code === 200 ? (res.data || null) : null
+    if (categoryTree.value) {
+      const map = {}
+      const walk = (n) => {
+        if (!n) return
+        map[n.oid] = n.displayName || n.name || n.code || ''
+        for (const c of (n.children || [])) walk(c)
+      }
+      walk(categoryTree.value)
+      categoryNameMap.value = map
+    } else {
+      categoryNameMap.value = {}
     }
-  } catch { categoryTree.value = [] }
+  } catch { categoryTree.value = null }
+}
+
+function hasChildren(node) {
+  return !!(node.children && node.children.length)
 }
 
 function toggleNode(oid) {
@@ -265,233 +282,270 @@ function toggleNode(oid) {
   expandedNodes.value = s
 }
 
-function selectCategory(oid) {
-  selectedCategoryOid.value = oid
+function collectOids(node, acc = []) {
+  if (!node) return acc
+  acc.push(node.oid)
+  for (const c of (node.children || [])) collectOids(c, acc)
+  return acc
+}
+
+function nodeCount(node) {
+  return collectOids(node).length - 1 || ''
+}
+
+function flattenLevel(children, depth = 1, acc = []) {
+  for (const c of (children || [])) {
+    acc.push({ ...c, _depth: depth })
+    if (c.children?.length && expandedNodes.value.has(c.oid)) {
+      flattenLevel(c.children, depth + 1, acc)
+    }
+  }
+  return acc
+}
+
+function isNodeSelected(node) {
+  return selectedCategoryOids.value.length === 1 && selectedCategoryOids.value[0] === node.oid
+}
+
+/** 节点 displayName/name 是否包含搜索关键字（大小写不敏感） */
+function isNodeMatch(node) {
+  const kw = treeSearchKeyword.value.trim().toLowerCase()
+  if (!kw) return false
+  return ((node.displayName || node.name || '') + '').toLowerCase().includes(kw)
+}
+
+/** 收集节点及其全部祖先的 oid 集合 */
+function collectAncestors(node, root, acc = new Set()) {
+  if (!node || !root) return acc
+  acc.add(node.oid)
+  if (!node.parentOid || node.oid === root.oid) return acc
+  const find = (n) => {
+    if (n.oid === node.parentOid) return n
+    if (n.children) {
+      for (const c of n.children) {
+        const f = find(c)
+        if (f) return f
+      }
+    }
+    return null
+  }
+  const parent = find(root)
+  if (parent && !acc.has(parent.oid)) collectAncestors(parent, root, acc)
+  return acc
+}
+
+/** 在树中查找第一个匹配节点 oid（深度优先） */
+function findFirstMatch(nodes, kw) {
+  for (const n of (nodes || [])) {
+    const text = ((n.displayName || n.name) || '').toLowerCase()
+    if (text.includes(kw)) return n
+    const childHit = findFirstMatch(n.children, kw)
+    if (childHit) return childHit
+  }
+  return null
+}
+
+/** 搜索关键字变化：自动展开匹配节点的所有祖先 + 滚动到首个匹配 */
+watch(treeSearchKeyword, async (kw) => {
+  if (!categoryTree.value) return
+  const text = (kw || '').trim().toLowerCase()
+  if (!text) return
+  // 展开所有匹配节点的所有祖先
+  const collectMatches = (nodes, acc = []) => {
+    for (const n of (nodes || [])) {
+      if (((n.displayName || n.name) || '').toLowerCase().includes(text)) {
+        acc.push(n)
+      }
+      collectMatches(n.children, acc)
+    }
+    return acc
+  }
+  const matches = collectMatches([categoryTree.value])
+  for (const m of matches) {
+    const ancestors = collectAncestors(m, categoryTree.value)
+    ancestors.forEach(oid => expandedNodes.value.add(oid))
+  }
+  // 触发响应式刷新（Set 替换以保证 computed 重新触发）
+  expandedNodes.value = new Set(expandedNodes.value)
+  // 滚动到第一个匹配节点
+  await nextTick()
+  const first = matches[0]
+  if (first && nodeRefs.has(first.oid)) {
+    const el = nodeRefs.get(first.oid)
+    const scrollEl = el?.closest('.cl-tree-scroll')
+    if (scrollEl) {
+      scrollEl.scrollTo({ top: el.offsetTop - 12, behavior: 'smooth' })
+    }
+  }
+})
+
+function selectCategory(node) {
+  selectedCategoryOids.value = node ? collectOids(node) : []
+  if (node) {
+    const s = new Set(expandedNodes.value)
+    s.add(node.oid)
+    expandedNodes.value = s
+  }
   loadComponents()
 }
 
-/** 当前分类路径（用于位置条显示） */
 const currentCategoryPath = computed(() => {
-  if (!selectedCategoryOid.value) return '全部元器件'
+  if (!categoryTree.value) return '未绑定分类'
+  if (!selectedCategoryOids.value.length) return `${categoryTree.value.displayName || categoryTree.value.name}（全部）`
+  const targetOid = selectedCategoryOids.value[0]
   const path = []
   const find = (nodes, chain) => {
     for (const n of nodes) {
-      if (n.oid === selectedCategoryOid.value) { path.push(...chain, n.name); return true }
-      if (n.children?.length && find(n.children, [...chain, n.name])) return true
+      if (n.oid === targetOid) { path.push(...chain, n.displayName || n.name); return true }
+      if (n.children?.length && find(n.children, [...chain, n.displayName || n.name])) return true
     }
     return false
   }
-  find(categoryTree.value, [])
-  return path.join(' / ') || '全部元器件'
+  find([categoryTree.value], [])
+  return path.join(' / ') || `${categoryTree.value.displayName || categoryTree.value.name}（全部）`
 })
 
-// ==================== 分类新建/重命名/删除 ====================
-const categoryModalVisible = ref(false)
-const categoryModalName = ref('')
-const categoryModalParent = ref(null)
-const categoryModalEditingOid = ref(null)
-
-function openCategoryModal(parentNode) {
-  categoryModalParent.value = parentNode
-  categoryModalEditingOid.value = null
-  categoryModalName.value = ''
-  categoryModalVisible.value = true
-}
-
-async function confirmCategory() {
-  const name = categoryModalName.value.trim()
-  if (!name) { message.warning('请输入分类名称'); return }
-  try {
-    const res = await createComponentCategory({
-      name,
-      parentCategoryOid: categoryModalParent.value?.oid || null,
-      sortOrder: 0,
-    })
-    if (res?.code === 200) {
-      message.success('分类已创建')
-      categoryModalVisible.value = false
-      await loadCategoryTree()
-    } else {
-      message.error(res?.message || '创建失败')
-    }
-  } catch (e) {
-    message.error(e?.response?.data?.message || '创建失败')
-  }
-}
-
-function onCategoryMenu({ key }, node) {
-  if (key === 'addSub') {
-    openCategoryModal(node)
-  } else if (key === 'rename') {
-    renameCategory(node)
-  } else if (key === 'delete') {
-    removeCategory(node)
-  }
-}
-
-function renameCategory(node) {
-  Modal.confirm({
-    title: '重命名分类',
-    content: `将「${node.name}」重命名为：`,
-    okText: '确定',
-    cancelText: '取消',
-    centered: true,
-    // 复用确认弹窗内容区携带输入框（用 h 渲染过于复杂，这里用第二个弹窗）
-    onOk: async () => {
-      const name = window.prompt('请输入新的分类名称', node.name)
-      if (!name || !name.trim() || name.trim() === node.name) return
-      try {
-        const res = await updateComponentCategory(node.oid, { name: name.trim() })
-        if (res?.code === 200) {
-          message.success('已重命名')
-          await loadCategoryTree()
-        } else {
-          message.error(res?.message || '重命名失败')
-        }
-      } catch (e) {
-        message.error(e?.response?.data?.message || '重命名失败')
-      }
-    },
+const categorySelectData = computed(() => {
+  if (!categoryTree.value) return []
+  const mapNode = (n) => ({
+    oid: n.oid,
+    label: n.displayName || n.name,
+    children: (n.children || []).map(mapNode),
   })
-}
+  return [mapNode(categoryTree.value)]
+})
 
-function removeCategory(node) {
-  Modal.confirm({
-    title: '确认删除分类',
-    content: `确定要删除分类「${node.name}」吗？分类下存在子分类或元器件时将无法删除。`,
-    okText: '删除',
-    okType: 'danger',
-    cancelText: '取消',
-    centered: true,
-    onOk: async () => {
-      try {
-        const res = await deleteComponentCategory(node.oid)
-        if (res?.code === 200) {
-          message.success('已删除')
-          if (selectedCategoryOid.value === node.oid) selectedCategoryOid.value = null
-          await loadCategoryTree()
-          await loadComponents()
-        } else {
-          message.error(res?.message || '删除失败')
-        }
-      } catch (e) {
-        message.error(e?.response?.data?.message || '删除失败')
-      }
-    },
-  })
-}
-
-// ==================== 元器件清单 ====================
+// ==================== 清单（ELECTRONIC 软类型的 Part） ====================
 const componentColumns = [
-  { title: '编码', key: 'code', width: 150 },
+  { title: '', dataIndex: 'checkedOut', key: 'checkout_status', width: 32, align: 'center' },
+  { title: '编码', key: 'number', width: 170 },
   { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true },
-  { title: '型号规格', dataIndex: 'model', key: 'model', ellipsis: true, width: 170 },
-  { title: '封装', dataIndex: 'packageType', key: 'packageType', width: 100 },
-  { title: '关键参数', dataIndex: 'valueSpec', key: 'valueSpec', ellipsis: true, width: 140 },
-  { title: '厂商', dataIndex: 'manufacturer', key: 'manufacturer', width: 120 },
-  { title: '库存', key: 'stockQty', width: 110, align: 'center' },
-  { title: '单位成本', key: 'unitCost', width: 100, align: 'right' },
-  { title: '操作', key: 'action', width: 110, align: 'center' },
+  { title: '版本', key: 'displayVersion', width: 70, align: 'center' },
+  { title: '生命周期', key: 'status', width: 90 },
+  { title: '检出', key: 'checkout', width: 110 },
+  { title: '分类', key: 'category', width: 130 },
+  { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 170 },
+  { title: '操作', key: 'action', width: 130, align: 'center' },
 ]
+
+// 生命周期状态颜色：直接按 ck_part_iteration.status 存储的 code 着色
+function statusColor(code) {
+  const map = {
+    // 兼容历史命名
+    DRAFT: 'default', INWORK: 'processing', REVIEW: 'warning',
+    APPROVED: 'success', RELEASED: 'blue', OBSOLETE: 'error',
+    // 项目实际预置状态（LifecycleStatusInitializer）
+    WORKING: 'processing', APPROVING: 'warning', PUBLISHED: 'success',
+    OFFLINE: 'default', ARCHIVED: 'error',
+  }
+  return map[code] || 'default'
+}
 
 const componentList = ref([])
 const componentLoading = ref(false)
+const resourceCtx = ref(null)      // { containerOid, containerType, stageOid }
+
+function fmtTime(str) {
+  if (!str) return '-'
+  return String(str).replace('T', ' ').substring(0, 19)
+}
 
 async function loadComponents() {
   componentLoading.value = true
   try {
     const res = await getElectronicComponents({
-      categoryOid: selectedCategoryOid.value || undefined,
+      resourceCode: props.libCode,
+      categoryOids: selectedCategoryOids.value.length ? selectedCategoryOids.value.join(',') : undefined,
     })
-    componentList.value = res?.code === 200 ? (res.data || []) : []
+    if (res?.code === 200) {
+      const data = res.data || {}
+      const items = data.items || []
+      // 兼容 MyBatis 驼峰/下划线两种返回；补齐行操作组件与表格列所需的检出/版本/状态字段
+      componentList.value = items.map(i => ({
+        ...i,
+        checkedOut: i.checkedOut ?? i.checked_out ?? false,
+        checkedOutBy: i.checkedOutBy ?? i.checked_out_by ?? '',
+        checkedOutComment: i.checkedOutComment ?? i.checked_out_comment ?? '',
+        displayVersion: i.displayVersion ?? i.display_version ?? '-',
+        statusCode: i.statusCode ?? i.status_code,
+        statusName: i.statusName ?? i.status_name,
+        createdAt: fmtTime(i.createdAt || i.created_at),
+      }))
+      resourceCtx.value = data.context || null
+    } else {
+      componentList.value = []
+    }
   } catch { componentList.value = [] }
   finally { componentLoading.value = false }
 }
 
-function isLowStock(record) {
-  return record.safeStockQty != null && record.safeStockQty > 0 &&
-    (record.stockQty ?? 0) <= record.safeStockQty
-}
-
-// ==================== 元器件新建/编辑/删除 ====================
-const componentModalVisible = ref(false)
-const componentSaving = ref(false)
-const componentModalEditing = ref(null)
-const componentForm = reactive({
-  code: '', name: '', categoryOid: null, model: '', packageType: '',
-  valueSpec: '', manufacturer: '', stockQty: 0, safeStockQty: 0,
-  unit: 'ea', unitCost: 0, description: '',
+// ==================== 元器件申请（Part 动态表单，类型固定 ELECTRONIC） ====================
+const createModalVisible = ref(false)
+const createSaving = ref(false)
+const dynamicFormRef = ref(null)
+const dynamicFormKey = ref(0)
+const form = ref({
+  typeDefinitionCode: 'ELECTRONIC', // 固定：电子元器件软类型（不可修改）
+  clsOid: null,
 })
 
-/** 分类树选择数据（tree-select） */
-const categoryTreeSelectData = computed(() => categoryTree.value)
-
-function openComponentModal(record) {
-  componentModalEditing.value = record || null
-  if (record) {
-    Object.assign(componentForm, {
-      code: record.code || '', name: record.name || '',
-      categoryOid: record.categoryOid || null,
-      model: record.model || '', packageType: record.packageType || '',
-      valueSpec: record.valueSpec || '', manufacturer: record.manufacturer || '',
-      stockQty: record.stockQty ?? 0, safeStockQty: record.safeStockQty ?? 0,
-      unit: record.unit || 'ea', unitCost: record.unitCost ?? 0,
-      description: record.description || '',
-    })
-  } else {
-    Object.assign(componentForm, {
-      code: '', name: '', categoryOid: selectedCategoryOid.value || null,
-      model: '', packageType: '', valueSpec: '', manufacturer: '',
-      stockQty: 0, safeStockQty: 0, unit: 'ea', unitCost: 0, description: '',
-    })
+function openCreateModal() {
+  if (!resourceCtx.value?.containerOid) {
+    message.warning('企业资源容器未就绪，请检查后端初始化')
+    return
   }
-  componentModalVisible.value = true
+  // 重置表单：类型固定 ELECTRONIC，分类默认取当前选中分类（若只选中一个）
+  form.value = {
+    typeDefinitionCode: 'ELECTRONIC',
+    clsOid: selectedCategoryOids.value.length === 1 ? selectedCategoryOids.value[0] : null,
+  }
+  dynamicFormKey.value += 1 // 强制重建 DynamicForm，重新加载 ELECTRONIC 布局
+  createModalVisible.value = true
 }
 
-async function confirmComponent() {
-  if (!componentForm.name?.trim()) { message.warning('请输入元器件名称'); return }
-  componentSaving.value = true
+async function confirmCreate() {
+  const ctx = resourceCtx.value
+  if (!ctx?.containerOid) {
+    message.warning('企业资源容器未就绪，请检查后端初始化')
+    return
+  }
+  createSaving.value = true
   try {
-    const payload = { ...componentForm, name: componentForm.name.trim() }
-    const res = componentModalEditing.value
-      ? await updateElectronicComponent(componentModalEditing.value.oid, payload)
-      : await createElectronicComponent(payload)
+    // 动态表单数据（含布局字段与实体 IBA）
+    const payload = { ...(form.value || {}) }
+    // 分类 IBA 值需从顶层剔除并放到 clsIbaValues（由 PartController 落 ck_cls_iba_data）
+    if (dynamicFormRef.value) {
+      const clsIbaFieldNames = dynamicFormRef.value.getClsIbaFieldNames() || []
+      clsIbaFieldNames.forEach(k => delete payload[k])
+      const clsIbaValues = dynamicFormRef.value.getClsIbaValues() || {}
+      if (Object.keys(clsIbaValues).length) payload.clsIbaValues = clsIbaValues
+    }
+    // 固定归属：当前资源子库节点；类型取该库对应的对象软类型
+    payload.typeDefinitionCode = resourceCtx.value?.typeCode || 'ELECTRONIC'
+    payload.containerOid = ctx.containerOid
+    payload.containerType = ctx.containerType || 'CORP_RESOURCE'
+    payload.stageOid = ctx.stageOid
+    payload.folderOid = null
+    if (!payload.name?.trim()) {
+      message.warning('请输入元器件名称')
+      return
+    }
+    payload.name = payload.name.trim()
+
+    const res = await createPart(payload)
     if (res?.code === 200) {
-      message.success(componentModalEditing.value ? '元器件已更新' : '元器件已创建')
-      componentModalVisible.value = false
+      message.success(`元器件申请已提交：${res.data?.number || res.data?.name || ''}`)
+      createModalVisible.value = false
       await loadComponents()
     } else {
-      message.error(res?.message || '保存失败')
+      message.error(res?.message || '提交失败')
     }
   } catch (e) {
-    message.error(e?.response?.data?.message || '保存失败')
+    message.error(e?.response?.data?.message || '提交失败')
   } finally {
-    componentSaving.value = false
+    createSaving.value = false
   }
-}
-
-function onRemoveComponent(record) {
-  Modal.confirm({
-    title: '确认删除元器件',
-    content: `确定要删除元器件「${record.name || record.code}」吗？删除后不可恢复。`,
-    okText: '删除',
-    okType: 'danger',
-    cancelText: '取消',
-    centered: true,
-    onOk: async () => {
-      try {
-        const res = await deleteElectronicComponent(record.oid)
-        if (res?.code === 200) {
-          message.success('已删除')
-          await loadComponents()
-        } else {
-          message.error(res?.message || '删除失败')
-        }
-      } catch (e) {
-        message.error(e?.response?.data?.message || '删除失败')
-      }
-    },
-  })
 }
 
 onMounted(async () => {
@@ -518,7 +572,7 @@ onMounted(async () => {
   gap: 16px;
 }
 
-/* ===== 左侧分类树 ===== */
+/* ===== 左侧分类树（只读，来自分类管理） ===== */
 .cl-tree {
   border: 1px solid #f0f0f0;
   border-radius: 6px;
@@ -532,44 +586,63 @@ onMounted(async () => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 6px 0 8px;
+  /* 左右留白 8px：与「封装·图符」文件夹树一致，使选中高亮块不贴面板边缘 */
+  padding: 6px 8px 8px;
+}
+.cl-tree-empty {
+  padding: 24px 12px;
 }
 .cl-tree-branch {
   display: block;
 }
+/* ===== 节点行（对齐「封装·图符」文件夹树的选中效果） ===== */
 .cl-tree-node {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px 4px 10px;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
-  color: #262626;
+  color: #1a1a2e;
   white-space: nowrap;
+  transition: background .15s;
 }
 .cl-tree-node:hover {
-  background: #f5f5f5;
+  background: #f0f5ff;
 }
-.cl-tree-node--active {
+/*
+ * 选中态：浅蓝底 + 左侧 3px 主题色竖条 + 名称蓝色加粗。
+ * 竖条用 inset box-shadow 而非 border-left —— 子节点缩进是用内联 padding-left 控制的，
+ * 若用 border-left 会挤占内边距、导致缩进错位（需额外做 padding 补偿）。
+ */
+.cl-tree-node--active,
+.cl-tree-node--active:hover {
   background: #e6f4ff;
-  color: #1677ff;
+  box-shadow: inset 3px 0 0 #1677ff;
 }
-.cl-tree-node--child {
-  padding-left: 30px;
+.cl-tree-node--active .cl-tree-name {
+  color: #1677ff;
+  font-weight: 500;
 }
 .cl-tree-toggle {
-  width: 12px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 12px;
   color: #8c8c8c;
-  text-align: center;
+  cursor: pointer;
 }
+.cl-tree-toggle .rotated { transform: rotate(-90deg); transition: transform .15s; }
 .cl-tree-toggle--leaf {
   visibility: hidden;
 }
 .cl-tree-icon {
   color: #faad14;
-  font-size: 13px;
+  font-size: 15px;
   flex-shrink: 0;
 }
 .cl-tree-name {
@@ -577,16 +650,25 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.cl-tree-more {
-  opacity: 0;
+.cl-tree-count {
+  color: #bfbfbf;
+  font-size: 11px;
   flex-shrink: 0;
 }
-.cl-tree-node:hover .cl-tree-more {
-  opacity: 1;
-}
-.cl-tree-new-btn {
+
+/* 分类树搜索框 */
+.cl-tree-search {
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid #f0f0f0;
   flex-shrink: 0;
-  margin: 0 10px 8px;
+}
+/* 分类树节点搜索匹配高亮 */
+.cl-tree-node--match .cl-tree-name {
+  color: #fa8c16;
+  font-weight: 600;
+  background: #fff7e6;
+  padding: 0 4px;
+  border-radius: 3px;
 }
 
 /* ===== 右侧内容 ===== */
@@ -601,8 +683,53 @@ onMounted(async () => {
   align-items: center;
   gap: 4px;
 }
-.cl-stock-warn {
+.cl-part-link {
+  font-size: 12px;
+  background: #f5f5f5;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #1677ff;
+  text-decoration: none;
+}
+.cl-part-link:hover {
+  background: #e6f4ff;
+  text-decoration: underline;
+}
+.cl-create-warn {
   color: #fa8c16;
-  font-weight: 600;
+  font-size: 12px;
+  background: #fff7e6;
+  border: 1px solid #ffe58f;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+/* 申请类型固定展示（电子元器件，不可修改） */
+.cl-create-type {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.cl-create-type-label {
+  color: #8c8c8c;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cl-create-type-code {
+  font-size: 12px;
+  background: #f5f5f5;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #595959;
+}
+.cl-create-type-hint {
+  color: #bfbfbf;
+  font-size: 12px;
 }
 </style>

@@ -84,12 +84,23 @@ const hasChildren = computed(() => props.node.children?.length > 0)
   cursor: pointer;
   transition: background .15s;
 }
-.ftn-row:hover { background: var(--pl-primary-bg); }
+/*
+ * 注意：--pl-* 变量原先只在「产品线/阶段」页面的 .pl-dashboard 作用域内定义，
+ * 而 FolderTreeNode 是跨页面复用组件（企业资源 / 封装·图符 / 产品线 …）。
+ * 在未定义这些变量的页面里 var() 会解析失败 → 选中态与 hover 完全没有颜色。
+ * 因此此处为所有变量补上兜底值，使组件自带配色、不依赖宿主页面。
+ */
+.ftn-row:hover { background: var(--pl-primary-bg, #f0f5ff); }
 .ftn-row--selected,
 .ftn-row--selected:hover {
-  background: var(--pl-primary-light);
-  border-left: 3px solid var(--pl-primary);
+  background: var(--pl-primary-light, #e6f4ff);
+  border-left: 3px solid var(--pl-primary, #1677ff);
   padding-left: 9px;
+}
+/* 选中态文字也用主题色 + 加粗，进一步强化区分度 */
+.ftn-row--selected .ftn-name {
+  color: var(--pl-primary, #1677ff);
+  font-weight: 500;
 }
 .ftn-row--inherited { opacity: .78; }
 .ftn-row:hover .ftn-actions { opacity: 1; }
@@ -99,7 +110,7 @@ const hasChildren = computed(() => props.node.children?.length > 0)
   display: inline-flex;
   align-items: center; justify-content: center;
   cursor: pointer;
-  color: var(--pl-text-muted);
+  color: var(--pl-text-muted, #8c8c8c);
   font-size: 12px;
   flex-shrink: 0;
 }
@@ -117,7 +128,7 @@ const hasChildren = computed(() => props.node.children?.length > 0)
 
 .ftn-name {
   font-size: 13px;
-  color: var(--pl-text);
+  color: var(--pl-text, #1a1a2e);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -126,7 +137,7 @@ const hasChildren = computed(() => props.node.children?.length > 0)
   align-items: center;
   gap: 6px;
 }
-.ftn-name--inherited { color: var(--pl-text-muted); }
+.ftn-name--inherited { color: var(--pl-text-muted, #8c8c8c); }
 
 .ftn-inherited-tag { font-size: 10px; padding: 0 4px; line-height: 16px; }
 

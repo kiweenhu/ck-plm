@@ -25,3 +25,217 @@ html, body {
   border-color: #1677ff;
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15);
 }
+
+/* ==========================================================================
+   弹窗视觉层次（全局）
+
+   背景：弹窗里最常出现的问题是「总项与细项一个样」—— 标题、结论数字、汇总行、
+   明细行用同样的字号/字重/底色，用户必须逐字读才知道哪个是结论。这里固定一套
+   层次语言，所有弹窗共用，避免每个弹窗各写一份 scoped 样式后又各不相同。
+
+   层次：① 结论（.ck-summary，独立浅色卡片，主数字最大）
+        ② 指标（.ck-metrics，弱一档的小字标签 + 中号数字）
+        ③ 明细（.ck-section + .ck-tree-table，分层着色，细项退到次要色）
+        ④ 说明（.ck-note，最弱的灰底小字，读得到但不抢视线）
+   ========================================================================== */
+
+/* ---------- 通用外框：所有 a-modal 共用（标题加重 + 分隔线，正文/底部留白对齐） ---------- */
+.ant-modal .ant-modal-header {
+  margin-bottom: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ant-modal .ant-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.ant-modal .ant-modal-body {
+  padding-top: 16px;
+}
+
+.ant-modal .ant-modal-footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 数字统一等宽：金额/数量上下对齐才好逐行比较 */
+.ck-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 流程画布：连线两端的端点手柄（拖它 = 改接 / 改锚点）—— 光标告知"这里可以抓" */
+.x6-edge-tool-source-arrowhead,
+.x6-edge-tool-target-arrowhead {
+  cursor: move;
+}
+
+/* ---------- ① 结论区：算的是谁 + 结论数字 ---------- */
+.ck-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.ck-summary__object {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ck-summary__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.ck-summary__code {
+  font-family: monospace;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.ck-summary__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.ck-summary__hero-label {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.ck-summary__hero-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #cf1322;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- ② 指标区：弱一档 ---------- */
+.ck-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 36px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e8e8e8;
+}
+
+.ck-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ck-metric__label {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.ck-metric__value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  font-variant-numeric: tabular-nums;
+}
+
+.ck-metric__value--warn {
+  color: #d46b08;
+}
+
+/* ---------- ③ 明细分区：标题把"这一段是什么"说清 ---------- */
+.ck-section {
+  margin-top: 16px;
+}
+
+.ck-section__title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.ck-section__hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: #8c8c8c;
+}
+
+/* ---------- ④ 说明区：最弱一档，读得到但不抢视线 ---------- */
+.ck-note {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #8c8c8c;
+}
+
+.ck-note__label {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: #f0f0f0;
+  color: #595959;
+  font-weight: 600;
+}
+
+/* ---------- 分层树表：分组行（含下级）与明细行（叶子）分开着色 ---------- */
+.ck-tree-table .ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 600;
+  color: #595959;
+}
+
+.ck-tree-table .ant-table-tbody > tr > td {
+  border-bottom-color: #f5f5f5;
+}
+
+/* 有下级的行：它是"小计"，要能被一眼挑出来 */
+.ck-tree-table .ck-row-group > td {
+  font-weight: 600;
+  color: #262626;
+}
+
+/* 叶子行：明细，退到次要色（含下级金额与本身相等，强调它没有意义） */
+.ck-tree-table .ck-row-leaf > td {
+  color: #595959;
+}
+
+.ck-tree-table .ck-row-leaf .ck-cell-muted {
+  color: #8c8c8c;
+  font-weight: 400;
+}
+
+/* 合计行：整表唯一的"总项"，用底色 + 顶部分隔线压实 */
+.ck-tree-table .ant-table-summary > tr > td {
+  background: #fafafa;
+  border-top: 1px solid #e8e8e8;
+  font-weight: 600;
+  color: #262626;
+}
+
+.ck-tree-table .ant-table-summary .ck-summary-label {
+  color: #595959;
+}

@@ -69,6 +69,13 @@
           </div>
         </template>
 
+        <!-- 流程表单子模块 -->
+        <template v-else-if="activeModule === 'formtemplate'">
+          <div class="bc-embedded-page">
+            <FormTemplateConfig />
+          </div>
+        </template>
+
         <!-- 平台成员子模块 -->
         <template v-else-if="activeModule === 'platform'">
           <div class="bc-embedded-page">
@@ -80,6 +87,13 @@
         <template v-else-if="activeModule === 'unit'">
           <div class="bc-embedded-page">
             <UnitConfig />
+          </div>
+        </template>
+
+        <!-- 元器件库分类子模块 -->
+        <template v-else-if="activeModule === 'componentlib'">
+          <div class="bc-embedded-page">
+            <ResourceLibraryCategoryConfig />
           </div>
         </template>
 
@@ -112,6 +126,8 @@ import {
   RetweetOutlined,
   EyeOutlined,
   RocketOutlined,
+  ApiOutlined,
+  FormOutlined,
 } from '@ant-design/icons-vue'
 import TypePage from '@/views/system/TypePage.vue'
 import VersionRuleConfig from '@/views/system/VersionRuleConfig.vue'
@@ -120,7 +136,9 @@ import NumberRuleConfig from '@/views/system/NumberRuleConfig.vue'
 import LifecycleConfig from '@/views/system/LifecycleConfig.vue'
 import ViewConfig from '@/views/system/ViewConfig.vue'
 import StageTemplateConfig from '@/views/system/StageTemplateConfig.vue'
+import FormTemplateConfig from '@/views/system/FormTemplateConfig.vue'
 import UnitConfig from '@/views/system/UnitConfig.vue'
+import ResourceLibraryCategoryConfig from '@/views/system/ResourceLibraryCategoryConfig.vue'
 
 // ---- 模块定义 ----
 const modules = [
@@ -130,9 +148,11 @@ const modules = [
   { key: 'versionrule',label: '版本规则',    icon: NumberOutlined,     desc: '大版本/小版本编码模板，含 CheckIn/CheckOut 版本号生成策略' },
   { key: 'numberrule',  label: '编码规则',    icon: BarcodeOutlined,    desc: '物料、文档等业务对象的编码段组合模板，支持分类码与流水号' },
   { key: 'stagetemplate', label: '模板管理',  icon: RocketOutlined,     desc: '研发阶段模板管理，创建产品线/型号时按模板生成阶段节点' },
-  { key: 'platform',   label: '平台成员',     icon: TeamOutlined,       desc: '平台级角色（管理员/租户管理员）成员分配与管理' },
+  { key: 'formtemplate', label: '流程表单',   icon: FormOutlined,       desc: '流程节点办理表单：内置表单启动时自动登记；同一节点类型可挂多张模板（含企业自定义），流程节点按需选用' },
+  { key: 'platform',   label: '平台成员',     icon: TeamOutlined,       desc: '平台级角色（管理员/企业管理员）成员分配与管理' },
   { key: 'dict',       label: '数据字典',     icon: BookOutlined,       desc: '枚举值、代码表与标准化参考数据集中维护' },
   { key: 'unit',       label: '单位配置',     icon: CompassOutlined,    desc: '计量单位体系定义，含量纲类型、SI 标准、换算系数与偏移量' },
+  { key: 'componentlib', label: '资源库分类', icon: ApiOutlined,       desc: '为元器件库 / 标准件库 / 通用件库各自绑定「分类管理」中的分类根节点，决定对应资源库左侧展示的分类子树' },
   { key: 'cad',        label: 'CAD 集成',     icon: ToolOutlined,       desc: 'AutoCAD / SolidWorks / CATIA 设计工具连接与数据同步配置' },
   { key: 'lightweight',label: '轻量化转换',   icon: ThunderboltOutlined,desc: '3D 模型轻量化处理、多格式转换引擎与服务端点配置' },
 ]
@@ -242,6 +262,7 @@ function switchModule(mod) {
 /* ===== 右侧内容 ===== */
 .bc-content {
   flex: 1;
+  min-height: 0;      /* 允许收缩：保证内嵌页 height:100% 能解析出确定高度，从而内部滚动生效 */
   overflow: auto;
   background: #fff;
 }
@@ -268,26 +289,13 @@ function switchModule(mod) {
 }
 
 /* 工作流 tabs */
-/* 嵌入数据模型时撑满容器 */
-.bc-content :deep(.softtype-page) {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  padding: 16px 24px;
-}
-.bc-content :deep(.softtype-page .top-bar) {
-  flex-shrink: 0;
-}
-.bc-content :deep(.softtype-page .content-area) {
-  flex: 1;
-  overflow: hidden;
-}
-.bc-content :deep(.softtype-page .tree-container) {
-  overflow: auto;
-}
-.bc-content :deep(.softtype-page .detail-panel) {
-  overflow: auto;
-}
+/* 嵌入「数据模型」（TypePage）时撑满容器，保证内部滚动而非被裁切。
+   注意：TypePage 根类名为 st-*；旧文档中的 softtype-page / tree-container / detail-panel
+   已不存在（原规则为失效代码），此处按真实类名重写。 */
+.bc-content :deep(.st-page) { height: 100%; min-height: 0; overflow: hidden; }
+.bc-content :deep(.st-body) { flex: 1; min-height: 0; overflow: hidden; }
+.bc-content :deep(.st-tree-panel) { min-height: 0; max-height: 100%; }
+.bc-content :deep(.st-tree-spin) { min-height: 0; overflow-y: auto; }
 
 /* 嵌入子页面通用样式 */
 .bc-embedded-page {

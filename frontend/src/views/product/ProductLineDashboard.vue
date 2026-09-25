@@ -775,7 +775,7 @@
           对象：<b>{{ moveTarget.code || moveTarget.name }}</b>
         </p>
         <a-form layout="vertical">
-          <a-form-item label="产品系列/型号" required>
+          <a-form-item label="产品系列/型号/资源库" required>
             <a-tree-select
               v-model:value="moveSelectedOwner"
               :tree-data="moveProductTree"
@@ -784,12 +784,17 @@
               show-search
               tree-node-filter-prop="title"
               :field-names="{ label: 'title', key: 'key', value: 'value', children: 'children' }"
-              placeholder="请选择产品系列或型号"
+              placeholder="请选择产品系列 / 型号 / 资源库"
               style="width:100%"
               @change="onMoveOwnerChange"
             />
           </a-form-item>
-          <a-form-item label="阶段" required>
+          <!--
+            阶段与文件夹只对「产品系列 / 型号」成立：
+              资源库里没有研发阶段，文件夹树本身又是按「系列 + 阶段」组织的，
+              所以选了资源库就一并隐藏 —— 留着空的必填"阶段"只会让人以为漏填了。
+          -->
+          <a-form-item v-if="!moveToLibrary" label="阶段" required>
             <a-select
               v-model:value="moveSelectedStage"
               :loading="moveStageLoading"
@@ -799,7 +804,29 @@
               :options="moveStages.map(s => ({ label: s.name || s.title || s.code, value: s.oid }))"
             />
           </a-form-item>
-          <a-form-item label="文件夹">
+          <a-form-item v-if="moveToLibrary" label="目标">
+            <span style="color:#595959">
+              移入资源库「{{ moveSelectedLibraryName }}」——
+              {{ moveLibUsesCategory ? '该库按分类节点归档' : '资源库没有研发阶段，可直接选文件夹' }}
+            </span>
+          </a-form-item>
+          <!-- 按分类归档的资源库（元器件库/标准件库/通用件库）：位置 = 分类节点（来自分类管理） -->
+          <a-form-item v-if="moveLibUsesCategory" label="分类">
+            <a-tree-select
+              v-model:value="moveSelectedCategoryOid"
+              :tree-data="moveCategoryTree"
+              :loading="moveCategoryLoading"
+              :tree-default-expand-all="true"
+              show-search
+              tree-node-filter-prop="title"
+              :field-names="{ label: 'title', key: 'key', value: 'value', children: 'children' }"
+              :placeholder="moveCategoryTree.length ? '请选择分类节点' : '该资源库尚未绑定分类，请在业务配置中绑定'"
+              allow-clear
+              style="width:100%"
+            />
+          </a-form-item>
+          <!-- 文件夹：系列/型号按"系列 + 阶段"组织，按文件夹组织的资源库按"库 + 库阶段"组织 -->
+          <a-form-item v-if="!moveLibUsesCategory" label="文件夹">
             <a-tree-select
               v-model:value="moveSelectedFolder"
               :tree-data="moveFolderTree"
@@ -808,7 +835,7 @@
               show-search
               tree-node-filter-prop="title"
               :field-names="{ label: 'name', key: 'oid', value: 'oid', children: 'children' }"
-              placeholder="请选择目标文件夹（可选）"
+              :placeholder="moveFolderPlaceholder"
               style="width:100%"
             />
           </a-form-item>
@@ -859,6 +886,20 @@
       :doc="docViewerDoc"
       @close="docViewerVisible = false"
     />
+
+    <!-- 发起流程（共享弹框：按类型+状态解析该发起的流程，再经 Flowable 启动） -->
+    <StartProcessModal
+      v-model:visible="startProcessVisible"
+      :business="startProcessTarget"
+      @success="refreshStageLists"
+    />
+
+    <!-- 设置生命周期状态（共享弹框：按类型绑定的生命周期模板给出"初始状态 / 指定状态"两条路） -->
+    <SetLifecycleStateModal
+      v-model:visible="lifecycleVisible"
+      :record="lifecycleTarget"
+      @success="refreshStageLists"
+    />
   </div>
 </template>
 
@@ -881,13 +922,16 @@ import { getProductLine, getProductLineChildren, getFolderTree, createFolder, up
          checkoutPart as checkoutPartApi, undoCheckoutPart as undoCheckoutPartApi, checkinPart as checkinPartApi, checkinDocument as checkinDocApi,
          getStages, getFolderDocumentDetails, getDocumentDownloadUrl, createPart, createFunctional, getTypeDefinitionTree, getPartsByFolder, deletePart, deletePartLatestIteration, newViewVersionPart, renamePart, saveAsPart, movePart,
          getPartIterations, getDocumentIterations, getClassification, getClassificationIBAs,
-         updatePart, updateDocument, getProductLineTree, getProductModels } from '@/api'
+         updatePart, updateDocument, getProductLineTree, getProductModels, getResourceChildren,
+         getLibraryCategoryTree, getElectronicComponentContext, getPackageSymbolContext } from '@/api'
 import { useUserStore } from '@/stores/user'
 import FolderTreeNode from './FolderTreeNode.vue'
 import DynamicForm from '@/components/DynamicForm.vue'
 import DocumentTypeSelect from '@/components/DocumentTypeSelect.vue'
 import DataTable from '@/components/DataTable.vue'
 import DocumentViewer from './DocumentViewer.vue'
+import StartProcessModal from '@/components/StartProcessModal.vue'
+import SetLifecycleStateModal from '@/components/SetLifecycleStateModal.vue'
 import { recordOperation } from '@/composables/useActivity'
 import { registerDynamicStages } from '@/utils/stageDefs'
 
@@ -1125,14 +1169,33 @@ async function confirmSaveAndCheckin() {
   }
 }
 
+/**
+ * 产品线/型号内禁止创建的类型（电子元器件必须归档在企业资源库-元器件库，
+ * 只能通过「企业资源 → 元器件库 → 元器件申请」创建）。
+ */
+const FORBIDDEN_PART_TYPE_CODES = ['ELECTRONIC']
+
+/** 递归剔除禁止选择的类型节点（连同其子树） */
+function filterForbiddenTypes(node) {
+  if (!node) return null
+  if (FORBIDDEN_PART_TYPE_CODES.includes((node.code || '').toUpperCase())) return null
+  return {
+    ...node,
+    children: (node.children || [])
+      .map(filterForbiddenTypes)
+      .filter(Boolean),
+  }
+}
+
 async function loadPartTypes() {
   partTypeLoading.value = true
   try {
     const res = await getTypeDefinitionTree()
     const tree = res?.data || res || []
-    // 找到 PART 根节点，作为树形展示（含其子孙子类型）
+    // 找到 PART 根节点，作为树形展示（含其子孙子类型），并剔除禁止的类型
     const partNode = findPartNode(Array.isArray(tree) ? tree : [])
-    partTypeOptions.value = partNode ? [partNode] : []
+    const filtered = filterForbiddenTypes(partNode)
+    partTypeOptions.value = filtered ? [filtered] : []
   } catch { partTypeOptions.value = [] }
   finally { partTypeLoading.value = false }
 }
@@ -1410,6 +1473,8 @@ const mixedColumns = [
 const bizObjectFilter = ref('ALL')
 /** source=ootb 的业务对象类型清单（来自类型定义树，与其他来源/模型定义页面同源） */
 const ootbTypeOptions = ref([])
+/** 子类型code → 顶层对象code 映射（通过 rootTypeCode 建立归属关系） */
+const typeRootCodeMap = ref({})
 
 /** 过滤下拉选项：全部对象 + source=ootb 的类型清单 */
 const bizObjectFilterOptions = computed(() => [
@@ -1430,24 +1495,40 @@ async function loadBizObjectFilterOptions() {
       }
     }
     walk(tree)
-    // 只显示模型定义的顶层对象（source=OOTB 的根类型，如 PART/DOCUMENT/FUNCTIONAL）；
-    // 预置子类型（source=ootb 小写）与用户自定义（source=USER）不出现在下拉中，
+    // 只显示模型定义的顶层对象（type_kind=OOTB 的根类型，如 PART/DOCUMENT/FUNCTIONAL）。
+    // 注意大小写不敏感：存量数据中 source/type_kind 存在小写 ootb（仅 FUNCTIONAL 为大写）。
+    // 预置子类型（type_kind=SOFT_TYPE）与用户自定义（source=USER）不出现在下拉中，
     // 但过滤时通过 rootTypeCode 自动包含顶层对象下的全部子类型
-    ootbTypeOptions.value = flat.filter(t => (t.source || '') === 'OOTB' || t.typeKind === 'OOTB')
+    ootbTypeOptions.value = flat.filter(t =>
+      ((t.source || '').toLowerCase() === 'ootb' || (t.typeKind || '').toLowerCase() === 'ootb')
+        // 排除域锚点（DOMAIN）：它是业务域的命名空间根，不是可创建的业务对象类型
+        && (t.typeKind || '').toUpperCase() !== 'DOMAIN'
+    )
+    // 建立 子类型code → 顶层对象code 映射，供过滤时判断对象归属
+    const rootMap = {}
+    for (const t of flat) {
+      if (t.code) rootMap[t.code] = t.rootTypeCode || t.code
+    }
+    typeRootCodeMap.value = rootMap
   } catch { ootbTypeOptions.value = [] }
 }
 
 /** 零组件 + 文档合并列表（Part 标记 entityType='PART'），按业务对象过滤：
-    选中根类型时同时匹配其子类型（rootTypeCode），选中子类型时精确匹配 */
+    下拉只含顶层对象，过滤时通过 子类型→顶层 映射把其下全部子类型的对象一并包含 */
 const filteredMixed = computed(() => {
   const partItems = parts.value.map(p => ({ ...p, entityType: 'PART' }))
   const docItems = documents.value.map(d => ({ ...d, entityType: 'DOC' }))
   const all = [...partItems, ...docItems]
   const selected = bizObjectFilter.value
   if (!selected || selected === 'ALL') return all
-  return all.filter(i =>
-    i.typeDefinitionCode === selected || i.rootTypeCode === selected
-  )
+  const rootMap = typeRootCodeMap.value
+  return all.filter(i => {
+    const code = i.typeDefinitionCode
+    if (code === selected) return true
+    // 对象的类型（或其类型未知时按原值）解析到顶层 code，与选中值比较
+    const root = rootMap[code] || code
+    return root === selected
+  })
 })
 
 async function loadParts(folderOid) {
@@ -1935,6 +2016,68 @@ async function confirmCheckout() {
   }
 }
 
+/* ==================== 发起流程（共享弹框） ==================== */
+
+const startProcessVisible = ref(false)
+/** 传给共享弹框的业务对象 */
+const startProcessTarget = ref(null)
+
+/**
+ * 打开「发起流程」弹框。
+ *
+ * <p>解析（类型 + 状态 → 流程模板）与 Flowable 启动都在共享组件
+ * {@link StartProcessModal} 里，本页只负责把当前业务对象传进去
+ * —— 零组件 / 文档 / 工程数据共用同一套交互。
+ */
+function openStartProcess(record) {
+  startProcessTarget.value = {
+    oid: record.oid,
+    name: record.name || record.code,
+    code: record.code || record.number,
+    // typeDefinitionCode 是权威字段（各列表 DTO 都有），entityType 仅作兜底
+    typeDefinitionCode: record.typeDefinitionCode || record.entityType,
+    typeDefinitionName: record.typeDefinitionName,
+    statusCode: record.statusCode || record.status?.code,
+    statusName: record.statusName || record.status?.displayName,
+    // 生命周期模板子版本（解析该发哪个流程用）
+    lifecycleTemplateIterationOid: record.lifecycleTemplateIterationOid || null,
+  }
+  startProcessVisible.value = true
+  }
+
+  // ==================== 设置生命周期状态 ====================
+
+  const lifecycleVisible = ref(false)
+  /** 传给弹框的对象（字段做兼容：零组件/文档两类列表 DTO 的编码字段名不同） */
+  const lifecycleTarget = ref(null)
+
+  /**
+  * 打开「设置生命周期状态」弹框。
+  *
+  * <p>候选项（初始状态 / 指定状态）与可达性由共享弹框按<b>类型绑定的生命周期模板</b>取
+  * （见 components/SetLifecycleStateModal.vue），本页只负责把当前对象传进去。
+  */
+  function openLifecycle(record) {
+  lifecycleTarget.value = {
+    oid: record.oid,
+    name: record.name,
+    code: record.code || record.number,
+    typeDefinitionCode: record.typeDefinitionCode || record.entityType,
+    statusCode: record.statusCode || record.status?.code,
+  }
+  lifecycleVisible.value = true
+  }
+
+  /** 刷新当前文件夹下的列表（与本页其它写操作后的刷新口径一致） */
+function refreshStageLists() {
+  if (!selectedFolder.value) return
+  loadParts(selectedFolder.value.oid)
+  if (selectedFolder.value._mergedInherited) {
+    loadInheritedDocuments(selectedFolder.value._mergedInherited.oid)
+  }
+  loadDocuments(selectedFolder.value.oid)
+}
+
 /** 统一文档操作分发 */
 function handleDocAction({ key }, doc) {
   switch (key) {
@@ -1948,8 +2091,8 @@ function handleDocAction({ key }, doc) {
     case 'download': downloadDocument(doc); break
     case 'move': openMoveModal({ ...doc, entityType: 'DOC' }); break
     case 'newViewVersion': newViewVersionRecord({ ...doc, entityType: 'DOC' }); break
-    case 'lifecycle': message.info(`设置生命周期: ${doc.name}`); break
-    case 'workflow': message.info(`发起流程: ${doc.name}`); break
+    case 'lifecycle': openLifecycle({ ...doc, entityType: 'DOC' }); break
+    case 'workflow': openStartProcess({ ...doc, entityType: 'DOC' }); break
     case 'delete':
       openDeleteModal({ ...doc, entityType: 'DOC' })
       break
@@ -2002,10 +2145,10 @@ function handleMixedAction({ key }, record) {
       newViewVersionRecord(record)
       break
     case 'lifecycle':
-      message.info(`设置生命周期: ${record.name || record.code}`)
+      openLifecycle(record)
       break
     case 'workflow':
-      message.info(`发起流程: ${record.name || record.code}`)
+      openStartProcess(record)
       break
     case 'delete':
       openDeleteModal(record)
@@ -2335,8 +2478,22 @@ const moveSaving = ref(false)
 const moveTarget = ref(null)
 const moveProductLoading = ref(false)
 const moveProductTree = ref([])
-/** oid → { nodeType, seriesOid } */
+/** oid → { nodeType: 'PRODUCT_LINE' | 'PRODUCT_MODEL' | 'RESOURCE_LIBRARY', seriesOid?, containerType? } */
 const moveProductMeta = ref({})
+/** 资源库分组节点的哨兵值：它只负责把子库归到一起，本身不是可移动目标 */
+const MOVE_LIBRARY_GROUP = '__resource-library__'
+/** 资源库（企业资源库根节点下的子库） */
+const moveLibraries = ref([])
+/** 当前选中的目标是不是资源库：是则没有阶段/文件夹 */
+const moveToLibrary = computed(() => {
+  const meta = moveProductMeta.value[moveSelectedOwner.value] || {}
+  return meta.nodeType === 'RESOURCE_LIBRARY'
+})
+/** 选中的资源库名（提示行用） */
+const moveSelectedLibraryName = computed(() => {
+  const lib = moveLibraries.value.find(l => l.oid === moveSelectedOwner.value)
+  return lib?.name || lib?.code || ''
+})
 const moveSelectedOwner = ref(undefined)
 const moveStageLoading = ref(false)
 const moveStages = ref([])
@@ -2344,6 +2501,40 @@ const moveSelectedStage = ref(undefined)
 const moveFolderLoading = ref(false)
 const moveFolderTree = ref([])
 const moveSelectedFolder = ref(undefined)
+/**
+ * 选中资源库时该库自己的阶段（如「封装·图符库」的「封装图符」）。
+ *
+ * <p>资源库不显示"研发阶段"，但它的文件夹就挂在这个阶段下 —— 既有创建路径也是这么写的
+ * （FootprintSymbolLibrary.vue 里 `payload.stageOid = c.stageOid`），所以移动时要把它带上，
+ * 否则会出现"对象的文件夹属于某阶段、对象自己却没有阶段"的不一致。
+ */
+const moveLibraryStageOid = ref('')
+
+/** 文件夹下拉的占位提示：资源库没配阶段时文件夹就没有来源，要说清而不是给个空列表 */
+const moveFolderPlaceholder = computed(() => {
+  if (!moveToLibrary.value) return '请选择目标文件夹（可选）'
+  return moveLibraryStageOid.value ? '请选择目标文件夹（可选）' : '该资源库下暂无文件夹'
+})
+
+/**
+ * 按「分类节点」归档的资源库：元器件库 / 标准件库 / 通用件库。
+ *
+ * <p>这三类资源库在界面上的位置标识是<b>分类树</b>（来自分类管理，左侧是分类而不是文件夹），
+ * 所以移动时选的是分类节点；其余资源库（封装·图符库 / 技术文档知识库 / 产品图库 / 其他）
+ * 按文件夹组织 —— 一个库到底看哪种，由库的 code 决定，不靠用户猜。
+ */
+const MOVE_CATEGORY_LIBRARY_CODES = ['COMPONENT', 'STD_PART', 'GEN_PART']
+
+/** 分类树（来自分类管理，未绑定时为空数组） */
+const moveCategoryTree = ref([])
+const moveCategoryLoading = ref(false)
+const moveSelectedCategoryOid = ref(undefined)
+
+/** 当前选中的资源库是否按分类归档 */
+const moveLibUsesCategory = computed(() => {
+  const meta = moveProductMeta.value[moveSelectedOwner.value] || {}
+  return meta.nodeType === 'RESOURCE_LIBRARY' && MOVE_CATEGORY_LIBRARY_CODES.includes(meta.code)
+})
 
 /** 打开移动弹窗 */
 async function openMoveModal(record) {
@@ -2355,27 +2546,38 @@ async function openMoveModal(record) {
   moveSelectedFolder.value = undefined
   moveModalVisible.value = true
   await loadMoveProductTree()
-  // 默认回填当前所属系列/型号、阶段、文件夹（无需用户从头选择）
+  // 默认回填当前所属目标、阶段、文件夹（无需用户从头选择）
   if (record.containerOid) {
     moveSelectedOwner.value = record.containerOid
+    // 资源库分支里目标位置已经加载好了，这里只需回填选中项
     await onMoveOwnerChange(record.containerOid)
-    if (record.stageOid) {
-      moveSelectedStage.value = record.stageOid
-      await onMoveStageChange(record.stageOid)
-      if (record.folderOid) {
+    if (moveToLibrary.value) {
+      // 分类归档的库回填分类；文件夹归档的库回填文件夹
+      if (moveLibUsesCategory.value) {
+        if (record.clsOid) moveSelectedCategoryOid.value = record.clsOid
+      } else if (record.folderOid) {
         moveSelectedFolder.value = record.folderOid
       }
+    } else if (record.stageOid) {
+      moveSelectedStage.value = record.stageOid
+      await onMoveStageChange(record.stageOid)
+      if (record.folderOid) moveSelectedFolder.value = record.folderOid
     }
   }
 }
 
-/** 加载产品系列 + 型号树 */
+/** 加载产品系列 + 型号树（外加资源库分组） */
 async function loadMoveProductTree() {
   moveProductLoading.value = true
   try {
-    const lineRes = await getProductLineTree()
-    if (lineRes.code !== 200) { moveProductTree.value = []; return }
-    const lines = lineRes.data || []
+    // 两条来源互不影响：系列树拿不到也要把资源库列出来（它是另一类目标）
+    const [lineRes, libRes] = await Promise.all([
+      getProductLineTree(),
+      getResourceChildren().catch(() => null),
+    ])
+    const lines = lineRes?.code === 200 ? (lineRes.data || []) : []
+    const libs = libRes?.code === 200 ? (libRes.data || []) : []
+    moveLibraries.value = libs
     const tree = []
     const meta = {}
 
@@ -2406,6 +2608,25 @@ async function loadMoveProductTree() {
     for (const line of lines) {
       tree.push(await buildNode(line))
     }
+    // 资源库分组：分组节点本身不可选（它只是把子库归到一处），子库是可移动的目标
+    if (libs.length) {
+      tree.push({
+        title: '资源库',
+        value: MOVE_LIBRARY_GROUP,
+        key: MOVE_LIBRARY_GROUP,
+        selectable: false,
+        children: libs.map(l => {
+          meta[l.oid] = {
+            nodeType: 'RESOURCE_LIBRARY',
+            containerType: l.containerType || 'CORP_RESOURCE',
+            // code 决定这个库是"选分类"还是"选文件夹"（见 MOVE_CATEGORY_LIBRARY_CODES）
+            code: l.code,
+            name: l.name,
+          }
+          return { title: l.name || l.code, value: l.oid, key: l.oid }
+        }),
+      })
+    }
     moveProductTree.value = tree
     moveProductMeta.value = meta
   } catch {
@@ -2416,12 +2637,21 @@ async function loadMoveProductTree() {
   }
 }
 
-/** 选择产品系列/型号 → 加载阶段 */
+/** 选择目标（产品系列/型号/资源库） → 加载阶段（资源库则是该库自己的阶段与文件夹） */
 async function onMoveOwnerChange(ownerOid) {
   moveSelectedStage.value = undefined
   moveFolderTree.value = []
   moveSelectedFolder.value = undefined
+  moveLibraryStageOid.value = ''
+  moveSelectedCategoryOid.value = undefined
+  moveCategoryTree.value = []
   if (!ownerOid) { moveStages.value = []; return }
+  // 资源库：不显示"研发阶段"，位置由"分类节点"或"文件夹"决定（按库的 code 分流）
+  if (moveProductMeta.value[ownerOid]?.nodeType === 'RESOURCE_LIBRARY') {
+    moveStages.value = []
+    await loadMoveLibraryContext(ownerOid)
+    return
+  }
   const meta = moveProductMeta.value[ownerOid] || {}
   const seriesOid = meta.seriesOid || ownerOid
   moveStageLoading.value = true
@@ -2432,6 +2662,102 @@ async function onMoveOwnerChange(ownerOid) {
     moveStages.value = []
   } finally {
     moveStageLoading.value = false
+  }
+}
+
+/**
+ * 加载资源库的目标位置：按分类归档的库给分类树，其余给文件夹树。
+ *
+ * <p>两类库的"位置"来源不同（这是实测与既有代码共同确认的）：
+ * <ul>
+ *   <li><b>按分类归档</b>（元器件库 COMPONENT / 标准件库 STD_PART / 通用件库 GEN_PART）：
+ *       位置 = 分类节点，分类树来自分类管理（{@code getLibraryCategoryTree}）；</li>
+ *   <li><b>按文件夹组织</b>（封装·图符库等）：文件夹挂在该库<b>自己的阶段</b>下
+ *       （实测「封装·图符库」有「电阻符号 / 电容符号 / 封装」，属于阶段「封装图符」），
+ *       与 FootprintSymbolLibrary.vue 同一约定。</li>
+ * </ul>
+ *
+ * <p>库自己的阶段无论是哪种，都要取出来写进 stageOid（与既有创建路径一致），
+ * 但它不显示给用户：资源库场景里它没有"研发阶段"的业务含义。
+ */
+async function loadMoveLibraryContext(libOid) {
+  moveFolderLoading.value = true
+  moveCategoryLoading.value = true
+  try {
+    moveLibraryStageOid.value = await resolveLibraryStageOid(libOid)
+
+    if (moveLibUsesCategory.value) {
+      // 分类归档：不碰文件夹（那里本来也没有文件夹）
+      moveFolderTree.value = []
+      const meta = moveProductMeta.value[libOid] || {}
+      const res = await getLibraryCategoryTree(meta.code)
+      // 接口返回的是"该库绑定的分类根节点"（未绑定则为 null）：取它的子节点作为可选的分类
+      const root = res?.code === 200 ? res.data : null
+      moveCategoryTree.value = (root?.children || []).map(toCategoryNode)
+      return
+    }
+
+    moveCategoryTree.value = []
+    if (!moveLibraryStageOid.value) {
+      moveFolderTree.value = []
+      return
+    }
+    const res = await getFolderTree(libOid, moveLibraryStageOid.value)
+    moveFolderTree.value = res?.code === 200 ? (res.data || []) : []
+  } catch {
+    moveFolderTree.value = []
+    moveCategoryTree.value = []
+  } finally {
+    moveFolderLoading.value = false
+    moveCategoryLoading.value = false
+  }
+}
+
+/**
+ * 解析资源库自己的阶段 oid。
+ *
+ * <p>为什么不能用 {@code getStages(库 oid)} 打天下：资源库（及其阶段）是<b>平台级</b>数据，
+ * 而阶段查询挂在 {@code /product-lines/{oid}/stages} 下，在租户侧会查不到 —— 结果是 stage_oid 传空，
+ * 而 {@code ck_part.stage_oid} 是 <b>NOT NULL</b>，移动直接失败在数据库约束上。
+ *
+ * <p>所以优先用"库自己的上下文接口"（库页面本来就在用它，租户侧也能拿到）：
+ * 元器件库 → {@code /resource-libraries/context}；封装·图符库 → {@code /package-symbols/context}；
+ * 其余库（标准件库 / 通用件库 等）退回按归属者查阶段。
+ */
+async function resolveLibraryStageOid(libOid) {
+  const code = (moveProductMeta.value[libOid] || {}).code
+  const fromContext = async (fn) => {
+    try {
+      const res = await fn()
+      return res?.code === 200 ? (res.data?.stageOid || '') : ''
+    } catch {
+      return ''
+    }
+  }
+  if (code === 'COMPONENT') {
+    const oid = await fromContext(getElectronicComponentContext)
+    if (oid) return oid
+  }
+  if (code === 'PACKAGE_SYMBOL') {
+    const oid = await fromContext(getPackageSymbolContext)
+    if (oid) return oid
+  }
+  try {
+    const st = await getStages(libOid)
+    const stages = st?.code === 200 ? (st.data || []) : []
+    return stages[0]?.oid || ''
+  } catch {
+    return ''
+  }
+}
+
+/** 分类节点 → 树选择控件的数据形状（字段名对齐 value/label/key/children） */
+function toCategoryNode(node) {
+  return {
+    title: node.displayName || node.name || node.code,
+    value: node.oid,
+    key: node.oid,
+    children: (node.children || []).map(toCategoryNode),
   }
 }
 
@@ -2459,18 +2785,48 @@ async function confirmMove() {
   const record = moveTarget.value
   const isPart = record.entityType === 'PART'
   const ownerOid = moveSelectedOwner.value
-  if (!ownerOid) { message.warning('请选择产品系列/型号'); return }
+  if (!ownerOid) { message.warning('请选择产品系列/型号/资源库'); return }
   const meta = moveProductMeta.value[ownerOid] || {}
+  // 分组节点不是目标（节点上已标 selectable:false，这里再兜一道）
+  if (meta.nodeType === MOVE_LIBRARY_GROUP) { message.warning('请选择具体的资源库'); return }
+  const toLibrary = meta.nodeType === 'RESOURCE_LIBRARY'
   const containerOid = meta.nodeType === 'PRODUCT_MODEL' ? meta.seriesOid : ownerOid
-  const containerType = meta.nodeType === 'PRODUCT_MODEL' ? 'PRODUCT_MODEL' : 'PRODUCT_LINE'
-  const stageOid = moveSelectedStage.value || ''
-  const folderOid = moveSelectedFolder.value || ''
+  const containerType = toLibrary
+    ? (meta.containerType || 'CORP_RESOURCE')
+    : (meta.nodeType === 'PRODUCT_MODEL' ? 'PRODUCT_MODEL' : 'PRODUCT_LINE')
+  // 资源库不显示"研发阶段"，但它自己的阶段要写进 stageOid（文件夹就挂在那里）；
+  // 文件夹两种目标都允许：系列/型号下按"系列 + 阶段"，资源库下按"库 + 库阶段"。
+  let stageOid = toLibrary ? (moveLibraryStageOid.value || '') : (moveSelectedStage.value || '')
+  if (toLibrary && !stageOid) {
+    // 兜底：不信"加载时是否已就绪"，提交前再解析一次。
+    // ck_part.stage_oid 是 NOT NULL，空值会在数据库约束上直接失败（用户看到的 PSQLException 就是它）。
+    stageOid = await resolveLibraryStageOid(ownerOid)
+    moveLibraryStageOid.value = stageOid
+  }
+  if (toLibrary && !stageOid) {
+    message.error('该资源库未配置阶段，无法归档：请先在该资源库下配置阶段后再移动')
+    return
+  }
+  // 分类归档的资源库不涉及文件夹；其余目标（系列/型号、按文件夹组织的资源库）用文件夹
+  const folderOid = moveLibUsesCategory.value ? '' : (moveSelectedFolder.value || '')
+  // 分类节点：后端 move 一并落库（null = 本次不涉及分类）。必须走 move：
+  // ck_part 的 update 是全量列更新，单独"只改分类"的更新会把其它列冲成 NULL。
+  const clsOid = moveLibUsesCategory.value ? (moveSelectedCategoryOid.value || null) : null
+  if (!toLibrary && !stageOid) { message.warning('请选择阶段'); return }
   moveSaving.value = true
   try {
-    const data = { containerOid, containerType, folderOid, stageOid }
+    const data = { containerOid, containerType, folderOid, stageOid, clsOid }
     const res = isPart ? await movePart(record.oid, data) : await moveDocumentApi(record.oid, data)
     if (res.code === 200) {
-      message.success('移动成功')
+      if (isPart && clsOid && res.data && res.data.clsOid !== clsOid) {
+        // 后端若还没重启（旧版 move 不认识 clsOid），分类不会写进去 —— 明确告知，不静默通过。
+        // 只看 Part：分类（ck_part.cls_oid）是 Part 特有字段，文档走的是另一条 move。
+        message.warning('已移动，但「分类」未保存：后端需重启以启用移动接口的分类字段')
+      } else {
+        message.success(
+          toLibrary ? `已移入资源库「${moveSelectedLibraryName.value || '资源库'}」` : '移动成功',
+        )
+      }
       moveModalVisible.value = false
       if (selectedFolder.value) {
         if (isPart) loadParts(selectedFolder.value.oid)

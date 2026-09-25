@@ -74,6 +74,8 @@
           <a-menu-item key="/org/users">用户管理</a-menu-item>
           <a-menu-item key="/org/roles">角色定义</a-menu-item>
           <a-menu-item key="/org/admins">角色成员</a-menu-item>
+          <!-- 企业公告：与通知中心同一组件（只显示 ANNOUNCEMENT），管理员可在此发布 -->
+          <a-menu-item key="/org/announcements">企业公告</a-menu-item>
         </a-sub-menu>
 
         <!-- 工作流 -->
@@ -153,7 +155,35 @@
           </a-auto-complete>
         </div>
         <div class="header-right">
-          <a-dropdown :trigger="['click']" v-if="notifications.length > 0">
+          <!-- CK-PLM 助手：用聊天的方式查系统数据（工具以当前用户权限执行） -->
+          <AiAssistant />
+
+          <!--
+            最新消息滚动条：不点开铃铛也能看到"有什么新消息"。
+            显示「标题：正文摘要」——只给标题的话，"系统升级公告"这种标题看不出到底说了什么。
+            **只放未读且 6 小时以内的**（见 utils/notifications 的 isTickerItem）：
+            过期的公告一直滚到被点开为止，会盖住真正的新消息。
+            有内容才滚动，没有就静态显示一句话（含规则说明）—— 空白会让人以为这块坏了。
+            悬停暂停（否则想看清时它正好滚走了），点击进通知中心。
+          -->
+          <a-tooltip :title="tickerTooltip">
+            <div class="notif-ticker" @click="goNotifications"
+              @mouseenter="tickerPaused = true" @mouseleave="tickerPaused = false">
+              <SoundOutlined class="notif-ticker-icon" />
+              <div class="notif-ticker-view">
+                <div class="notif-ticker-track" :class="{ 'is-static': !tickerScrolling }"
+                  :style="tickerScrolling
+                    ? { animationDuration: tickerDuration, animationPlayState: tickerPaused ? 'paused' : 'running' }
+                    : null">
+                  <span class="notif-ticker-text">{{ tickerText }}</span>
+                  <!-- 第二份只在滚动时存在：静态时它永远在裁剪区外，白占 DOM 还会被读屏重复念一遍 -->
+                  <span v-if="tickerScrolling" class="notif-ticker-text">{{ tickerText }}</span>
+                </div>
+              </div>
+            </div>
+          </a-tooltip>
+          <!-- 铃铛常驻：没有通知时也要能点开看"暂无通知"，而不是点了跳去租户审核页 -->
+          <a-dropdown :trigger="['click']" @visible-change="onBellOpen">
             <a-badge :count="unreadCount" :overflow-count="99" size="small" class="header-badge">
               <bell-outlined class="header-icon" />
             </a-badge>
@@ -161,29 +191,31 @@
               <div class="notif-dropdown">
                 <div class="notif-header">
                   <span>通知</span>
-                  <a @click="handleMarkAllRead">全部已读</a>
+                  <a v-if="unreadCount > 0" @click="handleMarkAllRead">全部已读</a>
                 </div>
                 <a-menu class="notif-menu" @click="handleNotifClick">
-                  <a-menu-item v-for="n in notifications.slice(0, 8)" :key="n.oid">
+                  <a-menu-item v-for="n in notifications.slice(0, 6)" :key="n.oid">
                     <div class="notif-item" :class="{ unread: !n.isRead }">
                       <div class="notif-dot" v-if="!n.isRead"></div>
                       <div class="notif-body">
                         <div class="notif-title">{{ n.title }}</div>
                         <div class="notif-content">{{ n.content }}</div>
-                        <div class="notif-time">{{ n.createdAt }}</div>
+                        <!-- 相对时间：下拉里"3 小时前"比一串 ISO 时间有用得多 -->
+                        <div class="notif-time">{{ notifRelativeTime(n.createdAt) }}</div>
                       </div>
                     </div>
                   </a-menu-item>
+                  <div v-if="notifications.length === 0"
+                    style="padding: 14px 16px; text-align: center; color: #8c8c8c; font-size: 13px;">
+                    暂无通知
+                  </div>
                 </a-menu>
-                <div class="notif-footer" v-if="notifications.length > 8">
-                  <router-link to="/system/tenants">查看全部</router-link>
+                <div class="notif-footer">
+                  <router-link to="/notifications">查看全部</router-link>
                 </div>
               </div>
             </template>
           </a-dropdown>
-          <a-badge :count="unreadCount" :overflow-count="99" size="small" class="header-badge" v-else>
-            <bell-outlined class="header-icon" @click="goTenantReview" />
-          </a-badge>
           <a-dropdown>
             <span class="user-avatar">
               <a-avatar size="small" :style="{ backgroundColor: '#00d4ff' }">
@@ -229,6 +261,12 @@ import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { message } from 'ant-design-vue'
 import { logout, getUnreadCount, getNotifications, markNotifRead, markAllNotifRead, getCurrentTenant, globalSearch } from '@/api'
+// 通知的"点了去哪"和相对时间与通知中心共用一份，避免两处各写一套后行为不一致
+import {
+  notifLink, notifRelativeTime, NOTIF_CHANGED_EVENT,
+  notifTickerText, notifTickerTooltip, notifTickerShouldScroll,
+} from '@/utils/notifications'
+import AiAssistant from '@/components/AiAssistant.vue'
 import { recordLogout } from '@/composables/useActivity'
 import {
   HomeOutlined, AppstoreOutlined, DatabaseOutlined,
@@ -236,7 +274,7 @@ import {
   SettingOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
   BellOutlined, DownOutlined, UserOutlined, LogoutOutlined,
   ApartmentOutlined, FolderOutlined,
-  FileTextOutlined
+  FileTextOutlined, SoundOutlined
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
@@ -291,8 +329,13 @@ const breadcrumbMap = {
   '/workflow/design': '工作流 / 流程清单',
   '/workflow/monitor': '工作流 / 流程监控',
   '/workflow/task': '工作流 / 任务中心',
+  // 带参数的任务办理页（前缀匹配：/workflow/task/{id}）
+  '/workflow/task/:id': '工作流 / 任务中心 / 办理任务',
+  // 带参数的流程实例详情（前缀匹配：/workflow/instance/{id}）
+  '/workflow/instance/:id': '工作流 / 流程监控 / 流程详情',
   '/org/users': '企业组织 / 用户管理',
   '/org/roles': '企业组织 / 角色定义',
+  '/org/announcements': '企业组织 / 企业公告',
   '/org/info': '企业组织 / 企业信息',
   '/org/dept': '企业组织 / 部门架构',
   '/org/admins': '企业组织 / 角色成员',
@@ -336,20 +379,54 @@ const fetchUnreadCount = async () => {
   try { const res = await getUnreadCount(); if (res.code === 200) unreadCount.value = res.data || 0 } catch {}
 }
 const fetchNotifications = async () => {
-  try { const res = await getNotifications(10); if (res.code === 200) notifications.value = res.data || [] } catch {}
+  // 取 20 条（铃铛只显示前 6 条）：顶栏滚动条要在其中挑"未读且 6 小时内的"，
+  // 只取 10 条时容易被一串刚点开的已读挤掉，真正的新消息反而进不了滚动条
+  try { const res = await getNotifications(20); if (res.code === 200) notifications.value = res.data || [] } catch {}
 }
 const handleNotifClick = async ({ key }) => {
   const n = notifications.value.find(x => x.oid === key)
-  if (n && !n.isRead) { await markNotifRead(key); await fetchUnreadCount() }
-  if (n && (n.type === 'TENANT_REGISTRATION' || n.targetType === 'TENANT')) router.push('/system/tenants')
+  if (n && !n.isRead) { await markNotifRead(key); await fetchUnreadCount(); n.isRead = true }
+  // 跳转规则按 targetType 统一解析（原来只认租户审核，其它通知点了没反应）
+  const path = notifLink(n)
+  if (path) router.push(path)
 }
+/**
+ * 刷新铃铛（未读数 + 下拉列表）。
+ *
+ * <p>触发时机有三处：应用启动、30 秒轮询（别人发的通知靠它）、以及"自己刚做完的事"
+ * —— 后者由通知相关页面发 {@link NOTIF_CHANGED_EVENT} 事件通知（见 utils/notifications）。
+ */
+const refreshBell = async () => {
+  await Promise.all([fetchUnreadCount(), fetchNotifications()])
+}
+
+/** 点开铃铛时也刷一次：看到的必须是最新，而不是最多 30 秒前的 */
+const onBellOpen = (visible) => {
+  if (visible) refreshBell()
+}
+
+// ---- 顶栏滚动消息（与铃铛同一份数据，不额外请求）----
+
+const tickerPaused = ref(false)
+
+// 文案与"要不要滚"都是列表到字符串的纯函数，放在 utils/notifications 里便于单测
+const tickerText = computed(() => notifTickerText(notifications.value))
+/** 只在有未读时才滚（都已读还滚，等于没有新消息却一直晃） */
+const tickerScrolling = computed(() => notifTickerShouldScroll(notifications.value))
+const tickerTooltip = computed(() => notifTickerTooltip(notifications.value))
+
+/** 滚动时长按字数走：长消息不会一闪而过（约 0.55 秒/字） */
+const tickerDuration = computed(() =>
+  `${Math.max(12, Math.min(90, tickerText.value.length * 0.55))}s`)
+
+const goNotifications = () => router.push('/notifications')
+
 const handleMarkAllRead = async (e) => {
   e?.preventDefault?.()
   await markAllNotifRead()
   unreadCount.value = 0
   await fetchNotifications()
 }
-const goTenantReview = () => router.push('/system/tenants')
 
 // ---- 全局搜索 ----
 const searchKeyword = ref('')
@@ -424,11 +501,14 @@ onMounted(async () => {
       }
     }
   } catch { /* ignore */ }
-  fetchUnreadCount()
-  pollTimer = setInterval(fetchUnreadCount, 30000)
+  refreshBell()
+  pollTimer = setInterval(refreshBell, 30000)
+  // 页面里刚发的公告 / 刚标的已读 → 立刻反映到铃铛，不必等下一轮轮询
+  window.addEventListener(NOTIF_CHANGED_EVENT, refreshBell)
 })
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  window.removeEventListener(NOTIF_CHANGED_EVENT, refreshBell)
 })
 
 // ---- 用户菜单 ----
@@ -467,6 +547,18 @@ async function handleUserMenu({ key }) {
   position: relative;
 }
 
+/*
+ * ant-design 的 Sider 会在中间插一层 .ant-layout-sider-children，
+ * 所有菜单都在它里面 —— 真正的纵向布局容器是这一层，不是 .layout-sider。
+ * 少了这段，下面菜单的 flex:1 / min-height:0 都作用在错误的对象上（也就是改之前滚不动的原因）。
+ */
+.layout-sider :deep(.ant-layout-sider-children) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .sider-logo {
   display: flex;
   align-items: center;
@@ -474,6 +566,7 @@ async function handleUserMenu({ key }) {
   padding: 16px 20px;
   cursor: pointer;
   transition: all 0.2s;
+  flex: 0 0 auto;
 }
 
 .sider-logo:hover {
@@ -498,8 +591,40 @@ async function handleUserMenu({ key }) {
   border-inline-end: none !important;
   margin-top: 4px;
   flex: 1;
+  /*
+   * min-height:0 是这里的关键：flex 子项默认 min-height:auto（不小于内容高度），
+   * 菜单项一多就会被内容撑高、再被侧边栏的 overflow:hidden 裁掉 —— 于是"overflow-y:auto
+   * 写了却滚不动"。归零后菜单才会在剩余高度内滚动，展开多少分组都在。
+   */
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /*
+   * 这里<b>不能</b>留"滚动条常驻占位"（scrollbar-gutter: stable）：
+   * 它会在菜单右侧永久预留一条滚动条宽度，菜单内容区整体变窄 ——
+   * 收起态下选中块/图标是按内容区居中的，于是看起来始终偏左（左右留白不等）。
+   * 宁可让滚动条出现时才占 6px（影响极小），也不要常态性的偏心。
+   */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+/* 深色侧边栏上的滚动条：默认配色几乎看不见，给一条半透明的 */
+.sider-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sider-menu::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+
+.sider-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.sider-menu::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* 窄宽度下菜单文字截断 */
@@ -509,16 +634,97 @@ async function handleUserMenu({ key }) {
   white-space: nowrap;
 }
 
-.sider-author {
+/* ===== 菜单项：选中态 =====
+ * antd 默认给选中项一块"实心蓝底 + 圆角 + 左右外边距"的色块。在 150px 窄栏（尤其收起成
+ * 图标栏）里，它像一块浮在栏外的蓝方块，"我在哪一节"反而要靠猜。
+ * 这里换成通栏行 + 左侧 3px 指示条 + 很轻的底色：
+ *   - 通栏让"选中"与"这一栏"建立关系，不再是一个孤立方块；
+ *   - 指示条承担"我在这"的信息，底色只负责拉开一点点层次，不喧宾夺主。
+ */
+.layout-sider :deep(.ant-menu-item),
+.layout-sider :deep(.ant-menu-submenu-title) {
+  margin: 2px 0 !important;
+  margin-inline: 0 !important;
+  width: 100% !important;
+  border-radius: 0 !important;
+}
+
+/* 指示条：默认给整行铺一条（宽度 3px，位置贴着栏的左边缘） */
+.layout-sider :deep(.ant-menu-item)::after,
+.layout-sider :deep(.ant-menu-submenu-title)::after {
+  content: '';
   position: absolute;
-  bottom: 16px;
-  left: 0;
-  right: 0;
+  top: 0;
+  bottom: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  border: none !important;
+  background: transparent;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+.layout-sider :deep(.ant-menu-dark .ant-menu-item-selected) {
+  background: rgba(22, 119, 255, 0.16) !important;
+  color: #fff !important;
+  font-weight: 500;
+}
+
+.layout-sider :deep(.ant-menu-dark .ant-menu-item-selected)::after {
+  background: #1677ff !important;
+}
+
+/* 子菜单里被选中的那一项，父级标题也点一条指示条 ——
+   收起态看不到子项，靠它告诉用户"当前页在这个分组里" */
+.layout-sider :deep(.ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title) {
+  color: #fff !important;
+}
+
+.layout-sider :deep(.ant-menu-dark .ant-menu-submenu-selected > .ant-menu-submenu-title)::after {
+  background: rgba(22, 119, 255, 0.7) !important;
+}
+
+/* 收起态（只剩图标）：把"居中"这件事握在自己手里，不依赖 antd 的 padding 计算 ——
+   图标与选中块都以整栏为基准居中，铺满整栏宽度 */
+.layout-sider.ant-layout-sider-collapsed :deep(.ant-menu-item),
+.layout-sider.ant-layout-sider-collapsed :deep(.ant-menu-submenu-title) {
+  width: 100% !important;
+  margin-inline: 0 !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 收起态图标：antd 常态会给图标一个 margin-right（为文字留位置），
+   收起时它会把图标顶偏 —— 归零，让 justify-content 真正决定位置 */
+.layout-sider.ant-layout-sider-collapsed :deep(.ant-menu-item .anticon),
+.layout-sider.ant-layout-sider-collapsed :deep(.ant-menu-submenu-title .anticon) {
+  margin: 0 !important;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* 收起态必须让文字彻底不占位：antd 藏文字用的是 opacity（隐形的文字仍占宽度），
+   不改成 display:none 的话，上面那句 justify-content:center 会把"图标 + 隐形文字"
+   当整体居中 —— 图标反而更偏左 */
+.layout-sider.ant-layout-sider-collapsed :deep(.ant-menu-title-content) {
+  display: none !important;
+}
+
+/* 租户信息：作为 flex 的最后一项常驻底部（不再 absolute）——
+   absolute 会盖在菜单最后几项上，菜单滚到底也看不清；现在是菜单先占满剩余高度、
+   它自己占固定一块，两者互不侵占 */
+.sider-author {
+  flex: 0 0 auto;
+  padding: 10px 12px 12px;
   text-align: center;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.35);
   letter-spacing: 1px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tenant-name {
@@ -565,6 +771,78 @@ async function handleUserMenu({ key }) {
 
 .header-breadcrumb {
   font-size: 14px;
+}
+
+/* ===== 顶栏最新消息滚动条 =====
+   一条窄带里横向滚动：轨道里放两份相同文本，位移 -50% 时正好等于一份，
+   于是循环处永远不会出现"跳一下"。悬停暂停由 animationPlayState 控制（模板里绑）。 */
+.notif-ticker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 比原来 240px 宽一些：这条现在要放"标题：正文摘要"，太窄的话静态时几乎只剩标题 */
+  width: 320px;
+  /* 高度写死，与 CK-PLM 助手胶囊同高：顶栏的 line-height: 56px 会继承进来，
+     不挡住的话这里的文字行盒也是 56px，窄带会被撑得比顶栏还高 */
+  height: 28px;
+  box-sizing: border-box;
+  /* 与铃铛的间距交给 .header-right 的 gap，这里不再自己加 margin */
+  padding: 0 10px;
+  border-radius: 14px;
+  background: #f5f7fa;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background 0.2s;
+}
+
+.notif-ticker:hover {
+  background: #eaf3ff;
+}
+
+.notif-ticker-icon {
+  flex: 0 0 auto;
+  color: #fa8c16;
+  font-size: 13px;
+}
+
+.notif-ticker-view {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  /* 轨道是 inline-block，行盒高度跟着本元素的 line-height 走：必须断掉 56px 的继承，
+     否则文字在 28px 高的窄带里被上下裁掉 */
+  line-height: 1;
+}
+
+.notif-ticker-track {
+  display: inline-block;
+  white-space: nowrap;
+  animation-name: notif-ticker-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* 全部已读：停掉滚动，按普通一行文字展示（放不下就省略号，悬停看全文） */
+.notif-ticker-track.is-static {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: none;
+}
+
+.notif-ticker-text {
+  font-size: 12px;
+  line-height: 1;
+  color: #595959;
+}
+
+@keyframes notif-ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 .header-search {

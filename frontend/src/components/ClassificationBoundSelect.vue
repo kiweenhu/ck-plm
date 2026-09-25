@@ -79,7 +79,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { TreeSelect, Button, Modal, Input, Breadcrumb, BreadcrumbItem, Tree, Empty, Spin, Tag, message } from 'ant-design-vue'
+import { TreeSelect, Button, Modal, Input, Breadcrumb, BreadcrumbItem, Tree, Empty, Spin, Tag } from 'ant-design-vue'
 import { ApartmentOutlined, CloseOutlined } from '@ant-design/icons-vue'
 import { getTypeClassificationSubtree } from '@/api'
 
@@ -274,9 +274,10 @@ async function loadTree() {
       treeData.value = []
     }
   } catch {
+    // 失败原因由响应拦截器统一提示（含后端"绑定的分类已不存在，请去重新绑定"这种可操作信息），
+    // 这里再弹一次只会叠出两条 toast，把真正有用的那条顶掉
     hasBinding.value = false
     treeData.value = []
-    message.error('加载分类绑定信息失败')
   } finally { loading.value = false }
 }
 

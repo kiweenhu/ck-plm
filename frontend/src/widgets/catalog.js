@@ -21,7 +21,8 @@ import {
   BuildOutlined, InsertRowBelowOutlined, ClusterOutlined,
   PictureOutlined, HighlightOutlined, TableOutlined,
   FolderOutlined, PaperClipOutlined, ExperimentOutlined, CloudUploadOutlined,
-  TagOutlined, NodeIndexOutlined, BarcodeOutlined
+  TagOutlined, NodeIndexOutlined, BarcodeOutlined,
+  ToolOutlined, ThunderboltOutlined, BranchesOutlined
 } from '@ant-design/icons-vue'
 
 // ==================== 控件定义 ====================
@@ -154,6 +155,16 @@ export const WIDGETS = [
     defaults: { uiComponent: 'product-select', required: false, placeholder: '请选择所属产品' }
   },
   {
+    type: 'resource-container-select',
+    label: '容器选择',
+    category: 'system',
+    icon: shallowRef(BuildOutlined),
+    dataType: 'STRING',
+    description: '企业资源库容器选择：无已知条件时可选择任一资源库（元器件库/标准件库/通用件库等）；已进入某资源库时默认为该库且不可修改',
+    bindFields: ['containerOid', 'containerType'],
+    defaults: { uiComponent: 'resource-container-select', required: false, placeholder: '请选择构建容器' }
+  },
+  {
     type: 'image-upload',
     label: '图片上传',
     category: 'media',
@@ -252,6 +263,36 @@ export const WIDGETS = [
     description: '来源下拉选择器，固定选项（自制/委外/采购），适用于 Part 的 source 字段',
     bindFields: ['source'],
     defaults: { uiComponent: 'source-select', required: false, placeholder: '请选择来源' }
+  },
+  {
+    type: 'version-display',
+    label: '构建版本显示',
+    category: 'system',
+    icon: shallowRef(BranchesOutlined),
+    dataType: 'STRING',
+    description: '版本只读展示，不可编辑：创建实体对象的 form 打开时显示「由系统生成」；编辑页面显示当前对象的对应版本',
+    bindFields: ['displayVersion'],
+    defaults: { uiComponent: 'version-display', required: false }
+  },
+  {
+    type: 'mcad-tool-select',
+    label: 'MCAD工具',
+    category: 'system',
+    icon: shallowRef(ToolOutlined),
+    dataType: 'STRING',
+    description: '机械 CAD 工具下拉：预置主流 MCAD（PTC Creo / Siemens NX / CATIA / SOLIDWORKS / Inventor / AutoCAD / 中望CAD 等），落库为工具短码',
+    bindFields: ['mcadTool'],
+    defaults: { uiComponent: 'mcad-tool-select', required: false, placeholder: '请选择 MCAD 工具' }
+  },
+  {
+    type: 'ecad-tool-select',
+    label: 'ECAD工具',
+    category: 'system',
+    icon: shallowRef(ThunderboltOutlined),
+    dataType: 'STRING',
+    description: '电子 CAD 工具下拉：预置主流 ECAD（Altium Designer / Cadence Allegro / OrCAD / Siemens Xpedition / PADS / KiCad / 立创EDA 等），落库为工具短码',
+    bindFields: ['ecadTool'],
+    defaults: { uiComponent: 'ecad-tool-select', required: false, placeholder: '请选择 ECAD 工具' }
   },
   {
     type: 'lifecycle-display',

@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@flow-dsl-core": ["src/flow-designer/dsl-core/index.ts"],
+      "@flow-dsl-core/*": ["src/flow-designer/dsl-core/*"],
+      "@flow-canvas": ["src/flow-designer/canvas/index.ts"],
+      "@flow-canvas/*": ["src/flow-designer/canvas/*"],
+      "@flow-compiler": ["src/flow-designer/bpmn-compiler/index.ts"],
+      "@flow-compiler/*": ["src/flow-designer/bpmn-compiler/*"],
+      "@flow-app/*": ["src/flow-designer/app/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+}

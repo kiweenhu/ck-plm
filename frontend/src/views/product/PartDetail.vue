@@ -226,21 +226,23 @@
                       </a-tag>
                     </div>
                   </template>
+                  <!-- 这几列取 bomRowValue：正在编辑的这一层以右侧「子件清单」的草稿为准，
+                       否则会出现"右边改成 3 了、左边还显示 2" -->
                   <template v-else-if="column.key === 'quantity'">
                     <span v-if="record.isRoot" style="color:#bfbfbf">-</span>
-                    <span v-else>{{ record.quantity ?? '-' }}</span>
+                    <span v-else>{{ bomRowValue(record, 'quantity') ?? '-' }}</span>
                   </template>
                   <template v-else-if="column.key === 'lineNumber'">
                     <span v-if="record.isRoot" style="color:#bfbfbf">-</span>
-                    <span v-else>{{ record.lineNumber ?? '-' }}</span>
+                    <span v-else>{{ bomRowValue(record, 'lineNumber') ?? '-' }}</span>
                   </template>
                   <template v-else-if="column.key === 'unit'">
                     <span v-if="record.isRoot" style="color:#bfbfbf">-</span>
-                    <span v-else>{{ record.unit || '-' }}</span>
+                    <span v-else>{{ bomRowValue(record, 'unit') || '-' }}</span>
                   </template>
                   <template v-else-if="column.key === 'unitCost'">
                     <span v-if="record.isRoot" style="color:#bfbfbf">-</span>
-                    <span v-else>{{ record.unitCost ?? '-' }}</span>
+                    <span v-else>{{ bomRowValue(record, 'unitCost') ?? '-' }}</span>
                   </template>
                 </template>
               </a-table>
@@ -291,6 +293,8 @@
                     <span class="bom-items-tip">
                       「{{ bomItemsParentName }}」的子件 · 共 {{ bomItemsList.length }} 个
                       <a-tag v-if="!bomItemsEditable" color="orange" size="small" style="margin-left:6px">未检出 · 只读</a-tag>
+                      <!-- 改动是否已落到本地数据上一眼可见（此前失焦回弹会让人怀疑"改了没生效"） -->
+                      <a-tag v-if="bomItemsDirty" color="blue" size="small" style="margin-left:6px">有未保存修改</a-tag>
                     </span>
                     <a-button type="primary" size="small" :loading="savingBomItems" :disabled="!bomItemsEditable" @click="saveBomItems">
                       <SaveOutlined /> 保存
@@ -317,7 +321,7 @@
                       <template v-if="!bomSelectedRow.isRoot">
                         <a-descriptions-item label="数量">{{ bomSelectedRow.quantity ?? '-' }}</a-descriptions-item>
                         <a-descriptions-item label="单位">{{ bomSelectedRow.unit || '-' }}</a-descriptions-item>
-                        <a-descriptions-item label="单位成本">{{ bomSelectedRow.unitCost != null ? formatCost(bomSelectedRow.unitCost) : '-' }}</a-descriptions-item>
+                        <a-descriptions-item label="单位成本(RMB)">{{ bomSelectedRow.unitCost != null ? formatCost(bomSelectedRow.unitCost) : '-' }}</a-descriptions-item>
                         <a-descriptions-item label="引用方式">
                           <a-tag v-if="bomSelectedRow.childIterationOid" color="success" size="small">精确</a-tag>
                           <a-tag v-else color="warning" size="small">跟随最新</a-tag>
@@ -430,7 +434,7 @@
         </a-tab-pane>
 
         <!-- ========== 3. CAD 描述（条件渲染） ========== -->
-        <a-tab-pane key="cad" tab="CAD 描述">
+        <a-tab-pane key="cad" :tab="cadTabLabel">
           <div v-if="isStructural" class="cad-grid">
             <a-row :gutter="16">
               <a-col :span="8">
@@ -465,6 +469,34 @@
               <a-col :span="8">
                 <a-card title="Datasheet" size="small">
                   <a-empty description="暂无 Datasheet" :image-style="{ height: '48px' }" />
+                </a-card>
+              </a-col>
+            </a-row>
+          </div>
+          <div v-else-if="isElectrical" class="cad-grid">
+            <a-row :gutter="16">
+              <a-col :span="12">
+                <a-card title="电气原理图" size="small">
+                  <a-empty description="暂无电气原理图" :image-style="{ height: '48px' }" />
+                </a-card>
+              </a-col>
+              <a-col :span="12">
+                <a-card title="电气接线图" size="small">
+                  <a-empty description="暂无电气接线图" :image-style="{ height: '48px' }" />
+                </a-card>
+              </a-col>
+            </a-row>
+          </div>
+          <div v-else-if="isSoftware" class="cad-grid">
+            <a-row :gutter="16">
+              <a-col :span="12">
+                <a-card title="软件架构图" size="small">
+                  <a-empty description="暂无软件架构图" :image-style="{ height: '48px' }" />
+                </a-card>
+              </a-col>
+              <a-col :span="12">
+                <a-card title="流程图" size="small">
+                  <a-empty description="暂无流程图" :image-style="{ height: '48px' }" />
                 </a-card>
               </a-col>
             </a-row>
@@ -551,7 +583,7 @@
                   <span class="tab-stat-label">说明文档</span>
                 </div>
                 <div class="tab-stat-actions">
-                  <a-button size="small" type="primary" @click="onAddDocLink('DESCRIPTION')">
+                  <a-button size="small" type="primary" @click="onAddDocLink('DESCRIBES')">
                     <PlusOutlined /> 添加说明文档
                   </a-button>
                   <a-button size="small" danger :disabled="!descSelectedKeys.length" @click="onRemoveDocLinks('DESCRIPTION')">
@@ -666,9 +698,9 @@
           </a-table>
         </a-tab-pane>
 
-        <!-- ========== 6. 流程情况 ========== -->
+        <!-- ========== 6. 流程情况（关联流程：执行中 / 已执行 两栏，所有业务对象共用同一组件） ========== -->
         <a-tab-pane key="workflow" tab="流程情况">
-          <a-empty description="流程情况功能开发中" :image-style="{ height: '64px' }" />
+          <RelatedProcesses :entity-oid="oid" />
         </a-tab-pane>
 
         <!-- ========== 7. 变更情况 ========== -->
@@ -896,6 +928,13 @@
       </a-table>
     </a-modal>
 
+    <!-- BOM 成本报告（卷积）：总成本 + 逐层明细 + 口径与数据缺口提示 -->
+    <BomCostReportModal
+      v-model:open="costReportOpen"
+      :parent-iteration-oid="currentIterationOid"
+      :fallback-label="part?.name"
+    />
+
     <!-- BOM 版本对比对话框：选择两个版本，预计算并展示 BOM 差异（新增/移除/修改行数） -->
     <a-modal
       :visible="compareModalVisible"
@@ -925,7 +964,7 @@
 
       <!-- 对比结果：无差异提示 或 差异明细列表 -->
       <div v-if="compareResult" class="bom-compare-result">
-        <div v-if="compareResult.isEmpty?.()" style="padding:8px 0 16px">
+        <div v-if="compareIsEmpty" style="padding:8px 0 16px">
           <a-result status="success" title="两版本之间无差异" />
         </div>
         <template v-else>
@@ -993,7 +1032,7 @@ import {
   createBomLinks, deleteBomLinks, updateBomLinks,
   getPartAlternateLinksByPart,
   createPartAlternateLink, deletePartAlternateLink,
-  getPartDocumentLinksByPart, createPartDocumentLink, deletePartDocumentLink,
+  getPartDocLinks, createPartDocLink, deletePartDocLink, promotePartDocLink,
   getDocuments, getDocument, getFolderDocumentDetails,
   getProductLine, getProductModel, getProductLines, getProductModels, getFolderByOid, getClassificationIBAs,
   getStages,
@@ -1003,6 +1042,8 @@ import {
 } from '@/api'
 import UnitSelect from '@/components/UnitSelect.vue'
 import DataTable from '@/components/DataTable.vue'
+import RelatedProcesses from '@/components/RelatedProcesses.vue'
+import BomCostReportModal from '@/components/BomCostReportModal.vue'
 import DocumentViewer from './DocumentViewer.vue'
 
 const route = useRoute()
@@ -1041,6 +1082,8 @@ const latestIterationOid = ref('')
 
 // ==================== BOM 版本对比 ====================
 const compareModalVisible = ref(false)
+/** BOM 成本报告弹窗（口径＝当前迭代，见 onCostReport） */
+const costReportOpen = ref(false)
 const compareFromOid = ref(null)
 const compareToOid = ref(null)
 const compareLoading = ref(false)
@@ -1048,6 +1091,17 @@ const compareLoaded = ref(false)
 const compareResult = ref(null)
 /** 解析后的差异明细 { added: [], removed: [], changed: [] } */
 const compareDetail = ref(null)
+
+/**
+ * 两个版本之间是否无差异。
+ *
+ * <p>判据用三个计数：早先模板里调的是 `compareResult.isEmpty?.()` —— 后端返回的是实体
+ * （没有 isEmpty 方法），`?.()` 恒为 undefined，于是"无差异"这个分支从来没显示过。
+ */
+const compareIsEmpty = computed(() => {
+  const r = compareResult.value
+  return !!r && !(r.addedCount || r.removedCount || r.changedCount)
+})
 
 /** 对话框中可选择的迭代列表（展示版本号；最新版附加标记） */
 const compareHistoryOptions = computed(() =>
@@ -1065,8 +1119,6 @@ const compareHistoryOptions = computed(() =>
 /** 打开 BOM 版本对比对话框：默认填入「当前查看版本 → 最新版本」 */
 function onCompareBom() {
   compareModalVisible.value = true
-  window.__cmpImmediate = compareModalVisible.value
-  setTimeout(() => { window.__cmpDelayed = compareModalVisible.value }, 500)
   compareLoaded.value = false
   compareResult.value = null
   // 默认：当前查看的迭代 vs 最新迭代
@@ -1091,10 +1143,12 @@ async function loadBomDiff() {
     // 实时对比两个版本的顶层 BOM 行（新增/移除/修改），不依赖预计算 diff
     const res = await compareBomVersions(compareFromOid.value, compareToOid.value)
     compareLoaded.value = true
-    compareResult.value = res?.data || res || null
+    // 取 data（统一包装）或整体（裸返回）：用 ?? 而不是 ||，否则后端返回 data:null 时
+    // 会把整个信封当成结果渲染
+    compareResult.value = res?.data ?? res ?? null
     // 解析 diffJson 为结构化明细 { added, removed, changed }
     compareDetail.value = parseCompareDetail(compareResult.value)
-    if (!compareResult.value || compareResult.value.isEmpty?.()) {
+    if (!compareResult.value || compareIsEmpty.value) {
       message.info('两版本之间暂无差异')
     }
   } catch (e) {
@@ -1126,14 +1180,25 @@ function compareRowText(row) {
   return `${row.number || row.childPartOid || '?'} ${row.name || ''}${ver}${qty}`.trim()
 }
 /**
- * 当前查看的迭代 OID：
- * 优先 URL 指定的历史版本 → 其次 Part 详情返回的当前迭代 → 最后才是最新迭代。
- * 注意：取 BOM 时绝不能用 latestIterationOid，否则查看 A.3 这类历史版本时，
- * 加载到的始终是最新版本 A.4 的 BOM（历史版本 BOM 与最新版在 ck_bom_links 中本就不同）。
+ * 当前查看的迭代 OID（BOM 读写的口径）。
+ *
+ * <p>优先级：**检出中的工作副本** → URL 指定的历史版本 → Part 详情返回的当前迭代 → 最新迭代。
+ *
+ * <p>为什么"检出态"必须排在最前：检出不是给同一个迭代上锁，而是<b>新建一个小版本迭代</b>
+ * 并把 BOM 行整份复制过去（新 oid，见 PartCheckoutProvider#checkout）。检出前那个迭代
+ * 从此只是只读历史 —— 如果页面（尤其是从历史版本链接进来、URL 里带着迭代 oid 时）
+ * 还在读检出前那一套行，用户改的、保存的就是那一套：工作副本没变，
+ * 检入后自然"改了却没生效"。BOM 是版本相关的数据，读写口径必须与工作副本一致。
  */
-const currentIterationOid = computed(() =>
-  iterationOid.value || part.value?.iterationOid || latestIterationOid.value
-)
+const currentIterationOid = computed(() => {
+  const worked = part.value?.iterationOid
+  if (part.value?.checkedOut && worked) {
+    return worked
+  }
+  // 注意：取 BOM 时不能一律用 latestIterationOid，否则查看 A.3 这类历史版本时，
+  // 加载到的始终是最新版本 A.4 的 BOM（历史版本 BOM 与最新版在 ck_bom_links 中本就不同）。
+  return iterationOid.value || worked || latestIterationOid.value
+})
 // BOM 行选中状态（点击选中，用背景色高亮）
 const bomSelectedRow = ref(null)
 // BOM 树形展开的节点 key（默认展开根行，保证子件以树形层级显示）
@@ -1159,14 +1224,14 @@ const historyColumns = [
   { title: '创建时间', key: 'createdAt', width: 170 },
 ]
 
-// 左侧 BOM 结构树列：只展示「主体 + 数量」，行号/单位/单位成本等移到右侧子件清单
 // 左侧 BOM 结构树列：只展示「主题 + 数量」，行号/单位/单位成本等移到右侧子件清单
 const bomColumns = [
   { title: '主题', key: 'subject' },
   { title: '数量', key: 'quantity', width: 80, align: 'center' },
   { title: '行号', key: 'lineNumber', width: 70, align: 'center' },
   { title: '单位', key: 'unit', width: 80, align: 'center' },
-  { title: '单位成本', key: 'unitCost', width: 100, align: 'right' },
+  // 标明币种：这个字段是金额，光写"单位成本"会被当成与币种无关的比值
+  { title: '单位成本(RMB)', key: 'unitCost', width: 132, align: 'right' },
 ]
 
 // 右侧「子件清单」可编辑表格列
@@ -1175,7 +1240,7 @@ const bomItemsColumns = [
   { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 70, align: 'center' },
   { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 90, align: 'center' },
   { title: '单位', dataIndex: 'unit', key: 'unit', width: 80, align: 'center' },
-  { title: '单位成本', dataIndex: 'unitCost', key: 'unitCost', width: 110, align: 'right' },
+  { title: '单位成本(RMB)', dataIndex: 'unitCost', key: 'unitCost', width: 132, align: 'right' },
 ]
 
 // 右侧面板当前激活的 tab
@@ -1317,9 +1382,19 @@ const isStructural = computed(() => {
 })
 
 /** 是否为电子元器件 */
-const isElectronic = computed(() => {
+const isElectronic = computed(() => (part.value?.typeDefinitionCode || '').toUpperCase() === 'ELECTRONIC')
+/** 是否为电气件 */
+const isElectrical = computed(() => (part.value?.typeDefinitionCode || '').toUpperCase() === 'ELECTRICAL')
+/** 是否为软件 */
+const isSoftware = computed(() => (part.value?.typeDefinitionCode || '').toUpperCase() === 'SOFTWARE')
+
+/** CAD 描述 Tab 标题：按对象类型动态化（电子元器件=符号.封装，电气件=电气图，软件=原理图） */
+const cadTabLabel = computed(() => {
   const c = (part.value?.typeDefinitionCode || '').toUpperCase()
-  return c === 'ELECTRONIC' || c === 'ELECTRICAL'
+  if (c === 'ELECTRONIC') return '符号.封装'
+  if (c === 'ELECTRICAL') return '电气图'
+  if (c === 'SOFTWARE') return '原理图'
+  return 'CAD 描述'
 })
 
 function formatIbaValue(v) {
@@ -1597,15 +1672,19 @@ function collectForbiddenPartOids() {
 
 // ==================== 右侧「子件清单」可编辑表格 ====================
 
-/** 右侧子件清单数据源：根据左侧选中的节点动态展示其直接下层子件（行号/数量/单位/单位成本 可编辑） */
-const bomItemsList = computed(() => {
+/** 当前在编辑的这一层子件（左侧树里的真实节点对象）：选中根行/未选中 → 一级子件；选中子件 → 它的直接下层 */
+function bomItemsSourceNodes() {
   const selected = bomSelectedRow.value
-  // 选中根行或未选中 → 展示根件的直接子件（一级）；选中子件 → 展示该子件的直接子件
-  let nodes = (selected && !selected.isRoot) ? (selected.children || []) : (bomList.value || [])
-  return nodes.map(b => ({
+  return (selected && !selected.isRoot) ? (selected.children || []) : (bomList.value || [])
+}
+
+/** 把树节点摊平成表格行（列名与列定义对应；保留原始字段，保存时回传避免覆盖） */
+function toBomItemsRows() {
+  return bomItemsSourceNodes().map(b => ({
     oid: b.oid,
-    childName: b.childPartName || '-',
-    childNumber: b.childPartNumber || '-',
+    // 左侧树的节点与原始节点字段名不完全一样（前者已带 childName/childNumber），两种都认
+    childName: b.childName || b.childPartName || '-',
+    childNumber: b.childNumber || b.childPartNumber || '-',
     lineNumber: b.lineNumber,
     quantity: b.quantity,
     unit: b.unit,
@@ -1619,7 +1698,47 @@ const bomItemsList = computed(() => {
     childIterationOid: b.childIterationOid,
     resolvedIterationOid: b.resolvedIterationOid,
   }))
+}
+
+/**
+ * 「子件清单」数据源：**编辑草稿**，表格直接绑它。
+ *
+ * <p>为什么必须是 ref 而不是 computed：早先它是 computed 里 `map` 出来的<b>新对象</b>，
+ * 输入框把值写进这些临时对象 —— 可它们不是响应式的，父组件不会因为这次修改重渲染，
+ * 于是子组件在失焦时按手里那份旧 prop 重新格式化，显示就"弹回原值"；
+ * 而保存读的恰恰又是那个已被改过的临时对象，所以"保存后刷新才是新值"。
+ * <b>显示与保存读的不是同一份数据</b>，是这两个现象的共同根因。
+ *
+ * <p>换成 ref 草稿后：输入即改到真状态（响应式、即时生效），保存读的也是同一份，
+ * 且"改没改"可以被下面的 `bomItemsDirty` 观察。
+ */
+const bomItemsList = ref([])
+
+/** 从左侧树重建草稿（只在来源变化时调用，别在每次重渲染时覆盖用户正在编辑的值） */
+function syncBomItemsList() {
+  bomItemsList.value = toBomItemsRows()
+}
+
+// 来源 = 当前选中节点 + 整棵 BOM 树：切换选中、保存后重新拉取、切换版本 都会重建草稿
+watch([() => bomSelectedRow.value?.oid, bomList], syncBomItemsList, { immediate: true })
+
+/** 草稿与来源是否已不同（有未保存修改）：让"改动有没有生效"一眼可见 */
+const bomItemsDirty = computed(
+  () => JSON.stringify(bomItemsList.value) !== JSON.stringify(toBomItemsRows())
+)
+
+/** 草稿按 oid 索引：左侧树展示同一行时优先取它，避免"右边改了、左边还是旧值" */
+const bomDraftByOid = computed(() => {
+  const map = new Map()
+  for (const row of bomItemsList.value) map.set(row.oid, row)
+  return map
 })
+
+/** 左侧树某行要显示的字段值：正在编辑的这一层以草稿为准（与右侧清单保持一致） */
+function bomRowValue(record, field) {
+  const draft = bomDraftByOid.value.get(record.oid)
+  return draft ? draft[field] : record[field]
+}
 
 /** 右侧子件清单的父节点名称（选中节点名，未选中/根行时为当前 Part 名） */
 /** 右侧子件清单的父节点名称（选中节点名，未选中/根行时为当前 Part 名） */
@@ -1671,6 +1790,8 @@ async function saveBomItems() {
   const selectedOid = bomSelectedRow.value?.oid || null
   savingBomItems.value = true
   let success = 0
+  /** 未生效的行与原因：逐行攒起来一起提示，避免弹一屏 toast */
+  const failed = []
   try {
     for (const item of list) {
       try {
@@ -1687,13 +1808,35 @@ async function saveBomItems() {
           lineNumber: item.lineNumber,
           unitCost: item.unitCost,
         })
-        if (res?.code === 200) success++
+        if (res?.code === 200) {
+          // 后端回读的行必须与提交的值一致。不一致说明这次保存没落到库里
+          // （行已被检出的工作副本取代 / 被删除等）—— 必须报出来，
+          // 否则就是"界面说已保存、刷新后又是旧值"（用户实际遇到的现象）。
+          const mismatch = bomRowMismatch(res.data, item)
+          if (mismatch) {
+            failed.push(`「${item.childName || item.childNumber}」${mismatch}`)
+          } else {
+            success++
+          }
+        } else if (res) {
+          // 后端明确拒绝（拦截器已按 message 提示过一次）：这里补上"是哪一行"，
+          // 并让下面的刷新把界面拉回服务端真实值
+          failed.push(`「${item.childName || item.childNumber}」${res.message || '保存被拒绝'}`)
+        }
       } catch (e) {
-        message.error(`保存「${item.childName || item.childNumber}」失败：${e?.response?.data?.message || e.message}`)
+        failed.push(`「${item.childName || item.childNumber}」${e?.response?.data?.message || e.message}`)
       }
+    }
+    if (failed.length) {
+      message.warning(
+        `有 ${failed.length} 行未生效：${failed.slice(0, 3).join('；')}${failed.length > 3 ? ' …' : ''}`,
+      )
     }
     if (success > 0) {
       message.success(`已保存 ${success} 个子件`)
+    }
+    // 不管成败都刷新：把服务端的真实值摆到界面上，别让"以为存上了"的值留在表格里
+    if (success > 0 || failed.length) {
       await loadBom()
       // 重新定位选中节点（刷新后的新树节点）
       if (selectedOid) {
@@ -1703,6 +1846,34 @@ async function saveBomItems() {
   } finally {
     savingBomItems.value = false
   }
+}
+
+/**
+ * 提交后核对：服务端返回的行与提交值不一致时给出可读说明（一致返回 null）。
+ *
+ * <p>为什么要在前端再核一遍：UPDATE 只要事务提交了就算"成功"，
+ * 而"写的是不是我这一行、值有没有被别的逻辑改回去"只有比对回读结果才知道。
+ * 数量/行号/单位成本按数值比、单位按原值比 —— 避免 `'2'` 与 `2` 这种类型差异误报。
+ */
+function bomRowMismatch(saved, submitted) {
+  if (!saved) {
+    return '服务端未返回该行'
+  }
+  const num = (value) => (value === null || value === undefined || value === '' ? null : Number(value))
+  const diffs = []
+  if (num(saved.quantity) !== num(submitted.quantity)) {
+    diffs.push(`数量 ${submitted.quantity ?? '-'} → ${saved.quantity ?? '-'}`)
+  }
+  if (num(saved.lineNumber) !== num(submitted.lineNumber)) {
+    diffs.push(`行号 ${submitted.lineNumber ?? '-'} → ${saved.lineNumber ?? '-'}`)
+  }
+  if (num(saved.unitCost) !== num(submitted.unitCost)) {
+    diffs.push(`单位成本 ${submitted.unitCost ?? '-'} → ${saved.unitCost ?? '-'}`)
+  }
+  if ((saved.unit ?? null) !== (submitted.unit ?? null)) {
+    diffs.push(`单位 ${submitted.unit || '-'} → ${saved.unit || '-'}`)
+  }
+  return diffs.length ? `未生效（服务端仍为 ${diffs.join('、')}）` : null
 }
 
 /** BOM 行上移/下移进行中（按钮 loading） */
@@ -2114,9 +2285,18 @@ function onImportBom() {
   message.info('BOM 导入功能开发中')
 }
 
-/** BOM 报告：成本汇总（占位，后续接入 BOM 成本核算） */
+/**
+ * BOM 报告：成本报告（卷积）。
+ *
+ * <p>口径是<b>当前迭代</b>（工具栏上的版本选择器决定），与左侧 BOM 结构看的是同一版 ——
+ * 成本报告如果不跟版本走，就会出现"结构看着是 A.4、成本算的是 B.1"的错配。
+ */
 function onCostReport() {
-  message.info('BOM 成本报告功能开发中')
+  if (!currentIterationOid.value) {
+    message.warning('尚未确定当前版本，无法计算成本')
+    return
+  }
+  costReportOpen.value = true
 }
 
 // ==================== 替代操作栏 ====================
@@ -2440,22 +2620,23 @@ const refSelectedKeys = ref([])    // 参考文档选中行
 const descSelectedKeys = ref([])   // 说明文档选中行
 
 const refDocList = computed(() => docLinksList.value.filter(l => l.linkType === 'REFERENCE'))
-const descDocList = computed(() => docLinksList.value.filter(l => l.linkType === 'DESCRIPTION'))
+const descDocList = computed(() => docLinksList.value.filter(l => l.linkType === 'DESCRIBES'))
 
 /** 加载关联文档清单：附加文档名称/编码/类型 */
 async function loadDocLinks() {
   if (!oid.value) return
   docLinksLoading.value = true
   try {
-    const res = await getPartDocumentLinksByPart(oid.value)
+    // 迭代级关联：传 partOid，由后端解析到最新迭代
+    const res = await getPartDocLinks({ partOid: oid.value })
     const list = pickList(res)
     docLinksList.value = await Promise.all(list.map(async (link) => {
       let docName = '-'
       let docNumber = '-'
       let docType = '-'
-      if (link.documentOid) {
+      if (link.docMasterOid) {
         try {
-          const r = await getEntityByCode('DOCUMENT', link.documentOid)
+          const r = await getEntityByCode('DOCUMENT', link.docMasterOid)
           const d = r?.code === 200 ? (r.data || {}) : {}
           docName = d.name || '-'
           docNumber = d.number || '-'
@@ -2517,7 +2698,7 @@ async function loadAddDocs() {
     const arr = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
     // 排除当前类型下已关联的文档（后端唯一约束兜底）
     const linked = new Set(
-      docLinksList.value.filter(l => l.linkType === addDocLinkType.value).map(l => l.documentOid)
+      docLinksList.value.filter(l => l.linkType === addDocLinkType.value).map(l => l.docMasterOid)
     )
     addDocList.value = arr.filter(d => d && d.oid && !linked.has(d.oid))
   } catch { addDocList.value = [] }
@@ -2533,11 +2714,10 @@ async function confirmAddDocLink() {
   let success = 0
   for (const d of targets) {
     try {
-      const res = await createPartDocumentLink({
+      const res = await createPartDocLink({
         partOid: oid.value,
-        documentOid: d.oid,
+        docMasterOid: d.oid,
         linkType: addDocLinkType.value,
-        enabled: true,
       })
       if (res?.code === 200) success++
       else message.error(`添加「${d.name || d.number}」失败：${res?.message || '未知错误'}`)
@@ -2569,7 +2749,7 @@ async function confirmAddDocLink() {
       let success = 0
       for (const row of rows) {
         try {
-          const res = await deletePartDocumentLink(row.oid)
+          const res = await deletePartDocLink(row.oid, linkType)
           if (res?.code === 200) success++
         } catch (e) {
           message.error(`删除「${row._docName || row.oid}」失败：${e?.response?.data?.message || e.message}`)
