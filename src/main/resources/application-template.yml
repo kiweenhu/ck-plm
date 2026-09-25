@@ -51,6 +51,109 @@ plm:
   media:
     upload-dir: ${plm.storage.media.path}
 
+  # ===== 出站集成（可选）=====
+  # 流程「REST 接口调用」节点调用外部系统时的安全与超时边界。
+  # 目标系统的地址与凭据不在这里，而在「系统配置 → 目标系统」里按租户维护。
+  # 约定：
+  #   - 默认拦掉私网/本机/云元数据地址：设计器里填的地址会被服务器真的请求，不拦就等于给了个内网探测入口；
+  #   - 确实要调内网系统的，把域名逐条登记进 allowed-hosts（支持 主机名 / 主机名:端口 / *.后缀）；
+  #   - allow-private-hosts 是"整台服务器都可信"时才该打开的粗粒度开关，一般不要动。
+  integration:
+    allow-private-hosts: false
+    allowed-hosts:
+      # - erp.internal.example.com
+      # - 10.20.30.40:8080
+    timeout-seconds: 10
+
+  # ===== 通知模式（可选）=====
+  # 全系统统一的通知渠道与企业集成凭据（流程侧只读，不再各自配 SMTP / OA 地址）。
+  # 下面几条是样例，**只保留你实际要用的**（其余删掉，或在 channels 里不写它）。
+  # 几处约定：
+  #   - channels 里没写的渠道一律不启用；写了但凭据没配齐的会被当成"不可用"（接口 GET /api/notifications/channels 能看到原因）；
+  #   - CK_PLM（站内信）不需要任何凭据，新部署至少留着它，否则"待办通知"这类自动通知无处可发；
+  #   - enabled: false 关掉的是**系统自动产生的**通知（待办 / 转办 / 流程结束…）；管理员手动发公告不受影响；
+  #   - 凭据建议走环境变量（示例里都写成 ${...}），不要把密码写进受 git 跟踪的文件。
+  notification:
+    enabled: ${PLM_NOTIFY_ENABLED:true}
+    channels:
+      - CK_PLM
+      # - EMAIL
+      # - WECOM
+    email:
+      host: ${PLM_NOTIFY_EMAIL_HOST:smtp.example.com}
+      port: ${PLM_NOTIFY_EMAIL_PORT:465}
+      sender: ${PLM_NOTIFY_EMAIL_SENDER:noreply@example.com}
+      username: ${PLM_NOTIFY_EMAIL_USERNAME:}
+      password: ${PLM_NOTIFY_EMAIL_PASSWORD:}
+      ssl: ${PLM_NOTIFY_EMAIL_SSL:true}
+    oa:
+      api-url: ${PLM_NOTIFY_OA_URL:}
+      # NONE（内网直连）/ BASIC（账号密码）/ TOKEN（Bearer）
+      auth-type: ${PLM_NOTIFY_OA_AUTH_TYPE:TOKEN}
+      username: ${PLM_NOTIFY_OA_USERNAME:}
+      password: ${PLM_NOTIFY_OA_PASSWORD:}
+      token: ${PLM_NOTIFY_OA_TOKEN:}
+    feishu:
+      # 群机器人 Webhook 或自建应用凭据（app-id / app-secret），填哪种用哪种
+      webhook: ${PLM_NOTIFY_FEISHU_WEBHOOK:}
+      app-id: ${PLM_NOTIFY_FEISHU_APP_ID:}
+      app-secret: ${PLM_NOTIFY_FEISHU_APP_SECRET:}
+    dingtalk:
+      webhook: ${PLM_NOTIFY_DINGTALK_WEBHOOK:}
+      secret: ${PLM_NOTIFY_DINGTALK_SECRET:}
+    wecom:
+      webhook: ${PLM_NOTIFY_WECOM_WEBHOOK:}
+      corp-id: ${PLM_NOTIFY_WECOM_CORP_ID:}
+      agent-id: ${PLM_NOTIFY_WECOM_AGENT_ID:}
+      app-secret: ${PLM_NOTIFY_WECOM_APP_SECRET:}
+
+  # ===== CK-PLM 助手（可选）=====
+  # 顶栏聊天入口：把自然语言问题交给大模型，由它调 CK-PLM 的工具去查真实数据
+  # （工具以「发起对话的人」的身份与租户执行，看到的数据不会多于本人手动能查到的）。
+  # 对接 OpenAI 兼容协议；下面三条是样例，**只保留你实际要用的**（其余删掉或保持 enabled: false）。
+  # 不配置没有任何副作用：入口照常在，只是回答里说明"还没接上"。
+  # 几处约定：
+  #   - base-url 为空、或该项 enabled: false 的模型，不会出现在界面下拉里（选不到必然失败的项）；
+  #   - 认证三选一：api-key → 账号密码登录换令牌 → 都不给（本地模型常见），一个都没有也能调；
+  #   - 令牌只缓存在内存里（10 分钟），不落库、不打印；
+  #   - 拿不准时先看 GET /api/ai/status，它返回实际生效的模型清单与认证方式。
+  ai:
+    enabled: ${PLM_AI_ENABLED:false}
+    # 不指定模型时用哪个（models 里的 id）；留空取第一个可用的
+    default-model: workbuddy
+    # 工具调用轮次上限：防止模型反复查同一个工具（超了就强制要文字回答）
+    max-tool-rounds: 4
+    # 单次请求超时（秒）；单个模型可用 timeout-seconds 覆盖
+    timeout-seconds: 60
+    models:
+      # 1) 账号密码模式（WorkBuddy 这类网关：先登录拿令牌，再调 chat/completions）
+      - id: workbuddy
+        enabled: false
+        label: WorkBuddy
+        base-url: https://your-workbuddy-gateway
+        username: your_username
+        password: your_password
+        # 也可以不给账号密码、直接给令牌，二选一
+        # api-key: your_token
+        model: workbuddy
+        login-path: /auth/login
+        chat-path: /v1/chat/completions
+      # 2) api-key 模式（OpenAI / DeepSeek / 通义 等）
+      - id: deepseek
+        enabled: false
+        label: DeepSeek
+        base-url: https://api.deepseek.com
+        api-key: ${PLM_AI_DEEPSEEK_API_KEY:}
+        model: deepseek-chat
+      # 3) 本地模型（Ollama / LM Studio / vLLM 等）：无需凭据
+      #    注意 base-url 已含 /v1，所以 chat-path 只写到 /chat/completions
+      - id: local
+        enabled: false
+        label: 本地模型
+        base-url: http://localhost:11434/v1
+        model: qwen2.5:14b
+        chat-path: /chat/completions
+
 # Springdoc OpenAPI 配置
 springdoc:
   swagger-ui:

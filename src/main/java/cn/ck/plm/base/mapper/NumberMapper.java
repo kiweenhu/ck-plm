@@ -8,6 +8,7 @@
 package cn.ck.plm.base.mapper;
 
 import cn.ck.plm.base.entity.Number;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
@@ -31,4 +32,11 @@ public interface NumberMapper {
     List<Number> search(String keyword);
 
     int existsByCode(String code);
+
+    /**
+     * 重命名编码规则 code（数据修正用，幂等）。
+     *
+     * <p>不受 {@link #update(Number)} 限制——后者按 code 定位而无法改 code 本身。
+     */
+    int renameCode(@Param("oldCode") String oldCode, @Param("newCode") String newCode);
 }

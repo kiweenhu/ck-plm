@@ -40,7 +40,8 @@ public class TenantOidMigrationRunner implements CommandLineRunner {
             "ck_token", "ck_organization", "ck_user", "ck_role", "ck_role_member",
             "ck_product_line", "ck_product_model", "ck_stage", "ck_folder",
             "ck_team", "ck_team_member", "ck_document", "ck_document_iteration",
-            "ck_file", "ck_attachment", "ck_media", "ck_workflow_category",
+            "ck_file", "ck_attachment", "ck_media", "ck_process_category",
+            "ck_process_entity_set",
             "ck_user_activity", "ck_type_iba_data"
     );
 

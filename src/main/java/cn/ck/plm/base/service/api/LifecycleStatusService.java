@@ -88,4 +88,33 @@ public interface LifecycleStatusService {
      * @return true 已存在
      */
     boolean exists(String code);
+
+    // ==================== code → 显示名 ====================
+
+    /**
+     * 状态 code → 显示名（人看的那个字：{@code DRAFT} → 「草稿」）。
+     *
+     * <p><b>解析顺序</b>：该对象所绑<b>生命周期模板</b>里的显示名 → 全局状态字典 → code 本身。
+     *
+     * <p>为什么模板在前：迭代上存的 {@code status} 是 code（见 LifecycleStatusTypeHandler），
+     * 而"这个 code 叫什么"的权威定义就在它所用的模板里（{@code ck_lifecycle_template_state}
+     * 的 code 与 display_name 是配套写下的，天然对得上）。全局字典是另一层东西，
+     * 各租户的状态词未必一致、也可能压根没有该 code —— 只认字典的结果就是界面上直接显示 code，
+     * 而用户并不知道 {@code IN_WORK} 就是"工作中"。
+     *
+     * <p>不缓存：模板改完要立刻生效（改完状态名却还显示旧的，比慢一点更难解释）。
+     *
+     * @param templateIterationOid 迭代绑定的生命周期模板子版本 oid（可为空）
+     * @param code                 迭代上的状态 code
+     * @return 显示名；无任何来源时返回 code 本身（宁可显示 code，也不显示空白）
+     */
+    String displayName(String templateIterationOid, String code);
+
+    /**
+     * 某模板子版本下 code → 显示名 的整表（列表页一次取全，避免逐行查询）。
+     *
+     * @param templateIterationOid 模板子版本 oid；为空返回空表
+     * @return 状态 code → 显示名（缺失显示名的以 code 兜底）
+     */
+    java.util.Map<String, String> displayNames(String templateIterationOid);
 }

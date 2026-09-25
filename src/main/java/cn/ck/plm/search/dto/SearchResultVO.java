@@ -27,15 +27,26 @@ public class SearchResultVO {
     /** 前端跳转链接（带 query 参数） */
     private String link;
 
+    /**
+     * 具体类型编码（如 ELECTRONIC / STRUCTURAL；产品系列·型号那两张表没有这个概念，为 null）。
+     *
+     * <p>{@link #type} 是"哪张表"（PART / DOCUMENT），这里是"哪种类型" ——
+     * 「发起流程」要多选对象时必须按具体类型过滤：一次流程只针对同一种类型，
+     * 把 STRUCTURAL 的零件塞进 ELECTRONIC 的流程里，流程变量与审批意见都会对不上。
+     */
+    private String typeDefinitionCode;
+
     public SearchResultVO() {
     }
 
-    public SearchResultVO(String type, String oid, String code, String name, String link) {
+    public SearchResultVO(String type, String oid, String code, String name, String link,
+                          String typeDefinitionCode) {
         this.type = type;
         this.oid = oid;
         this.code = code;
         this.name = name;
         this.link = link;
+        this.typeDefinitionCode = typeDefinitionCode;
     }
 
     public String getType() { return type; }
@@ -52,4 +63,7 @@ public class SearchResultVO {
 
     public String getLink() { return link; }
     public void setLink(String link) { this.link = link; }
+
+    public String getTypeDefinitionCode() { return typeDefinitionCode; }
+    public void setTypeDefinitionCode(String typeDefinitionCode) { this.typeDefinitionCode = typeDefinitionCode; }
 }

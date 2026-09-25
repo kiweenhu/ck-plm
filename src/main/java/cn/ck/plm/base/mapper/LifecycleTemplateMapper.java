@@ -23,6 +23,9 @@ public interface LifecycleTemplateMapper {
     int update(LifecycleTemplateMaster template);
     int deleteByCode(String code);
     LifecycleTemplateMaster selectByCode(String code);
+
+    /** 按 oid 查询（由「生命周期模板子版本 → 主档」反查时用） */
+    LifecycleTemplateMaster selectByOid(String oid);
     List<LifecycleTemplateMaster> selectAll();
     List<LifecycleTemplateMaster> search(String keyword);
     int existsByCode(String code);

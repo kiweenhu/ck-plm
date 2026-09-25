@@ -19,13 +19,24 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 100MB
-  activiti:
-    database-schema-update: "false"
-    db-history-used: true
-    async-executor-activate: true
-    history-level: audit
-    process-definition-location-prefix: classpath:processes/
-    check-process-definitions: false
+# Flowable 7 流程引擎（BPMN）
+# 说明：配置前缀为 flowable.*（Flowable 的官方前缀），原 spring.activiti.* 已废弃。
+flowable:
+  # 首次启动由引擎自动建表（ACT_* 前缀）。生产环境建议改为 validate 或 false 并用脚本管理
+  database-schema-update: "true"
+  # 记录历史（任务中心「已办」、流程监控「已完成」依赖 history 表）
+  db-history-used: true
+  history-level: audit
+  # 异步执行器：开发环境关闭可减少线程池与日志噪音；需用到定时边界事件/异步任务时设为 true
+  async-executor-activate: false
+  # 关闭「全局自动部署」：Flowable 的自动部署是无租户的（tenant_id_ = ''），
+  # 而本项目运行时查询一律带租户 oid，二者匹配不上。
+  # 改为由 ProcessDeploymentSupport 按租户各部署一份内置流程（启动时 + 发起时惰性补齐）。
+  process-definition-location-prefix: classpath:processes/
+  check-process-definitions: false
+  # 不启用 IDM 引擎：用户/组直接取 ck_user / ck_role
+  idm:
+    enabled: false
 
 # MyBatis 配置
 mybatis:
@@ -39,6 +50,36 @@ mybatis:
 plm:
   database:
     type: postgresql
+  # CK-PLM 助手 —— 顶栏聊天入口，对接 OpenAI 兼容的模型服务
+  # 可配多个模型：models 里每一项自带网关与凭据（同一网关的不同模型 / 不同厂商 / 本地模型都行），
+  # 界面上直接切换；完整样例（账号密码、api-key、本地模型）见 application-template.yml。
+  # 凭据建议走环境变量（本文件受 git 跟踪，写死会随提交泄露）；未配置时入口照常在，只是回答里说明"还没接上"
+  ai:
+    enabled: true
+    # 不指定模型时用哪个（models 里的 id）；留空取第一个可用模型
+    default-model: ${PLM_AI_DEFAULT_MODEL:deepseek}
+    models:
+      # DeepSeek 官方（api-key 模式）
+      - id: deepseek
+        label: DeepSeek 官方
+        base-url: https://api.deepseek.com
+        # 官方可用模型名：deepseek-flash（快）/ deepseek-v4-pro（强）
+        model: deepseek-flash
+        api-key: ***REMOVED***
+        chat-path: ${PLM_AI_CHAT_PATH:/v1/chat/completions}
+      # 想再加一个模型（同一个 key 下的 deepseek-v4-pro）就照着加一项，界面上可以直接切换：
+      # - id: deepseek-pro
+      #   label: DeepSeek V4 Pro
+      #   base-url: https://api.deepseek.com
+      #   model: deepseek-v4-pro
+      #   api-key: ${PLM_AI_API_KEY:}
+      # 账号密码模式（WorkBuddy 这类网关）：不给 api-key，改用下面两个键
+      #   username: your_username
+      #   password: your_password
+      #   login-path: /auth/login
+    # 工具调用轮次上限：防止模型反复查同一个工具（超了就强制要文字回答）
+    max-tool-rounds: 4
+    timeout-seconds: 60
   storage:
     base-path: ${PLM_STORAGE_BASE:${user.home}/ck-plm/uploads}
     media:
@@ -49,6 +90,54 @@ plm:
       path: ${plm.storage.base-path}/cad
     attachments:
       path: ${plm.storage.base-path}/attachments
+  # 通知模式 —— 全系统统一（流程侧只读，不再各自配企业集成）
+  # 渠道凭据是「企业集成」：一个部署只有一台邮件服务器、一个 OA 接口、一套飞书应用凭据。
+  # 在这里配一次，所有流程共用；流程模板最多声明"本流程允许用哪些通道"，且只能从 channels 里选。
+  # 凭据一律走环境变量：本文件受 git 跟踪，写死会随提交泄露。完整样例见 application-template.yml
+  notification:
+    # 总开关：关掉后系统自动产生的通知（待办 / 转办 / 流程结束 …）不再落库
+    enabled: true
+    # 启用的渠道（顺序即发送优先级）。可选：CK_PLM / EMAIL / OA / FEISHU / DINGTALK / WECOM
+    # 默认只开站内信：新部署没配企业集成也能用，不该因为"没配邮件"就没有通知
+    channels:
+      - CK_PLM
+    email:
+      host: ${PLM_NOTIFY_EMAIL_HOST:}
+      port: ${PLM_NOTIFY_EMAIL_PORT:465}
+      sender: ${PLM_NOTIFY_EMAIL_SENDER:}
+      username: ${PLM_NOTIFY_EMAIL_USERNAME:}
+      password: ${PLM_NOTIFY_EMAIL_PASSWORD:}
+      ssl: ${PLM_NOTIFY_EMAIL_SSL:true}
+    oa:
+      api-url: ${PLM_NOTIFY_OA_URL:}
+      # NONE（内网直连）/ BASIC（账号密码）/ TOKEN（Bearer）
+      auth-type: ${PLM_NOTIFY_OA_AUTH_TYPE:TOKEN}
+      username: ${PLM_NOTIFY_OA_USERNAME:}
+      password: ${PLM_NOTIFY_OA_PASSWORD:}
+      token: ${PLM_NOTIFY_OA_TOKEN:}
+    feishu:
+      # 群机器人 Webhook 或自建应用凭据，填哪种用哪种
+      webhook: ${PLM_NOTIFY_FEISHU_WEBHOOK:}
+      app-id: ${PLM_NOTIFY_FEISHU_APP_ID:}
+      app-secret: ${PLM_NOTIFY_FEISHU_APP_SECRET:}
+    dingtalk:
+      webhook: ${PLM_NOTIFY_DINGTALK_WEBHOOK:}
+      secret: ${PLM_NOTIFY_DINGTALK_SECRET:}
+    wecom:
+      webhook: ${PLM_NOTIFY_WECOM_WEBHOOK:}
+      corp-id: ${PLM_NOTIFY_WECOM_CORP_ID:}
+      agent-id: ${PLM_NOTIFY_WECOM_AGENT_ID:}
+      app-secret: ${PLM_NOTIFY_WECOM_APP_SECRET:}
+  # 出站集成 —— 流程「REST 接口调用」节点调用外部系统时的安全与超时边界。
+  # 目标系统地址与凭据不在这里，而在「系统配置 → 目标系统」（每租户自己维护）。
+  integration:
+    # 是否放行私网/本机地址（默认 false：内网地址一律拦，防设计器被用来探测内网）
+    allow-private-hosts: ${PLM_INTEGRATION_ALLOW_PRIVATE:false}
+    # 白名单：命中的主机跳过私网拦截。支持 主机名 / 主机名:端口 / *.后缀
+    # 确实要调内网系统的，在这里逐条登记（例：erp.internal.example.com）
+    allowed-hosts: []
+    # 出站超时（秒）：回写是流程中的一步，不能把办理人卡住
+    timeout-seconds: ${PLM_INTEGRATION_TIMEOUT_SECONDS:10}
   media:
     upload-dir: ${plm.storage.media.path}
 

@@ -1,4 +1,4 @@
-﻿-- =================================================================
+-- =================================================================
 --  主键规范：所有表统一使用 oid CHAR(36) PRIMARY KEY（UUID v4）
 --  禁止使用自增 id (BIGSERIAL / AUTO_INCREMENT) 作为主键
 --  业务唯一标识使用 code VARCHAR(50) UNIQUE NOT NULL
@@ -77,6 +77,32 @@ CREATE TABLE IF NOT EXISTS ck_lifecycle_template_transition (
     tenant_oid       CHAR(36),
     FOREIGN KEY (iteration_oid) REFERENCES ck_lifecycle_template_iteration(oid) ON DELETE CASCADE
 );
+
+-- 类型-生命周期状态-流程模板 关联（1:1）。
+-- 三个维度都不能省：
+--   类型：同一生命周期模板（如 STANDARD）会被多个类型复用，各自可绑不同流程；
+--   版本：业务对象迭代固化的是 lifecycle_template_iteration_oid（实例"出生"时用哪一版模板），
+--         配置挂同一层，运行期才能按实例自带的版本精确解析，而不被后续改配置追溯性改写；
+--   租户：配置归属"保存时当前用户的租户"，各租户各配各的（唯一键含 tenant_oid）；
+--         平台租户的行作共享默认，读取时本租户优先。
+-- process_template_oid 为跨模块软引用（ck_process_template.oid），不加外键。
+-- 表名前身：ck_lifecycle_state_process（由软类型模块的建表器整表改名而来）。
+CREATE TABLE IF NOT EXISTS ck_type_lifecycle_state_process_link (
+    oid                               VARCHAR(64)  PRIMARY KEY,
+    type_oid                          CHAR(36)     NOT NULL,
+    lifecycle_template_iteration_oid  CHAR(36)     NOT NULL,
+    status_code                       VARCHAR(50)  NOT NULL,
+    process_template_oid              VARCHAR(64)  NOT NULL,
+    tenant_oid                        CHAR(36),
+    creator                           VARCHAR(128),
+    created_at                        TIMESTAMP,
+    updater                           VARCHAR(128),
+    updated_at                        TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_tlspl_tenant_type_iteration_status
+    ON ck_type_lifecycle_state_process_link(tenant_oid, type_oid, lifecycle_template_iteration_oid, status_code);
+CREATE INDEX IF NOT EXISTS idx_tlspl_type    ON ck_type_lifecycle_state_process_link(type_oid);
+CREATE INDEX IF NOT EXISTS idx_tlspl_process ON ck_type_lifecycle_state_process_link(process_template_oid);
 
 -- ==================== 编码规则主表 ====================
 -- oid 为全局唯一主键，code 为业务唯一键
@@ -323,18 +349,78 @@ CREATE TABLE IF NOT EXISTS ck_role_member (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_rm_unique ON ck_role_member(user_oid, role_oid);
 
--- ==================== 流程分类 ====================
--- oid 为全局唯一主键，name 为分类名称唯一键
-CREATE TABLE IF NOT EXISTS ck_workflow_category (
-    oid         CHAR(36)     PRIMARY KEY,
-    name        VARCHAR(100) NOT NULL UNIQUE,
+-- ==================== 流程分组（分类字典） ====================
+-- 流程清单页的第一层导航：先建分组 → 选中分组 → 在组内设计流程。
+-- 名称在【租户内】唯一（不是全局唯一）：多租户下不同租户可以有同名分组，
+-- 口径与 ck_process_template 的 (key, tenant_oid) 一致。
+-- 模板侧 ck_process_template.category_oid 引用本表 oid（改显示名不牵动模板）。
+-- 历史表 ck_workflow_category 已由 ProcessTemplateSchemaInitializer 整表改名为本表。
+CREATE TABLE IF NOT EXISTS ck_process_category (
+    oid         VARCHAR(64)  PRIMARY KEY,
+    name        VARCHAR(64)  NOT NULL,
     sort_order  INTEGER      NOT NULL DEFAULT 0,
-    tenant_oid  CHAR(36),
-    creator     VARCHAR(100),
+    description VARCHAR(512),
+    tenant_oid  VARCHAR(64),
+    creator     VARCHAR(128),
     created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updater     VARCHAR(100),
+    updater     VARCHAR(128),
     updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_process_category_name_tenant ON ck_process_category(name, tenant_oid);
+
+-- ==================== 流程实例 ↔ 业务实体 关联（ProcessEntitySet） ====================
+-- 一行 = 集合里的一个成员；取代模板表上原来的 primary_object_type（单一 code 表达不了一个流程关联多个实体）。
+-- 实体引用：无版本对象只填 entity_oid；带版本对象填 entity_version（业务对象的【大版本】revision，如 A，
+-- 同时保留 entity_oid = 主对象 oid）—— 记大版本而不是迭代 oid：流程针对大版本发起，其下还会继续
+-- 产出小版本（A.2 → A.3…），记迭代 oid 会随对象推进而过时；需要具体版本时解析为"该大版本当前的最新小版本"。
+-- 列名刻意不叫 version：本模块里还有"流程模板版本 / 流程定义版本"，entity_version 才一眼是业务对象的版本。
+-- type_code / root_type_code 冗余存一份：免 join，且是"当时关联的是什么类型"的快照。
+-- 列名前身：entity_iteration_oid（迭代 oid）→ version → entity_version，由建表器幂等迁移。
+-- 实际建表由 ProcessTemplateSchemaInitializer#createEntitySetTable 执行（与同模块的模板表一致），此处为 DDL 参考。
+CREATE TABLE IF NOT EXISTS ck_process_entity_set (
+    oid                  VARCHAR(64) PRIMARY KEY,
+    business_key         VARCHAR(128),
+    process_instance_id  VARCHAR(64) NOT NULL,
+    entity_oid           VARCHAR(64) NOT NULL,
+    entity_version       VARCHAR(64),
+    type_code            VARCHAR(50),
+    root_type_code       VARCHAR(50),
+    tenant_oid           VARCHAR(64) NOT NULL,
+    creator              VARCHAR(128),
+    created_at           TIMESTAMP,
+    updater              VARCHAR(128),
+    updated_at           TIMESTAMP
+);
+
+-- 一个流程实例 + 一个实体(大版本) 只记一次；COALESCE 是为了让"无版本对象"(NULL) 也参与去重
+CREATE UNIQUE INDEX IF NOT EXISTS uk_pes_instance_entity
+    ON ck_process_entity_set(process_instance_id, entity_oid, COALESCE(entity_version, ''));
+CREATE INDEX IF NOT EXISTS idx_pes_instance       ON ck_process_entity_set(process_instance_id);
+CREATE INDEX IF NOT EXISTS idx_pes_entity         ON ck_process_entity_set(entity_oid);
+CREATE INDEX IF NOT EXISTS idx_pes_entity_version ON ck_process_entity_set(entity_version);
+CREATE INDEX IF NOT EXISTS idx_pes_tenant         ON ck_process_entity_set(tenant_oid);
+
+-- ==================== 流程节点执行日志 ====================
+-- 「这个节点后台跑了什么、报了什么错」：自动服务（设置状态 / 自动服务 / 通知）由后台执行，
+-- 失败时用户只看到"流程卡住了"，原因原本只留在服务器日志里。落库后流程详情页点开节点即可查看。
+-- 实际建表由 ProcessNodeLogSchemaInitializer 执行（与本模块其它表一致），此处为 DDL 参考。
+CREATE TABLE IF NOT EXISTS ck_process_node_log (
+    oid                  CHAR(36)     PRIMARY KEY,
+    tenant_oid           CHAR(36)     NOT NULL,
+    process_instance_id  CHAR(36)     NOT NULL,
+    activity_id          VARCHAR(128) NOT NULL,
+    activity_name        VARCHAR(255),
+    level                VARCHAR(16)  NOT NULL,
+    source               VARCHAR(32),
+    message              VARCHAR(1000) NOT NULL,
+    detail               TEXT,
+    created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_pnl_instance_activity
+    ON ck_process_node_log(process_instance_id, activity_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_pnl_instance_level
+    ON ck_process_node_log(process_instance_id, level);
 
 -- ==================== 统一的类型定义（v2.0 重构） ====================
 -- 已废弃 plm_model_class + plm_softtype 双表设计，统一为 ck_type_definition 单表。
@@ -1399,7 +1485,7 @@ CREATE INDEX IF NOT EXISTS idx_di_tenant             ON ck_document_iteration(te
 CREATE INDEX IF NOT EXISTS idx_file_tenant           ON ck_file(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_att_tenant            ON ck_attachment(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_media_tenant          ON ck_media(tenant_oid);
-CREATE INDEX IF NOT EXISTS idx_wfc_tenant            ON ck_workflow_category(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_process_category_tenant ON ck_process_category(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_ua_tenant             ON ck_user_activity(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_eid_tenant            ON ck_type_iba_data(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_number_tenant          ON ck_number(tenant_oid);
@@ -1408,6 +1494,7 @@ CREATE INDEX IF NOT EXISTS idx_ls_tenant              ON ck_lifecycle_status(ten
 CREATE INDEX IF NOT EXISTS idx_lt_tenant              ON ck_lifecycle_template(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_lti_tenant             ON ck_lifecycle_template_iteration(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_lts_tenant             ON ck_lifecycle_template_state(tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_tlspl_tenant           ON ck_type_lifecycle_state_process_link(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_ltt_tenant             ON ck_lifecycle_template_transition(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_view_tenant            ON ck_view(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_vt_tenant              ON ck_view_transition(tenant_oid);
@@ -1416,3 +1503,31 @@ CREATE INDEX IF NOT EXISTS idx_td_tenant              ON ck_type_definition(tena
 CREATE INDEX IF NOT EXISTS idx_st_tenant              ON ck_stage_template(tenant_oid);
 CREATE INDEX IF NOT EXISTS idx_cpl_tenant2            ON ck_cls_page_layout(tenant_oid);
 
+
+-- ============================================================================
+-- 流程表单模板（业务配置 → 流程表单）
+--   · 内置模板由 ProcessFormTemplateInitializer 在启动时自动登记（属平台租户）
+--   · 表在 TenantStatementInterceptor 里登记为 PLATFORM_SHARED：
+--     查询自动放宽为 tenant_oid IN (平台, 当前租户) → 所有租户都能选到内置模板
+--   · 同一节点类型允许挂多张模板（node_types 逗号分隔，节点用 DSL 的 formRef 指向其一）
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ck_process_form_template (
+    oid           CHAR(36)     PRIMARY KEY,
+    code          VARCHAR(64)  NOT NULL,
+    name          VARCHAR(128) NOT NULL,
+    node_types    VARCHAR(256) NOT NULL,
+    component     VARCHAR(64),
+    builtin       BOOLEAN      NOT NULL DEFAULT FALSE,
+    enabled       BOOLEAN      NOT NULL DEFAULT TRUE,
+    sort_order    INTEGER      NOT NULL DEFAULT 0,
+    description   VARCHAR(1024),
+    tenant_oid    CHAR(36)     NOT NULL,
+    creator       VARCHAR(64),
+    created_at    TIMESTAMP,
+    updater       VARCHAR(64),
+    updated_at    TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ck_process_form_template_code ON ck_process_form_template(tenant_oid, code);
+CREATE INDEX IF NOT EXISTS idx_pft_sort        ON ck_process_form_template(builtin, sort_order);
+CREATE INDEX IF NOT EXISTS idx_pft_tenant      ON ck_process_form_template(tenant_oid);

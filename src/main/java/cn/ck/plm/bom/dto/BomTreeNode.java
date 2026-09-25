@@ -56,6 +56,25 @@ public class BomTreeNode {
     /** 单位成本 */
     private Double unitCost;
 
+    // ==================== 成本（卷积结果，由 BomCostCalculator 写入）====================
+
+    /**
+     * 本行<b>本层金额</b>：用量 × 单位成本（不含下级）。
+     *
+     * <p>只有跑成本报告时才写；BOM 结构树接口不带它（不需要，也不该多算一遍）。
+     */
+    private Double extendedCost;
+
+    /**
+     * 该子件的<b>完整单位成本</b>：它自己的单位成本 + 它下挂各行金额之和。
+     *
+     * <p>父件算总成本时用的是这一个字段（再乘用量），所以它必须已经包含下级。
+     */
+    private Double rolledUpUnitCost;
+
+    /** 本行<b>累计金额</b>：用量 × 完整单位成本（含全部下级） */
+    private Double rolledUpCost;
+
     // ==================== 子件展示信息 ====================
 
     /** 子件名称 */
@@ -124,6 +143,15 @@ public class BomTreeNode {
 
     public Double getUnitCost() { return unitCost; }
     public void setUnitCost(Double unitCost) { this.unitCost = unitCost; }
+
+    public Double getExtendedCost() { return extendedCost; }
+    public void setExtendedCost(Double extendedCost) { this.extendedCost = extendedCost; }
+
+    public Double getRolledUpUnitCost() { return rolledUpUnitCost; }
+    public void setRolledUpUnitCost(Double rolledUpUnitCost) { this.rolledUpUnitCost = rolledUpUnitCost; }
+
+    public Double getRolledUpCost() { return rolledUpCost; }
+    public void setRolledUpCost(Double rolledUpCost) { this.rolledUpCost = rolledUpCost; }
 
     public String getChildPartName() { return childPartName; }
     public void setChildPartName(String childPartName) { this.childPartName = childPartName; }

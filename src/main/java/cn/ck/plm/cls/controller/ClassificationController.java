@@ -64,8 +64,15 @@ public class ClassificationController {
 
     @DeleteMapping("/{oid}")
     public ApiResponse<Void> delete(@PathVariable String oid) {
-        classificationService.delete(oid);
-        return ApiResponse.ok();
+        try {
+            classificationService.delete(oid);
+            return ApiResponse.ok();
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            // 删除守卫（有子分类 / 被零组件、文档、类型绑定 / 有非空属性值）抛的就是这两种异常：
+            // 它们是"能看懂、能照做"的规则拒绝，不是服务故障 —— 必须把原话带给用户，
+            // 否则界面上只会弹一句"服务器错误 (500)"，用户完全不知道该怎么办。
+            return ApiResponse.fail(400, e.getMessage());
+        }
     }
 
     @GetMapping("/{oid}")

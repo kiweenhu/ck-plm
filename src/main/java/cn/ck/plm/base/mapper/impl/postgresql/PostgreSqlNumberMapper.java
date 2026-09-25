@@ -69,4 +69,8 @@ public interface PostgreSqlNumberMapper extends NumberMapper {
     @Select("SELECT COUNT(*) FROM ck_number WHERE code = #{code}")
     @Override
     int existsByCode(@Param("code") String code);
+
+    @Override
+    @Update("UPDATE ck_number SET code = #{newCode}, updated_at = CURRENT_TIMESTAMP WHERE code = #{oldCode}")
+    int renameCode(@Param("oldCode") String oldCode, @Param("newCode") String newCode);
 }

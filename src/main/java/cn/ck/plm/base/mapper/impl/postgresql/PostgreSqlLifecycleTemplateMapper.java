@@ -59,6 +59,12 @@ public interface PostgreSqlLifecycleTemplateMapper extends LifecycleTemplateMapp
 
     @Override
     @Select("SELECT oid, code, name, description, is_active, initial_state_code, tenant_oid, creator, created_at, updater, updated_at " +
+            "FROM ck_lifecycle_template WHERE oid = #{oid}")
+    @ResultMap("templateResult")
+    LifecycleTemplateMaster selectByOid(@Param("oid") String oid);
+
+    @Override
+    @Select("SELECT oid, code, name, description, is_active, initial_state_code, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_lifecycle_template ORDER BY name ASC")
     @ResultMap("templateResult")
     List<LifecycleTemplateMaster> selectAll();

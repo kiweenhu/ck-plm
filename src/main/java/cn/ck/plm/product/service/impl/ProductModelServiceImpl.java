@@ -22,6 +22,9 @@ import cn.ck.plm.product.mapper.TeamMemberMapper;
 import cn.ck.plm.product.service.api.FolderService;
 import cn.ck.plm.product.service.api.ProductModelService;
 import cn.ck.plm.product.service.api.StageService;
+import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
+import cn.ck.plm.softtype.entity.TypeDefinition;
+import cn.ck.plm.softtype.service.api.SoftTypeInstanceCapability;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -38,9 +41,12 @@ import java.util.*;
  * 行为与产品系列一致。
  */
 @Service
-public class ProductModelServiceImpl implements ProductModelService {
+public class ProductModelServiceImpl implements ProductModelService, SoftTypeInstanceCapability {
 
     private static final Logger log = LoggerFactory.getLogger(ProductModelServiceImpl.class);
+
+    /** 能力宿主 code（= type_definition.root_type_code） */
+    private static final String HOST = "PRODUCT_MODEL";
 
     private final ProductModelMapper productModelMapper;
     private final ProductLineMapper productLineMapper;
@@ -49,6 +55,7 @@ public class ProductModelServiceImpl implements ProductModelService {
     private final UserMapper userMapper;
     private final FolderService folderService;
     private final StageService stageService;
+    private final ObjectMapper objectMapper;
 
     public ProductModelServiceImpl(ProductModelMapper productModelMapper,
                                     ProductLineMapper productLineMapper,
@@ -56,7 +63,8 @@ public class ProductModelServiceImpl implements ProductModelService {
                                     TeamMemberMapper teamMemberMapper,
                                     UserMapper userMapper,
                                     FolderService folderService,
-                                    StageService stageService) {
+                                    StageService stageService,
+                                    ObjectMapper objectMapper) {
         this.productModelMapper = productModelMapper;
         this.productLineMapper = productLineMapper;
         this.teamMapper = teamMapper;
@@ -64,6 +72,47 @@ public class ProductModelServiceImpl implements ProductModelService {
         this.userMapper = userMapper;
         this.folderService = folderService;
         this.stageService = stageService;
+        this.objectMapper = objectMapper;
+    }
+
+    // ==================== 能力宿主策略（SoftTypeInstanceCapability）====================
+
+    @Override
+    public String hostCode() {
+        return HOST;
+    }
+
+    @Override
+    public Set<SoftTypeInstanceCapability.Operation> supportedOperations() {
+        return EnumSet.of(
+                SoftTypeInstanceCapability.Operation.CREATE,
+                SoftTypeInstanceCapability.Operation.READ,
+                SoftTypeInstanceCapability.Operation.UPDATE);
+    }
+
+    @Override
+    public SoftTypeInstanceResult createInstance(TypeDefinition type, Map<String, Object> payload) {
+        ProductModel model = objectMapper.convertValue(payload, ProductModel.class);
+        ProductModel created = create(model);
+
+        SoftTypeInstanceResult result = new SoftTypeInstanceResult();
+        result.setOid(created.getOid());
+        result.setNumber(created.getCode());
+        result.setName(created.getName());
+        result.setEntity(created);
+        return result;
+    }
+
+    @Override
+    public Object getInstance(String oid, Map<String, Object> params) {
+        return findByOid(oid);
+    }
+
+    @Override
+    public Object updateInstance(String oid, Map<String, Object> body) {
+        ProductModel model = objectMapper.convertValue(body, ProductModel.class);
+        model.setOid(oid);
+        return update(model);
     }
 
     // ===== 产品型号 =====

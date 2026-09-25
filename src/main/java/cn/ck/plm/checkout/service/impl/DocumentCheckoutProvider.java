@@ -10,6 +10,7 @@ import cn.ck.plm.document.mapper.DocumentMapper;
 import cn.ck.plm.document.entity.Document;
 import cn.ck.plm.base.entity.UserActivity;
 import cn.ck.plm.base.mapper.UserActivityMapper;
+import cn.ck.plm.base.service.api.LifecycleStatusService;
 import cn.ck.plm.checkout.dto.CheckoutVO;
 import cn.ck.plm.checkout.service.api.CheckoutProvider;
 import org.slf4j.Logger;
@@ -33,12 +34,16 @@ public class DocumentCheckoutProvider implements CheckoutProvider {
     private final DocumentMapper documentMapper;
     private final DocumentIterationMapper iterationMapper;
     private final UserActivityMapper activityMapper;
+    /** 状态 code → 显示名（见 LifecycleStatusService#displayName） */
+    private final LifecycleStatusService lifecycleStatusService;
 
     public DocumentCheckoutProvider(DocumentMapper documentMapper, DocumentIterationMapper iterationMapper,
-                                     UserActivityMapper activityMapper) {
+                                     UserActivityMapper activityMapper,
+                                     LifecycleStatusService lifecycleStatusService) {
         this.documentMapper = documentMapper;
         this.iterationMapper = iterationMapper;
         this.activityMapper = activityMapper;
+        this.lifecycleStatusService = lifecycleStatusService;
     }
 
     @Override
@@ -70,7 +75,9 @@ public class DocumentCheckoutProvider implements CheckoutProvider {
             vo.setCheckedOutAt(iter.getUpdatedAt() != null ? iter.getUpdatedAt().toString() : null);
             if (iter.getStatus() != null) {
                 vo.setStatusCode(iter.getStatus().getCode());
-                vo.setStatusName(iter.getStatus().getDisplayName());
+                // 不能取 getDisplayName()：迭代上的 status 只带 code，那样列表只会显示 code
+                vo.setStatusName(lifecycleStatusService.displayName(
+                        iter.getLifecycleTemplateIterationOid(), iter.getStatus().getCode()));
             }
             vo.setLinkPath("/product");
             result.add(vo);

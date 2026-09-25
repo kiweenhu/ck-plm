@@ -11,7 +11,8 @@ import cn.ck.plm.iam.dto.ApiResponse;
 import cn.ck.plm.functional.dto.FunctionalVO;
 import cn.ck.plm.functional.entity.FunctionalEntity;
 import cn.ck.plm.functional.service.api.FunctionalService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
+import cn.ck.plm.softtype.service.api.SoftTypeInstanceService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,21 +26,29 @@ import java.util.Map;
 public class FunctionalController {
 
     private final FunctionalService FunctionalService;
-    private final ObjectMapper objectMapper;
+    private final SoftTypeInstanceService softTypeInstanceService;
 
-    public FunctionalController(FunctionalService FunctionalService, ObjectMapper objectMapper) {
+    /** 能力宿主 code（与 TypeDefinition.rootTypeCode 一致） */
+    private static final String HOST = "FUNCTIONAL";
+
+    public FunctionalController(FunctionalService FunctionalService,
+                                SoftTypeInstanceService softTypeInstanceService) {
         this.FunctionalService = FunctionalService;
-        this.objectMapper = objectMapper;
+        this.softTypeInstanceService = softTypeInstanceService;
     }
 
+    /**
+     * 创建功能架构（系统）。
+     *
+     * <p>创建编排已收敛到 {@code FunctionalInstanceCreator}，本方法复用同一实现。
+     */
     @PostMapping
     public ApiResponse<FunctionalEntity> create(@RequestBody Map<String, Object> body) {
         try {
-            FunctionalEntity entity = objectMapper.convertValue(body, FunctionalEntity.class);
-            String ckfileOid = getString(body, "ckfileOid");
-            String attachmentOid = getString(body, "attachmentOid");
-            FunctionalEntity created = FunctionalService.create(entity, ckfileOid, attachmentOid);
-            return ApiResponse.ok(created);
+            Object typeCode = body.get("typeDefinitionCode");
+            SoftTypeInstanceResult result = softTypeInstanceService.createForHost(
+                    HOST, typeCode != null ? typeCode.toString() : HOST, body);
+            return ApiResponse.ok((FunctionalEntity) result.getEntity());
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
         } catch (Exception e) {
@@ -47,15 +56,23 @@ public class FunctionalController {
         }
     }
 
-    private String getString(Map<String, Object> body, String key) {
-        Object val = body.get(key);
-        return val != null && !"".equals(val) ? val.toString() : null;
-    }
-
+    /**
+     * 更新功能架构（系统）。
+     *
+     * <p>更新编排已收敛到 {@code FunctionalServiceImpl#updateInstance}，与统一入口共用同一实现。
+     */
     @PutMapping("/{oid}")
-    public ApiResponse<FunctionalEntity> update(@PathVariable String oid, @RequestBody FunctionalEntity entity) {
-        entity.setOid(oid);
-        return ApiResponse.ok(FunctionalService.update(entity));
+    public ApiResponse<FunctionalEntity> update(@PathVariable String oid, @RequestBody Map<String, Object> body) {
+        try {
+            Object entity = softTypeInstanceService.updateForHost(HOST, oid, body);
+            return ApiResponse.ok((FunctionalEntity) entity);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(404, e.getMessage());
+        } catch (UnsupportedOperationException e) {
+            return ApiResponse.fail(501, e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "更新系统失败: " + e.getMessage());
+        }
     }
 
     @DeleteMapping("/{oid}")
@@ -64,9 +81,18 @@ public class FunctionalController {
         return ApiResponse.ok();
     }
 
+    /**
+     * 按 OID 查询功能架构（系统）。
+     *
+     * <p>读取编排已收敛到 {@code FunctionalInstanceCreator#get}，与统一入口共用同一实现。
+     */
     @GetMapping("/{oid}")
     public ApiResponse<FunctionalEntity> getByOid(@PathVariable String oid) {
-        return ApiResponse.ok(FunctionalService.findByOid(oid));
+        Object entity = softTypeInstanceService.getForHost(HOST, oid, null);
+        if (entity == null) {
+            return ApiResponse.fail(404, "系统不存在: " + oid);
+        }
+        return ApiResponse.ok((FunctionalEntity) entity);
     }
 
     @GetMapping("/by-folder")

@@ -8,14 +8,18 @@
 package cn.ck.plm.base.service.impl;
 
 import cn.ck.plm.base.entity.LifecycleStatus;
+import cn.ck.plm.base.entity.LifecycleTemplateStatusRef;
 import cn.ck.plm.base.mapper.LifecycleStatusMapper;
+import cn.ck.plm.base.mapper.LifecycleTemplateMapper;
 import cn.ck.plm.base.service.api.LifecycleStatusService;
 import cn.ck.plm.base.util.TenantContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * {@link LifecycleStatusService} 的 PostgreSQL 数据库实现。
@@ -26,9 +30,12 @@ import java.util.List;
 public class DefaultLifecycleStatusService implements LifecycleStatusService {
 
     private final LifecycleStatusMapper mapper;
+    /** 模板状态表：code → 显示名的权威来源（见 {@link #displayName}） */
+    private final LifecycleTemplateMapper templateMapper;
 
-    public DefaultLifecycleStatusService(LifecycleStatusMapper mapper) {
+    public DefaultLifecycleStatusService(LifecycleStatusMapper mapper, LifecycleTemplateMapper templateMapper) {
         this.mapper = mapper;
+        this.templateMapper = templateMapper;
     }
 
     @Override
@@ -110,6 +117,51 @@ public class DefaultLifecycleStatusService implements LifecycleStatusService {
     @Override
     public boolean exists(String code) {
         return code != null && mapper.existsByCode(code.trim()) > 0;
+    }
+
+    // ==================== code → 显示名 ====================
+
+    @Override
+    public Map<String, String> displayNames(String templateIterationOid) {
+        Map<String, String> names = new LinkedHashMap<>();
+        if (templateIterationOid == null || templateIterationOid.trim().isEmpty()) {
+            return names;
+        }
+        List<LifecycleTemplateStatusRef> refs =
+                templateMapper.selectStateRefsByIterationOid(templateIterationOid.trim());
+        for (LifecycleTemplateStatusRef ref : refs != null ? refs : List.<LifecycleTemplateStatusRef>of()) {
+            String code = ref.getStatusCode();
+            if (code == null || code.trim().isEmpty()) {
+                continue;
+            }
+            String display = ref.getStatusDisplayName();
+            names.put(code.trim(), display != null && !display.trim().isEmpty() ? display.trim() : code.trim());
+        }
+        return names;
+    }
+
+    @Override
+    public String displayName(String templateIterationOid, String code) {
+        if (code == null || code.trim().isEmpty()) {
+            return null;
+        }
+        String normalized = code.trim();
+        String fromTemplate = displayNames(templateIterationOid).get(normalized);
+        if (fromTemplate != null) {
+            return fromTemplate;
+        }
+        // 模板里没有（对象未绑模板 / 模板里删过该状态）→ 退回全局状态字典
+        LifecycleStatus status = findByCode(normalized);
+        if (status != null) {
+            String name = status.getDisplayName();
+            if (name == null || name.trim().isEmpty()) {
+                name = status.getName();
+            }
+            if (name != null && !name.trim().isEmpty()) {
+                return name.trim();
+            }
+        }
+        return normalized;
     }
 
     private boolean isCoreStatus(String code) {

@@ -18,7 +18,9 @@ import cn.ck.plm.iam.entity.User;
 import cn.ck.plm.iam.service.api.UserService;
 import cn.ck.plm.part.mapper.PartMapper;
 import cn.ck.plm.softtype.entity.IBA;
+import cn.ck.plm.softtype.entity.TypeClassificationLink;
 import cn.ck.plm.softtype.mapper.IBAMapper;
+import cn.ck.plm.softtype.mapper.TypeClassificationLinkMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,8 @@ public class ClassificationServiceImpl implements ClassificationService {
     private final DocumentMapper documentMapper;
     private final ClsIbaDataMapper clsIbaDataMapper;
     private final UserService userService;
+    /** 删除守卫用：被"类型管理"绑定的分类不能删（否则留下悬空绑定） */
+    private final TypeClassificationLinkMapper typeLinkMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ClassificationServiceImpl(ClassificationMapper mapper,
@@ -49,7 +53,8 @@ public class ClassificationServiceImpl implements ClassificationService {
                                       PartMapper partMapper,
                                       DocumentMapper documentMapper,
                                       ClsIbaDataMapper clsIbaDataMapper,
-                                      UserService userService) {
+                                      UserService userService,
+                                      TypeClassificationLinkMapper typeLinkMapper) {
         this.mapper = mapper;
         this.ibaMapper = ibaMapper;
         this.ibaDefMapper = ibaDefMapper;
@@ -58,6 +63,7 @@ public class ClassificationServiceImpl implements ClassificationService {
         this.documentMapper = documentMapper;
         this.clsIbaDataMapper = clsIbaDataMapper;
         this.userService = userService;
+        this.typeLinkMapper = typeLinkMapper;
     }
 
     private String tenantOid() {
@@ -131,6 +137,15 @@ public class ClassificationServiceImpl implements ClassificationService {
         int ibaCount = clsIbaDataMapper.countNonEmptyByClassificationOid(oid);
         if (ibaCount > 0) {
             throw new IllegalStateException("当前分类存在 " + ibaCount + " 条非空分类属性值，无法删除");
+        }
+        // 守卫：被"类型管理"绑定的分类禁止删除。
+        // 少了这条守卫就会留下悬空绑定：类型→分类 指向一条不存在的分类，
+        // 之后该类型的新建表单里"选择分类"直接报"分类不存在"，而用户完全看不出
+        // 是自己早先删分类造成的（这条 bug 就是这么来的）。
+        List<TypeClassificationLink> boundTypes = typeLinkMapper.selectByClassificationOid(oid);
+        if (boundTypes != null && !boundTypes.isEmpty()) {
+            throw new IllegalStateException("当前分类已被 " + boundTypes.size()
+                    + " 个类型绑定，请先在类型管理中解除绑定");
         }
         // 级联删除 IBA 关联
         ibaMapper.deleteByClassificationOid(oid);

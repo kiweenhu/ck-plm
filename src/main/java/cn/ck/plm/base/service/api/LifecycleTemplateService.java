@@ -47,4 +47,35 @@ public interface LifecycleTemplateService extends MasterService {
      * @param typeCode 类型定义编码
      */
     void initLifecycle(IterationEntity iter, String typeCode);
+
+    /**
+     * 把迭代迁到<b>指定状态</b>（相对 promote/reject 的"向前一格 / 向后一格"，这是"去哪个状态"）。
+     *
+     * <p><b>只改内存对象，不落库</b>：调用方自己决定怎么持久化（各宿主有各自的迭代表与
+     * 更新时间字段）。这样本方法对 Part / Document / EngineeringDocument 都成立。
+     *
+     * <p>为什么要有它：流程里的「设置状态」服务节点给的是<b>目标状态 code</b>
+     * （配置界面从状态清单里选，如 IN_WORK / PUBLISHED），而引擎侧原本只有
+     * {@code promoteLifecycle}（按模板迁移表往前一格）—— 两者不是一回事：
+     * 用户配的是"到哪个状态"，模板决定的是"从当前状态能不能到那儿"。
+     *
+     * @param iteration       迭代实体（须已绑定模板子版本，否则无法校验迁移规则）
+     * @param targetStateCode 目标状态 code
+     * @throws IllegalArgumentException 目标状态不在该模板内，或当前状态不允许迁到它
+     */
+    void moveToState(IterationEntity iteration, String targetStateCode);
+
+    /**
+     * 把迭代退回<b>模板的初始状态</b>（"重置回起点"，如 已发布 → 工作中 → 草稿）。
+     *
+     * <p><b>逐跳沿模板的回退规则走</b>，而不是一步跳过去：多跳的情况（RELEASED→DRAFT）在模板里
+     * 本来就没有直接规则，允许"跳跃"等于把回退链当成摆设 —— 那正是生命周期模板要防的事。
+     * 某一跳没有回退规则就明确失败（说清卡在哪个状态），而不是悄悄改掉状态。
+     *
+     * <p>只改内存对象，不落库（各宿主自己持久化，与 {@link #moveToState} 一致）。
+     *
+     * @throws IllegalArgumentException 模板里没有回退规则（走不到初始状态）
+     * @throws IllegalStateException    未绑定模板 / 回退规则成环
+     */
+    void moveToInitialState(IterationEntity iteration);
 }

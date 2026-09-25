@@ -14,12 +14,15 @@ import cn.ck.plm.part.dto.PartVO;
 import cn.ck.plm.part.entity.Part;
 import cn.ck.plm.part.entity.PartIteration;
 import cn.ck.plm.part.service.api.PartService;
+import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
 import cn.ck.plm.softtype.service.api.IBADataService;
+import cn.ck.plm.softtype.service.api.SoftTypeInstanceService;
 import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,37 +41,40 @@ public class PartController {
     private final IbaDataSupport ibaDataSupport;
     private final ClsIbaDataSupport clsIbaDataSupport;
     private final ObjectMapper objectMapper;
+    private final SoftTypeInstanceService softTypeInstanceService;
 
     public PartController(PartService partService, IBADataService ibaDataService,
                           ClsIbaDataService clsIbaDataService,
                           IbaDataSupport ibaDataSupport,
                           ClsIbaDataSupport clsIbaDataSupport,
-                          ObjectMapper objectMapper) {
+                          ObjectMapper objectMapper,
+                          SoftTypeInstanceService softTypeInstanceService) {
         this.partService = partService;
         this.ibaDataService = ibaDataService;
         this.clsIbaDataService = clsIbaDataService;
         this.ibaDataSupport = ibaDataSupport;
         this.clsIbaDataSupport = clsIbaDataSupport;
         this.objectMapper = objectMapper;
+        this.softTypeInstanceService = softTypeInstanceService;
     }
 
-    /** 创建零组件 */
+    /**
+     * 创建零组件。
+     *
+     * <p>创建编排（实体落库 + 分类 IBA + 实体 IBA）已收敛到 {@code PartInstanceCreator}，
+     * 本方法通过 {@code createForHost("PART", …)} 复用同一实现，不再重复编排 ——
+     * 避免「统一入口」与「实体端点」两处逻辑随迭代分叉。
+     *
+     * <p>宿主强校验：{@code /parts} 只创建 PART 宿主对象。若请求中的类型宿主不是 PART
+     * （例如误把封装 FOOTPRINT 提交到本端点），将显式返回 400，而非静默写入 ck_part。
+     */
     @PostMapping
     public ApiResponse<Part> create(@RequestBody Map<String, Object> body) {
         try {
-            Part part = objectMapper.convertValue(body, Part.class);
-            String ckfileOid = ibaDataSupport.getString(body, "ckfileOid");
-            String attachmentOid = ibaDataSupport.getString(body, "attachmentOid");
-            String unit = ibaDataSupport.getString(body, "unit");
-            String source = ibaDataSupport.getString(body, "source");
-            Part created = partService.create(part, ckfileOid, attachmentOid, unit, source);
-            // 保存分类 IBA 属性值（迭代级，ck_cls_iba_data，entity_oid = 最新迭代 oid）
-            PartIteration latestIter = partService.findLatestIteration(created.getOid());
-            String iterOid = latestIter != null ? latestIter.getOid() : created.getOid();
-            clsIbaDataSupport.saveClsIbaValues(iterOid, created.getClsOid(), body);
-            // 保存实体 IBA 动态属性值（实体级，ck_type_iba_data）
-            ibaDataSupport.saveIbaValues(IBA_ENTITY_TYPE, created.getOid(), body);
-            return ApiResponse.ok(created);
+            String typeCode = ibaDataSupport.getString(body, "typeDefinitionCode");
+            SoftTypeInstanceResult result = softTypeInstanceService.createForHost(
+                    IBA_ENTITY_TYPE, typeCode != null ? typeCode : IBA_ENTITY_TYPE, body);
+            return ApiResponse.ok((Part) result.getEntity());
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
         } catch (Exception e) {
@@ -76,26 +82,21 @@ public class PartController {
         }
     }
 
-    /** 更新零组件 */
+    /**
+     * 更新零组件。
+     *
+     * <p>更新编排已收敛到 {@code PartServiceImpl#updateInstance}（能力宿主策略）：
+     * 本端点与统一入口 {@code PUT /api/softtype-instances/{oid}} 共用同一实现，不会分叉。
+     */
     @PutMapping("/{oid}")
     public ApiResponse<Part> update(@PathVariable String oid, @RequestBody Map<String, Object> body) {
         try {
-            Part part = objectMapper.convertValue(body, Part.class);
-            part.setOid(oid);
-            Part updated = partService.update(part);
-            // 更新最新迭代的 unit/source（迭代级字段）
-            String unit = ibaDataSupport.getString(body, "unit");
-            String source = ibaDataSupport.getString(body, "source");
-            partService.updateLatestIterationAttributes(oid, unit, source);
-            // 保存分类 IBA 属性值（迭代级，ck_cls_iba_data，entity_oid = 最新迭代 oid）
-            PartIteration latestIter = partService.findLatestIteration(oid);
-            String iterOid = latestIter != null ? latestIter.getOid() : oid;
-            clsIbaDataSupport.saveClsIbaValues(iterOid, updated.getClsOid(), body);
-            // 合并保存实体 IBA 动态属性值（保留未提交的字段）
-            ibaDataSupport.mergeIbaValues(IBA_ENTITY_TYPE, oid, body);
-            return ApiResponse.ok(updated);
+            Object entity = softTypeInstanceService.updateForHost(IBA_ENTITY_TYPE, oid, body);
+            return ApiResponse.ok((Part) entity);
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(404, e.getMessage());
+        } catch (UnsupportedOperationException e) {
+            return ApiResponse.fail(501, e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail(500, "更新零组件失败: " + e.getMessage());
         }
@@ -164,10 +165,12 @@ public class PartController {
             String containerType = ibaDataSupport.getString(body, "containerType");
             String folderOid = ibaDataSupport.getString(body, "folderOid");
             String stageOid = ibaDataSupport.getString(body, "stageOid");
+            // 分类节点（元器件库/标准件库/通用件库按分类归档）；未传 = 不涉及分类
+            String clsOid = ibaDataSupport.getString(body, "clsOid");
             if (containerOid == null || containerType == null) {
-                return ApiResponse.fail(400, "产品系列/型号不能为空");
+                return ApiResponse.fail(400, "产品系列/型号/资源库不能为空");
             }
-            Part moved = partService.move(oid, containerOid, containerType, folderOid, stageOid);
+            Part moved = partService.move(oid, containerOid, containerType, folderOid, stageOid, clsOid);
             return ApiResponse.ok(moved);
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(404, e.getMessage());
@@ -197,43 +200,26 @@ public class PartController {
         return ApiResponse.ok();
     }
 
-    /** 按 OID 查询（附加最新迭代或指定迭代的版本/unit/source/视图/生命周期及分类 IBA 值） */
+    /**
+     * 按 OID 查询（附加最新迭代或指定迭代的版本/unit/source/视图/生命周期及分类 IBA 值）。
+     *
+     * <p>读取编排已收敛到 {@code PartInstanceCreator#get}：本端点与统一入口
+     * {@code GET /api/softtype-instances/{oid}?typeDefinitionCode=…} 共用同一实现，
+     * 避免「原生端点」与「统一入口」两处读取逻辑随迭代分叉。
+     */
     @GetMapping("/{oid}")
     public ApiResponse<Map<String, Object>> getByOid(@PathVariable String oid,
                                                       @RequestParam(required = false) String iterationOid) {
-        Part part = partService.findByOid(oid);
-        if (part == null) {
+        Map<String, Object> params = new HashMap<>();
+        if (iterationOid != null) {
+            params.put("iterationOid", iterationOid);
+        }
+        Object entity = softTypeInstanceService.getForHost(IBA_ENTITY_TYPE, oid, params);
+        if (entity == null) {
             return ApiResponse.fail(404, "零组件不存在: " + oid);
         }
-        Map<String, Object> result = objectMapper.convertValue(part,
-                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-        // 指定迭代时返回该迭代，否则返回最新迭代
-        PartIteration iteration = iterationOid != null
-                ? partService.findIterationByOid(iterationOid)
-                : partService.findLatestIteration(oid);
-        if (iteration != null) {
-            result.put("iterationOid", iteration.getOid());
-            result.put("revision", iteration.getRevision());
-            result.put("iteration", iteration.getIteration());
-            result.put("displayVersion", iteration.getDisplayVersion());
-            result.put("checkedOut", iteration.isCheckedOut());
-            result.put("checkedOutBy", iteration.getCheckedOutBy());
-            result.put("checkedOutComment", iteration.getCheckedOutComment());
-            result.put("unit", iteration.getUnit());
-            result.put("source", iteration.getSource());
-            result.put("view", iteration.getView() != null ? iteration.getView().getCode() : null);
-            if (iteration.getStatus() != null) {
-                result.put("statusCode", iteration.getStatus().getCode());
-                result.put("statusName", iteration.getStatus().getDisplayName());
-            }
-            // 附加该迭代的分类 IBA 属性值
-            if (part.getClsOid() != null) {
-                Map<String, Object> clsIba = clsIbaDataService.getValues(iteration.getOid(), part.getClsOid());
-                if (clsIba != null) {
-                    result.put("clsIba", clsIba);
-                }
-            }
-        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) entity;
         return ApiResponse.ok(result);
     }
 

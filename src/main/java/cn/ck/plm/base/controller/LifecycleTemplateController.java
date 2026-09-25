@@ -112,4 +112,8 @@ public class LifecycleTemplateController {
             return ApiResponse.fail(500, e.getMessage());
         }
     }
+
+    // 注：「状态 → 流程模板」绑定的接口在 TypeLifecycleTemplateLinkController
+    //（/api/type-lifecycle-template-links/type/{typeOid}/state-processes）——
+    // 主语是【类型】而不是生命周期模板：同一个模板会被多个类型复用，各自可绑不同流程。
 }

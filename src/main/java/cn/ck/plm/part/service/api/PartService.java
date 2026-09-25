@@ -33,7 +33,17 @@ public interface PartService extends MasterService {
     Part saveAs(String sourceOid, String newName);
 
     /** 移动部件到新的容器/阶段/文件夹位置 */
-    Part move(String oid, String containerOid, String containerType, String folderOid, String stageOid);
+    /**
+     * 移动零组件到新的容器/阶段/文件夹。
+     *
+     * <p>{@code clsOid} 传 null 表示不改分类（产品系列/型号、按文件夹组织的资源库都不涉及）；
+     * 传具体值则一并落库 —— 元器件库/标准件库/通用件库是<b>按分类节点归档</b>的，
+     * 分类是它们唯一的位置标识（那里没有研发阶段）。
+     * 必须在这里一起写：{@code ck_part} 的 update 是<b>全量列更新</b>，
+     * 单独调一次"只改分类"的更新会把其它列冲成 NULL。
+     */
+    Part move(String oid, String containerOid, String containerType, String folderOid, String stageOid,
+              String clsOid);
 
     /** 更新部件最新迭代的 unit/source 属性（迭代级字段） */
     void updateLatestIterationAttributes(String masterOid, String unit, String source);

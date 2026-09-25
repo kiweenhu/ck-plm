@@ -4,7 +4,7 @@
              xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
              xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
              xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
-             xmlns:activiti="http://activiti.org/bpmn"
+             xmlns:flowable="http://flowable.org/bpmn"
              typeLanguage="http://www.w3.org/2001/XMLSchema"
              expressionLanguage="http://www.w3.org/1999/XPath"
              targetNamespace="http://www.ck.com/plm/workflow">
@@ -13,11 +13,11 @@
 
         <documentation>PLM 标准变更审批流程：提交 → 技术评审 → 主管审批 → 实施确认</documentation>
 
-        <startEvent id="start" name="发起变更" activiti:formKey="change-form"/>
+        <startEvent id="start" name="发起变更" flowable:formKey="change-form"/>
 
         <sequenceFlow id="flow1" sourceRef="start" targetRef="techReview"/>
 
-        <userTask id="techReview" name="技术评审" activiti:assignee="${initiator}" activiti:formKey="tech-review-form">
+        <userTask id="techReview" name="技术评审" flowable:assignee="${initiator}" flowable:formKey="tech-review-form">
             <documentation>由变更发起人所在部门的技术负责人进行评审</documentation>
         </userTask>
 
@@ -33,7 +33,7 @@
             <conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression>
         </sequenceFlow>
 
-        <userTask id="managerApprove" name="主管审批" activiti:candidateGroups="manager" activiti:formKey="manager-approve-form">
+        <userTask id="managerApprove" name="主管审批" flowable:candidateGroups="manager" flowable:formKey="manager-approve-form">
             <documentation>部门主管/经理审批变更申请</documentation>
         </userTask>
 
@@ -49,7 +49,7 @@
             <conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression>
         </sequenceFlow>
 
-        <userTask id="implementConfirm" name="实施确认" activiti:assignee="${initiator}" activiti:formKey="implement-confirm-form">
+        <userTask id="implementConfirm" name="实施确认" flowable:assignee="${initiator}" flowable:formKey="implement-confirm-form">
             <documentation>变更发起人实施变更并确认完成</documentation>
         </userTask>
 

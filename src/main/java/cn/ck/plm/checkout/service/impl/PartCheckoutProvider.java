@@ -10,6 +10,7 @@ import cn.ck.plm.part.mapper.PartMapper;
 import cn.ck.plm.part.entity.Part;
 import cn.ck.plm.base.entity.UserActivity;
 import cn.ck.plm.base.mapper.UserActivityMapper;
+import cn.ck.plm.base.service.api.LifecycleStatusService;
 import cn.ck.plm.bom.entity.BomLinks;
 import cn.ck.plm.bom.mapper.BomLinksMapper;
 import cn.ck.plm.checkout.dto.CheckoutVO;
@@ -39,16 +40,20 @@ public class PartCheckoutProvider implements CheckoutProvider {
     private final UserActivityMapper activityMapper;
     private final ClsIbaDataService clsIbaDataService;
     private final BomLinksMapper bomLinksMapper;
+    /** 状态 code → 显示名（列表给"人看得懂"的那个字，见 LifecycleStatusService#displayName） */
+    private final LifecycleStatusService lifecycleStatusService;
 
     public PartCheckoutProvider(PartMapper partMapper, PartIterationMapper iterationMapper,
                                  UserActivityMapper activityMapper,
                                  ClsIbaDataService clsIbaDataService,
-                                 BomLinksMapper bomLinksMapper) {
+                                 BomLinksMapper bomLinksMapper,
+                                 LifecycleStatusService lifecycleStatusService) {
         this.partMapper = partMapper;
         this.iterationMapper = iterationMapper;
         this.activityMapper = activityMapper;
         this.clsIbaDataService = clsIbaDataService;
         this.bomLinksMapper = bomLinksMapper;
+        this.lifecycleStatusService = lifecycleStatusService;
     }
 
     @Override
@@ -80,7 +85,10 @@ public class PartCheckoutProvider implements CheckoutProvider {
             vo.setCheckedOutAt(iter.getUpdatedAt() != null ? iter.getUpdatedAt().toString() : null);
             if (iter.getStatus() != null) {
                 vo.setStatusCode(iter.getStatus().getCode());
-                vo.setStatusName(iter.getStatus().getDisplayName());
+                // 不能取 getDisplayName()：迭代上的 status 只带 code（LifecycleStatusTypeHandler），
+                // 那样"我的检出"列表只会显示 IN_WORK 这种 code
+                vo.setStatusName(lifecycleStatusService.displayName(
+                        iter.getLifecycleTemplateIterationOid(), iter.getStatus().getCode()));
             }
             vo.setLinkPath("/part");
             result.add(vo);

@@ -14,6 +14,8 @@ import cn.ck.plm.product.entity.ProductModel;
 import cn.ck.plm.product.entity.Team;
 import cn.ck.plm.product.service.api.ProductLineService;
 import cn.ck.plm.product.service.api.ProductModelService;
+import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
+import cn.ck.plm.softtype.service.api.SoftTypeInstanceService;
 import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
@@ -33,26 +35,32 @@ public class ProductLineController {
     private final ProductModelService productModelService;
     private final IbaDataSupport ibaDataSupport;
     private final ObjectMapper objectMapper;
+    private final SoftTypeInstanceService softTypeInstanceService;
 
     private static final String IBA_ENTITY_TYPE = "PRODUCT_LINE";
 
     public ProductLineController(ProductLineService productLineService, ProductModelService productModelService,
-                                  IbaDataSupport ibaDataSupport, ObjectMapper objectMapper) {
+                                  IbaDataSupport ibaDataSupport, ObjectMapper objectMapper,
+                                  SoftTypeInstanceService softTypeInstanceService) {
         this.productLineService = productLineService;
         this.productModelService = productModelService;
         this.ibaDataSupport = ibaDataSupport;
         this.objectMapper = objectMapper;
+        this.softTypeInstanceService = softTypeInstanceService;
     }
 
-    /** 创建产品线 */
+    /**
+     * 创建产品线。
+     *
+     * <p>创建编排已收敛到 {@code ProductLineInstanceCreator}，本方法复用同一实现。
+     */
     @PostMapping
     public ApiResponse<ProductLine> create(@RequestBody Map<String, Object> body) {
         try {
-            ProductLine productLine = objectMapper.convertValue(body, ProductLine.class);
-            ProductLine created = productLineService.create(productLine);
-            // 新建：全量保存 IBA（无旧数据，delete-all 无副作用）
-            ibaDataSupport.saveIbaValues(IBA_ENTITY_TYPE, created.getOid(), body);
-            return ApiResponse.ok(created);
+            String typeCode = ibaDataSupport.getString(body, "typeDefinitionCode");
+            SoftTypeInstanceResult result = softTypeInstanceService.createForHost(
+                    IBA_ENTITY_TYPE, typeCode != null ? typeCode : IBA_ENTITY_TYPE, body);
+            return ApiResponse.ok((ProductLine) result.getEntity());
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
         }
@@ -62,14 +70,13 @@ public class ProductLineController {
     @PutMapping("/{oid}")
     public ApiResponse<ProductLine> update(@PathVariable String oid, @RequestBody Map<String, Object> body) {
         try {
-            ProductLine productLine = objectMapper.convertValue(body, ProductLine.class);
-            productLine.setOid(oid);
-            ProductLine updated = productLineService.update(productLine);
-            // 更新：合并保存 IBA（保留已持久化但本次未提交的字段）
-            ibaDataSupport.mergeIbaValues(IBA_ENTITY_TYPE, oid, body);
-            return ApiResponse.ok(updated);
+            // 更新编排已收敛到 ProductLineServiceImpl#updateInstance，与统一入口共用同一实现
+            Object entity = softTypeInstanceService.updateForHost(IBA_ENTITY_TYPE, oid, body);
+            return ApiResponse.ok((ProductLine) entity);
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
+        } catch (UnsupportedOperationException e) {
+            return ApiResponse.fail(501, e.getMessage());
         }
     }
 
@@ -91,31 +98,19 @@ public class ProductLineController {
         return ApiResponse.ok(productLineService.restore(oid));
     }
 
-    /** 查询产品线详情（同时支持产品系列和产品型号） */
+    /**
+     * 查询产品线详情（同时支持产品系列和产品型号）。
+     *
+     * <p>「系列优先、型号回退并转换形态」的读取编排已收敛到
+     * {@code ProductLineInstanceCreator#get}，与统一入口共用同一实现。
+     */
     @GetMapping("/{oid}")
     public ApiResponse<ProductLine> getByOid(@PathVariable String oid) {
-        // 先查产品系列
-        ProductLine pl = productLineService.findByOid(oid);
-        if (pl != null) {
-            pl.setNodeType("PRODUCT_LINE");
-            return ApiResponse.ok(pl);
+        Object entity = softTypeInstanceService.getForHost(IBA_ENTITY_TYPE, oid, null);
+        if (entity == null) {
+            return ApiResponse.fail(404, "产品线或产品型号不存在");
         }
-        // 再查产品型号
-        ProductModel model = productModelService.findByOid(oid);
-        if (model != null) {
-            // 将 ProductModel 转换为 ProductLine 格式返回
-            ProductLine result = new ProductLine();
-            result.setOid(model.getOid());
-            result.setCode(model.getCode());
-            result.setName(model.getName());
-            result.setDescription(model.getDescription());
-            result.setThumbnail(model.getThumbnail());
-            result.setTeamOid(model.getTeamOid());
-            result.setParentOid(model.getParentOid()); // 产品型号的父级是产品系列
-            result.setNodeType("PRODUCT_MODEL"); // 标记为产品型号
-            return ApiResponse.ok(result);
-        }
-        return ApiResponse.fail(404, "产品线或产品型号不存在");
+        return ApiResponse.ok((ProductLine) entity);
     }
 
     /** 产品线列表 / 搜索 */

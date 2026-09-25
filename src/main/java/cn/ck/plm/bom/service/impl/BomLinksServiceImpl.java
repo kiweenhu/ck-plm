@@ -7,9 +7,11 @@
 
 package cn.ck.plm.bom.service.impl;
 
+import cn.ck.plm.bom.dto.BomCostReportVO;
 import cn.ck.plm.bom.dto.BomTreeNode;
 import cn.ck.plm.bom.entity.BomLinks;
 import cn.ck.plm.bom.mapper.BomLinksMapper;
+import cn.ck.plm.bom.service.BomCostCalculator;
 import cn.ck.plm.bom.service.api.BomLinksService;
 import cn.ck.plm.part.entity.Part;
 import cn.ck.plm.part.entity.PartIteration;
@@ -58,11 +60,27 @@ public class BomLinksServiceImpl implements BomLinksService {
         return bomLinks;
     }
 
+    /**
+     * 更新 BOM 行。
+     *
+     * <p><b>必须检查影响行数</b>：检出会新建一个小版本迭代并把 BOM 行整份复制过去（新 oid），
+     * 取消检出又会把工作副本的行删掉 —— 页面如果拿着上一个迭代的行 oid 来保存，
+     * UPDATE 会命中 0 行。早先这里不看行数、直接返回入参，前端于是把"保存"算作成功，
+     * 刷新后才发现数量没变（表现为"点了保存没生效，又退回旧数据"，且全程没有报错）。
+     *
+     * <p>现在：命中 0 行就抛错（由控制器折成 code=400 + 可读原因），
+     * 成功则<b>回读库里的行</b>再返回 —— 返回值就是事实，前端可以拿它核对。
+     */
     @Override
     public BomLinks update(BomLinks bomLinks) {
         bomLinks.setUpdatedAt(LocalDateTime.now());
-        bomLinksMapper.update(bomLinks);
-        return bomLinks;
+        int updated = bomLinksMapper.update(bomLinks);
+        if (updated == 0) {
+            throw new IllegalStateException(
+                    "该 BOM 行已不存在（可能已被检出的工作副本取代或被删除），"
+                    + "请刷新页面后重试：oid=" + bomLinks.getOid());
+        }
+        return bomLinksMapper.selectByOid(bomLinks.getOid());
     }
 
     @Override
@@ -171,6 +189,50 @@ public class BomLinksServiceImpl implements BomLinksService {
         }
 
         return node;
+    }
+
+    @Override
+    public BomCostReportVO costReport(String parentIterationOid) {
+        BomCostReportVO vo = new BomCostReportVO();
+        vo.setParentIterationOid(parentIterationOid);
+        if (parentIterationOid == null || parentIterationOid.isEmpty()) {
+            vo.setWarnings(new ArrayList<>(List.of("未指定父件迭代，无法计算成本")));
+            return vo;
+        }
+
+        // 先复用结构树（含防环与深度限制），再在它之上做一次卷积遍历
+        List<BomTreeNode> lines = buildTree(parentIterationOid);
+        BomCostCalculator.Summary summary = BomCostCalculator.apply(lines);
+        vo.setLines(lines);
+        vo.setDirectCost(summary.getDirectCost());
+        vo.setTotalCost(summary.getTotalCost());
+        vo.setTotalLines(summary.getTotalLines());
+        vo.setMissingCostLines(summary.getMissingCostLines());
+
+        // 报告头部要说明"这是谁的成本"：光有数字，过两天没人认得出算的是哪一版
+        PartIteration parentIteration = partService.findIterationByOid(parentIterationOid);
+        if (parentIteration != null) {
+            vo.setParentVersion(parentIteration.getDisplayVersion());
+            if (parentIteration.getStatus() != null) {
+                vo.setParentStatus(parentIteration.getStatus().getCode());
+            }
+            Part parentPart = partService.findByOid(parentIteration.getMasterOid());
+            if (parentPart != null) {
+                vo.setParentCode(parentPart.getNumber());
+                vo.setParentName(parentPart.getName());
+            }
+        }
+
+        List<String> warnings = new ArrayList<>();
+        if (summary.getMissingCostLines() > 0) {
+            warnings.add("有 " + summary.getMissingCostLines()
+                    + " 行未填「单位成本」，已按 0 计入 —— 实际成本可能高于本报告");
+        }
+        if (summary.getMaxDepth() >= MAX_TREE_DEPTH - 1) {
+            warnings.add("BOM 层级接近上限（" + MAX_TREE_DEPTH + " 层），更深的层级未展开，成本可能不完整");
+        }
+        vo.setWarnings(warnings);
+        return vo;
     }
 
     @Override

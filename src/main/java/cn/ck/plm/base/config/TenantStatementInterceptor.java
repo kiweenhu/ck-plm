@@ -77,9 +77,10 @@ public class TenantStatementInterceptor implements Interceptor {
             // 类型关联表（有 tenant_oid 列，不同租户可绑定不同规则）
             "ck_type_version_rule_link", "ck_type_number_rule_link",
             "ck_type_lifecycle_template_link",
-            // 生命周期
+            // 生命周期（含「状态 → 流程模板」关联：平台模板的状态关联在业务租户下也要可见）
             "ck_lifecycle_status", "ck_lifecycle_template", "ck_lifecycle_template_state",
             "ck_lifecycle_template_transition", "ck_lifecycle_template_iteration",
+            "ck_type_lifecycle_state_process_link",
             // 编码/版本规则
             "ck_number", "ck_version_rule",
             // 类型系统（ck_iba / ck_type_iba 已实现 TenantEntity，按业务表隔离）
@@ -89,7 +90,9 @@ public class TenantStatementInterceptor implements Interceptor {
             // 视图
             "ck_view", "ck_view_transition",
             // 角色和角色成员（平台角色所有租户可见，租户可自定义业务角色）
-            "ck_role", "ck_role_member"
+            "ck_role", "ck_role_member",
+            // 流程表单模板（内置模板属平台租户，所有租户的设计器都要能选到；租户可加自己的）
+            "ck_process_form_template"
     ));
 
     private static final Pattern TABLE_PATTERN = Pattern.compile(

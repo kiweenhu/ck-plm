@@ -21,8 +21,13 @@ import cn.ck.plm.product.mapper.TeamMapper;
 import cn.ck.plm.product.mapper.TeamMemberMapper;
 import cn.ck.plm.product.service.api.FolderService;
 import cn.ck.plm.product.service.api.ProductLineService;
+import cn.ck.plm.product.service.api.ProductModelService;
 import cn.ck.plm.product.service.api.StageService;
+import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
+import cn.ck.plm.softtype.entity.TypeDefinition;
 import cn.ck.plm.softtype.mapper.TypeDefinitionMapper;
+import cn.ck.plm.softtype.service.api.SoftTypeInstanceCapability;
+import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -32,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,9 +48,12 @@ import java.util.Set;
  * {@link ProductLineService} 的数据库实现。
  */
 @Service
-public class ProductLineServiceImpl implements ProductLineService {
+public class ProductLineServiceImpl implements ProductLineService, SoftTypeInstanceCapability {
 
     private static final Logger log = LoggerFactory.getLogger(ProductLineServiceImpl.class);
+
+    /** 能力宿主 code（= type_definition.root_type_code） */
+    private static final String HOST = "PRODUCT_LINE";
 
     private final ProductLineMapper productLineMapper;
     private final ProductModelMapper productModelMapper;
@@ -54,6 +63,9 @@ public class ProductLineServiceImpl implements ProductLineService {
     private final UserMapper userMapper;
     private final FolderService folderService;
     private final StageService stageService;
+    private final IbaDataSupport ibaDataSupport;
+    private final ObjectMapper objectMapper;
+    private final ProductModelService productModelService;
 
     public ProductLineServiceImpl(ProductLineMapper productLineMapper,
                                    ProductModelMapper productModelMapper,
@@ -62,7 +74,10 @@ public class ProductLineServiceImpl implements ProductLineService {
                                    TeamMemberMapper teamMemberMapper,
                                    UserMapper userMapper,
                                    FolderService folderService,
-                                   StageService stageService) {
+                                   StageService stageService,
+                                   IbaDataSupport ibaDataSupport,
+                                   ObjectMapper objectMapper,
+                                   ProductModelService productModelService) {
         this.productLineMapper = productLineMapper;
         this.productModelMapper = productModelMapper;
         this.typeDefinitionMapper = typeDefinitionMapper;
@@ -71,6 +86,77 @@ public class ProductLineServiceImpl implements ProductLineService {
         this.userMapper = userMapper;
         this.folderService = folderService;
         this.stageService = stageService;
+        this.ibaDataSupport = ibaDataSupport;
+        this.objectMapper = objectMapper;
+        this.productModelService = productModelService;
+    }
+
+    // ==================== 能力宿主策略（SoftTypeInstanceCapability）====================
+
+    @Override
+    public String hostCode() {
+        return HOST;
+    }
+
+    @Override
+    public Set<SoftTypeInstanceCapability.Operation> supportedOperations() {
+        return EnumSet.of(
+                SoftTypeInstanceCapability.Operation.CREATE,
+                SoftTypeInstanceCapability.Operation.READ,
+                SoftTypeInstanceCapability.Operation.UPDATE);
+    }
+
+    @Override
+    public SoftTypeInstanceResult createInstance(TypeDefinition type, Map<String, Object> payload) {
+        ProductLine productLine = objectMapper.convertValue(payload, ProductLine.class);
+        ProductLine created = create(productLine);
+        // 新建：全量保存 IBA（无旧数据，delete-all 无副作用）
+        ibaDataSupport.saveIbaValues(HOST, created.getOid(), payload);
+
+        SoftTypeInstanceResult result = new SoftTypeInstanceResult();
+        result.setOid(created.getOid());
+        result.setNumber(created.getCode());
+        result.setName(created.getName());
+        result.setEntity(created);
+        return result;
+    }
+
+    /**
+     * 读取产品线详情：先查产品系列，未命中再查产品型号并转换为 ProductLine 形态。
+     *
+     * <p>型号回退是产品树节点的既有语义（节点可能指向系列或型号）。
+     */
+    @Override
+    public Object getInstance(String oid, Map<String, Object> params) {
+        ProductLine pl = findByOid(oid);
+        if (pl != null) {
+            pl.setNodeType("PRODUCT_LINE");
+            return pl;
+        }
+        ProductModel model = productModelService.findByOid(oid);
+        if (model != null) {
+            ProductLine result = new ProductLine();
+            result.setOid(model.getOid());
+            result.setCode(model.getCode());
+            result.setName(model.getName());
+            result.setDescription(model.getDescription());
+            result.setThumbnail(model.getThumbnail());
+            result.setTeamOid(model.getTeamOid());
+            result.setParentOid(model.getParentOid()); // 产品型号的父级是产品系列
+            result.setNodeType("PRODUCT_MODEL");
+            return result;
+        }
+        return null;
+    }
+
+    @Override
+    public Object updateInstance(String oid, Map<String, Object> body) {
+        ProductLine productLine = objectMapper.convertValue(body, ProductLine.class);
+        productLine.setOid(oid);
+        ProductLine updated = update(productLine);
+        // 合并保存 IBA（保留已持久化但本次未提交的字段）
+        ibaDataSupport.mergeIbaValues(HOST, oid, body);
+        return updated;
     }
 
     // ===== 产品线 =====
