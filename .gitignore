@@ -43,3 +43,13 @@ frontend/.env.local
 
 # ===== Docs =====
 docs/
+
+# ===== 调试 / 探索产物（不进开源仓库） =====
+debug-*.png
+*-probe*.xml
+*_state.png
+anchor-check.png
+design.png
+.start-backend.cmd
+playwright-report/
+test-results/

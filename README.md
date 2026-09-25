@@ -60,7 +60,7 @@ PLM 的本质不是一堆 CRUD 页面，而是**版本控制引擎 + 生命周�
 | API 文档 | Springdoc OpenAPI 2.8.0（Swagger UI） |
 | 前端框架 | Vue 3.4 + Vite 5.2 + Ant Design Vue 4.2 |
 | 状态管理 | Pinia 3 + Vue Router 4 + Axios |
-| 工作流 | Activiti 7（前端 UI 已就绪，后端待集成） |
+| 工作流 | Flowable 7.2.0（已引入依赖，后端集成进行中） |
 
 ## 快速开始
 
@@ -123,14 +123,14 @@ npm run dev
 
 ## 已知限制
 
-- Activiti 7 工作流引擎因 Spring Boot 3.5 兼容性问题暂未集成（前端 UI 已就绪）
+- 流程引擎已切换为 **Flowable 7.2.0**（原 Flowable 7 已停止演进且与 Spring Boot 3.5 存在兼容阻塞），依赖已引入，后端集成与前后端打通进行中
 - BOM 用量链接（PartUsageLink）尚未实现，部件结构树待补全
 - 功能架构模块已完成基础能力，分解结构/物理映射/基线对比待完善
 - 变更管理（ECR/ECO）尚未实现
 
 ## 后续规划
 
-- Activiti 工作流引擎集成
+- Flowable 7 工作流引擎集成
 - BOM 多视图管理与用量链接
 - 功能架构完整能力（结构/映射/基线）
 - 变更管理（ECR/ECO）
