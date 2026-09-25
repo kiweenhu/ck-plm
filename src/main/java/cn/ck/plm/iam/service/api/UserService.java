@@ -43,6 +43,14 @@ public interface UserService {
 
     List<User> findAll();
 
+    /**
+     * 按租户取用户（不依赖请求线程的 TenantContext）。
+     *
+     * <p>用于"给某租户全体发通知"这类后台场景：那时线程里未必有租户上下文，
+     * 拿 {@link #findAll()} 会得到空集或错的租户。
+     */
+    List<User> findByTenantOid(String tenantOid);
+
     List<User> findByOrg(String orgOid);
 
     List<User> search(String keyword);

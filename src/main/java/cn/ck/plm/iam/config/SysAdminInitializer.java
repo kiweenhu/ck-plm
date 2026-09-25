@@ -112,7 +112,7 @@ public class SysAdminInitializer implements CommandLineRunner {
                 "ck_organization", "ck_product_line", "ck_product_model", "ck_stage",
                 "ck_folder", "ck_team", "ck_team_member", "ck_document",
                 "ck_document_iteration", "ck_file", "ck_attachment", "ck_media",
-                "ck_workflow_category", "ck_user_activity", "ck_type_iba_data",
+                "ck_process_category", "ck_process_entity_set", "ck_user_activity", "ck_type_iba_data",
                 "ck_type_page_layout", "ck_type_definition", "ck_cls_page_layout",
                 "ck_number", "ck_version_rule", "ck_lifecycle_status",
                 "ck_lifecycle_template", "ck_lifecycle_template_iteration",

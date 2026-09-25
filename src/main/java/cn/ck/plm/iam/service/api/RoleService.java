@@ -8,11 +8,12 @@
 package cn.ck.plm.iam.service.api;
 
 import cn.ck.plm.iam.entity.Role;
+import cn.ck.plm.iam.entity.User;
 
 import java.util.List;
 
 /**
- * 角色管理服务接口，提供角色的 CRUD 能力。
+ * 角色管理服务接口，提供角色的 CRUD 能力与角色成员管理。
  */
 public interface RoleService {
 
@@ -33,4 +34,19 @@ public interface RoleService {
     List<Role> search(String keyword);
 
     boolean existsByCode(String code);
+
+    /** 查询全部平台级角色（roleType=PLATFORM） */
+    List<Role> findPlatformRoles();
+
+    /** 查询某角色的成员用户列表 */
+    List<User> findRoleMembers(String roleOid);
+
+    /** 添加角色成员（用户/角色须存在，重复添加幂等跳过） */
+    void addRoleMember(String roleOid, String userOid);
+
+    /** 移除角色成员 */
+    void removeRoleMember(String roleOid, String userOid);
+
+    /** 查询当前租户的管理员角色（TENANT_ADMIN）及其成员，返回 { roleOid, roleName, members } */
+    java.util.Map<String, Object> findAdminMembers();
 }

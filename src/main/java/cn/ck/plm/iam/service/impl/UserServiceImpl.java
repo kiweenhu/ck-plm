@@ -181,6 +181,14 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public List<User> findByTenantOid(String tenantOid) {
+        if (tenantOid == null || tenantOid.trim().isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        return userMapper.selectAll(tenantOid.trim());
+    }
+
+    @Override
     public List<User> findByOrg(String orgOid) {
         if (orgOid == null) {
             return findAll();

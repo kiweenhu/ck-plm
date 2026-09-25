@@ -57,4 +57,22 @@ public interface PostgreSqlNotificationMapper extends NotificationMapper {
             @Result(property = "updatedAt",  column = "updated_at")
     })
     List<Notification> selectByUserOid(@Param("userOid") String userOid, @Param("limit") int limit);
+
+    @Override
+    @Select("SELECT oid, user_oid, title, content, type, target_type, target_oid, is_read, "
+            + "creator, created_at, updater, updated_at "
+            + "FROM ck_notification WHERE user_oid = #{userOid} AND is_read = false "
+            + "ORDER BY created_at DESC LIMIT #{limit}")
+    @ResultMap("notificationResult")
+    List<Notification> selectUnreadByUserOid(@Param("userOid") String userOid, @Param("limit") int limit);
+
+    @Override
+    @Select("SELECT oid, user_oid, title, content, type, target_type, target_oid, is_read, "
+            + "creator, created_at, updater, updated_at "
+            + "FROM ck_notification WHERE user_oid = #{userOid} AND type = #{type} "
+            + "ORDER BY created_at DESC LIMIT #{limit}")
+    @ResultMap("notificationResult")
+    List<Notification> selectByUserOidAndType(@Param("userOid") String userOid,
+                                              @Param("type") String type,
+                                              @Param("limit") int limit);
 }

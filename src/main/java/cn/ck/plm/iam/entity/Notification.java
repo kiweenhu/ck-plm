@@ -8,6 +8,7 @@
 package cn.ck.plm.iam.entity;
 
 import cn.ck.plm.base.entity.BaseEntity;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDateTime;
 
 /**
@@ -66,6 +67,17 @@ public class Notification extends BaseEntity {
     public String getTargetOid() { return targetOid; }
     public void setTargetOid(String targetOid) { this.targetOid = targetOid; }
 
+    /**
+     * 是否已读。
+     *
+     * <p>对外字段名必须钉成 {@code isRead}：getter 叫 {@code isRead()} 时 Jackson 会把
+     * {@code is} 当成布尔前缀吃掉，序列化成 {@code "read"}；而前端（通知中心、铃铛下拉、
+     * 顶栏滚动条）读的都是 {@code isRead} —— 结果就是"标了已读、刷新又变未读"：
+     * 库里改对了，接口却从没把这个值给出去。
+     */
+    @JsonProperty("isRead")
     public boolean isRead() { return isRead; }
+
+    @JsonProperty("isRead")
     public void setRead(boolean read) { isRead = read; }
 }
