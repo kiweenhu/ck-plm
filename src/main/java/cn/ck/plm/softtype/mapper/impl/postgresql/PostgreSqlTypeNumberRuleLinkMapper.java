@@ -56,4 +56,9 @@ public interface PostgreSqlTypeNumberRuleLinkMapper extends TypeNumberRuleLinkMa
     @Override
     @Select("SELECT COUNT(*) FROM " + TABLE + " WHERE type_oid = #{typeOid}")
     int existsByTypeOid(@Param("typeOid") String typeOid);
+
+    @Override
+    @Update("UPDATE " + TABLE + " SET number_rule_code = #{newCode}, updated_at = CURRENT_TIMESTAMP "
+            + "WHERE number_rule_code = #{oldCode}")
+    int updateNumberRuleCode(@Param("oldCode") String oldCode, @Param("newCode") String newCode);
 }

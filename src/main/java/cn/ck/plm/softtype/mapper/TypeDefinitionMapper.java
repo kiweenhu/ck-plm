@@ -8,6 +8,8 @@
 package cn.ck.plm.softtype.mapper;
 
 import cn.ck.plm.softtype.entity.TypeDefinition;
+import org.apache.ibatis.annotations.Param;
+
 import java.util.List;
 
 /**
@@ -58,4 +60,16 @@ public interface TypeDefinitionMapper {
 
     /** 为已有 OOTB 类型补充 root_type_code = code（兼容旧数据） */
     int patchRootTypeCodeForOotb();
+
+    /**
+     * 归一 type_kind 大小写为统一的大写形式（幂等）。
+     *
+     * <p>历史数据中 DOCUMENT / PART / PRODUCT_LINE / PRODUCT_MODEL 以 {@code 'ootb'} 小写存储，
+     * 与约定的大写 {@code 'OOTB'} 不一致，导致 {@code isOotb()} 判定、"系统预置类型不可删除"
+     * 保护、{@code patchRootTypeCodeForOotb} 等逻辑失效。
+     */
+    int normalizeTypeKindCase();
+
+    /** 更新类型的父类型 oid（类型树结构调整 / 数据迁移，如电子域类型改挂到域锚点下） */
+    int updateParentOid(@Param("oid") String oid, @Param("parentOid") String parentOid);
 }

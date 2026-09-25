@@ -20,6 +20,7 @@ import java.util.List;
  * <ul>
  *   <li>{@code OOTB} — 系统内置的实体对象（DOCUMENT、PART、PRODUCT、RESOURCE）</li>
  *   <li>{@code SOFT_TYPE} — 基于 OOTB 或另一个 SOFT_TYPE 创建的子类型</li>
+ *   <li>{@code DOMAIN} — 业务域锚点（如 ECAD_DOMAIN 电子域），该业务域的对象类型挂在其下</li>
  * </ul>
  *
  * <p>层级关系通过 {@code parentOid} 自引用构建：OOTB 类型 parentOid 为 null，
@@ -103,6 +104,12 @@ public class TypeDefinition extends BaseEntity implements TenantEntity {
 
     public static final String KIND_OOTB = "OOTB";
     public static final String KIND_SOFT_TYPE = "SOFT_TYPE";
+    /**
+     * 域锚点类型：业务域的命名空间根（如 ECAD_DOMAIN 电子设计域）。
+     * 该业务域的对象类型作为 SOFT_TYPE 挂在域锚点之下，通过显式
+     * {@link #rootTypeCode} 追溯能力宿主（PART / DOCUMENT）。
+     */
+    public static final String KIND_DOMAIN = "DOMAIN";
 
     // ==================== 构造方法 ====================
 
@@ -122,12 +129,26 @@ public class TypeDefinition extends BaseEntity implements TenantEntity {
 
     // ==================== 便捷方法 ====================
 
+    /**
+     * 是否为系统内置（OOTB）类型。
+     *
+     * <p><b>大小写不敏感</b>：历史数据中 {@code type_kind} 存在大小写混用
+     * （DOCUMENT / PART / PRODUCT_LINE / PRODUCT_MODEL 曾以 {@code 'ootb'} 小写存储），
+     * 早期实现用大小写敏感的 {@code equals} 判定，导致这些系统预置类型
+     * 既判不出 OOTB（"不可删除"保护失效），也无法作为根类型被 {@code findRootCode} 识别。
+     */
     public boolean isOotb() {
-        return KIND_OOTB.equals(typeKind);
+        return typeKind != null && KIND_OOTB.equalsIgnoreCase(typeKind);
     }
 
+    /** 是否为软类型（SOFT_TYPE），大小写不敏感（原因同 {@link #isOotb()}） */
     public boolean isSoftType() {
-        return KIND_SOFT_TYPE.equals(typeKind);
+        return typeKind != null && KIND_SOFT_TYPE.equalsIgnoreCase(typeKind);
+    }
+
+    /** 是否为业务域锚点类型（域的命名空间根，非具体业务对象类型），大小写不敏感 */
+    public boolean isDomain() {
+        return typeKind != null && KIND_DOMAIN.equalsIgnoreCase(typeKind);
     }
 
     public boolean isRoot() {

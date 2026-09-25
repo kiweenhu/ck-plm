@@ -9,6 +9,7 @@ import cn.ck.plm.base.util.TenantContext;
 import cn.ck.plm.softtype.entity.TypeLifecycleTemplateLink;
 import cn.ck.plm.softtype.mapper.TypeLifecycleTemplateLinkMapper;
 import cn.ck.plm.base.mapper.LifecycleTemplateMapper;
+import cn.ck.plm.softtype.service.api.TypeLifecycleStateProcessService;
 import cn.ck.plm.softtype.service.api.TypeLifecycleTemplateLinkService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,10 @@ public class TypeLifecycleTemplateLinkServiceImpl implements TypeLifecycleTempla
     @Autowired
     private LifecycleTemplateMapper lifecycleTemplateMapper;
 
+    /** 状态 → 流程模板 关联（换模板 / 解绑时要清掉该类型的旧绑定） */
+    @Autowired
+    private TypeLifecycleStateProcessService typeLifecycleStateProcessService;
+
     @Override
     @Transactional
     public TypeLifecycleTemplateLink bindTemplate(String typeOid, String lifecycleTemplateCode) {
@@ -40,8 +45,14 @@ public class TypeLifecycleTemplateLinkServiceImpl implements TypeLifecycleTempla
 
         TypeLifecycleTemplateLink existing = mapper.selectByTypeOid(typeOid);
         if (existing != null) {
+            boolean templateChanged = !lifecycleTemplateCode.equals(existing.getLifecycleTemplateCode());
             existing.setLifecycleTemplateCode(lifecycleTemplateCode);
             mapper.update(existing);
+            if (templateChanged) {
+                // 换模板了：旧模板下的「状态 → 流程」对该类型已无意义，留着会变成
+                // "界面上看不到、却仍挡着流程模板删除"的幽灵引用
+                typeLifecycleStateProcessService.clearByType(typeOid);
+            }
             return existing;
         }
 
@@ -56,6 +67,8 @@ public class TypeLifecycleTemplateLinkServiceImpl implements TypeLifecycleTempla
     @Transactional
     public void unbindTemplate(String typeOid) {
         mapper.deleteByTypeOid(typeOid);
+        // 模板都不绑了，状态 → 流程 的绑定一并清掉（同上：不留幽灵引用）
+        typeLifecycleStateProcessService.clearByType(typeOid);
     }
 
     @Override

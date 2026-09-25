@@ -80,12 +80,18 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
             td.setTenantOid(tenantOid());
         }
 
-        // OOTB 类型：rootTypeCode = code；子类型：沿 parentOid 追溯
+        // OOTB 类型：rootTypeCode = code；子类型：显式声明优先，否则沿 parentOid 追溯
         if (td.isOotb()) {
             td.setRootTypeCode(td.getCode());
         } else if (td.isSoftType() && td.getParentOid() != null && !td.getParentOid().isEmpty()) {
-            String rootCode = findRootCode(td.getParentOid(), 0);
-            if (rootCode != null) {
+            if (td.getRootTypeCode() == null || td.getRootTypeCode().trim().isEmpty()) {
+                String rootCode = findRootCode(td.getParentOid(), 0);
+                if (rootCode == null) {
+                    // 父链经过域锚点（DOMAIN）：域锚点是纯命名空间、无单一能力宿主，
+                    // 必须由调用方显式声明 rootTypeCode，否则无法确定数据落在 ck_part 还是 ck_document
+                    throw new IllegalArgumentException(
+                            "在域锚点（DOMAIN）下创建子类型必须指定 rootTypeCode（能力宿主，如 PART / DOCUMENT）");
+                }
                 td.setRootTypeCode(rootCode);
             }
         }
@@ -293,7 +299,16 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
         if (td == null) return null;
         if (numberRuleLinkMapper.existsByTypeOid(td.getOid()) > 0) return td.getOid();
         if (td.isSoftType() && td.getParentOid() != null && !td.getParentOid().isEmpty()) {
-            return findRuleLinkSource(mapper.selectByOid(td.getParentOid()));
+            String fromParent = findRuleLinkSource(mapper.selectByOid(td.getParentOid()));
+            if (fromParent != null) return fromParent;
+        }
+        // 兜底：父链上找不到规则时（父链可能经过域锚点 DOMAIN，域锚点本身不绑定任何规则），
+        // 按能力宿主 rootTypeCode 定位对应 OOTB 根类型（如 PART / DOCUMENT），继承其规则绑定
+        if (td.getRootTypeCode() != null) {
+            TypeDefinition root = mapper.selectByCode(td.getRootTypeCode(), tenantOid(), platformOid());
+            if (root != null && numberRuleLinkMapper.existsByTypeOid(root.getOid()) > 0) {
+                return root.getOid();
+            }
         }
         return null;
     }
@@ -303,7 +318,9 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
         if (oid == null || depth > 10) return null;
         TypeDefinition td = mapper.selectByOid(oid);
         if (td == null) return null;
-        if (TypeDefinition.KIND_OOTB.equals(td.getTypeKind())) {
+        // 使用 isOotb()（大小写不敏感）：历史上 PART / DOCUMENT 等以 'ootb' 小写存储，
+        // 大小写敏感判定会让它们无法被识别为根类型，进而误报"域锚点"错误
+        if (td.isOotb()) {
             return td.getCode();
         }
         return findRootCode(td.getParentOid(), depth + 1);
@@ -338,8 +355,8 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
         if (oid == null || oid.trim().isEmpty()) return false;
         TypeDefinition existing = mapper.selectByOid(oid);
         if (existing == null) return false;
-        // OOTB 系统预置类型不可删除
-        if (TypeDefinition.KIND_OOTB.equals(existing.getTypeKind())) {
+        // OOTB 系统预置类型不可删除（isOotb 大小写不敏感：避免 'ootb' 历史数据绕过保护）
+        if (existing.isOotb()) {
             throw new IllegalArgumentException("系统预置类型（OOTB）不可删除");
         }
         TenantContext.requireEditPermission(existing.getTenantOid(), "类型定义");

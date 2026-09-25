@@ -16,6 +16,8 @@ import java.util.Map;
  * 类型-生命周期模板关联 REST 控制器。
  *
  * <p>提供类型与生命周期模板的绑定/解绑/查询接口。
+ * 「该类型所绑生命周期模板的状态 → 流程模板」的关联是同族但独立的一条链路，
+ * 见 {@link TypeLifecycleStateProcessLinkController}。
  */
 @RestController
 @RequestMapping("/api/type-lifecycle-template-links")

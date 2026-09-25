@@ -104,7 +104,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
     @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
-            "WHERE type_kind = #{typeKind} AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
+            "WHERE UPPER(type_kind) = UPPER(#{typeKind}) AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
             "ORDER BY code, CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END")
     @ResultMap("tdResult")
     @Override
@@ -163,6 +163,15 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
 
     @Override
     @Update("UPDATE ck_type_definition SET root_type_code = code " +
-            "WHERE type_kind = 'OOTB' AND root_type_code IS NULL")
+            "WHERE UPPER(type_kind) = 'OOTB' AND root_type_code IS NULL")
     int patchRootTypeCodeForOotb();
+
+    @Override
+    @Update("UPDATE ck_type_definition SET type_kind = UPPER(type_kind) " +
+            "WHERE type_kind IS NOT NULL AND type_kind <> UPPER(type_kind)")
+    int normalizeTypeKindCase();
+
+    @Override
+    @Update("UPDATE ck_type_definition SET parent_oid = #{parentOid} WHERE oid = #{oid}")
+    int updateParentOid(@Param("oid") String oid, @Param("parentOid") String parentOid);
 }

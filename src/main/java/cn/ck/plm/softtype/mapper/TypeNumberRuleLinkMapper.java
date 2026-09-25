@@ -59,4 +59,15 @@ public interface TypeNumberRuleLinkMapper {
      * 检查类型是否已绑定编码规则
      */
     int existsByTypeOid(@Param("typeOid") String typeOid);
+
+    /**
+     * 批量改绑编码规则 code（数据修正用，幂等）。
+     *
+     * <p>用于编码规则 code 更名后同步所有引用该规则的绑定关系。
+     *
+     * @param oldCode 旧规则编码
+     * @param newCode 新规则编码
+     * @return 受影响行数
+     */
+    int updateNumberRuleCode(@Param("oldCode") String oldCode, @Param("newCode") String newCode);
 }

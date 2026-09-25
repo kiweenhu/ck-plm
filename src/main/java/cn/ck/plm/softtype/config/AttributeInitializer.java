@@ -9,6 +9,8 @@ package cn.ck.plm.softtype.config;
 
 import cn.ck.plm.document.entity.Document;
 import cn.ck.plm.document.entity.DocumentIteration;
+import cn.ck.plm.document.entity.EngineeringDocument;
+import cn.ck.plm.document.entity.EngineeringDocumentIteration;
 import cn.ck.plm.base.entity.BaseEntity;
 import cn.ck.plm.part.entity.Part;
 import cn.ck.plm.part.entity.PartIteration;
@@ -76,6 +78,9 @@ public class AttributeInitializer implements CommandLineRunner {
         ENTITY_CODE_MAP.put(Document.class,     "DOCUMENT");
         ENTITY_CODE_MAP.put(Part.class,         "PART");
         ENTITY_CODE_MAP.put(FunctionalEntity.class, "FUNCTIONAL");
+        // 工程数据（EngineeringDocument）：root_type_code = ENG_DOCUMENT，
+        // 承载 FOOTPRINT / SYMBOL / SCHEMATIC / PCB_LAYOUT / DRAWING_2D 等软类型的能力宿主
+        ENTITY_CODE_MAP.put(EngineeringDocument.class, "ENG_DOCUMENT");
     }
 
     // ==================== 复合实体扫描配置 ====================
@@ -90,6 +95,8 @@ public class AttributeInitializer implements CommandLineRunner {
     static {
         composite(DocumentIteration.class, "DOCUMENT");
         composite(PartIteration.class, "PART");
+        // 工程数据子版本字段（CAD 名称/制图属性等）注册到 ENG_DOCUMENT 根类型下
+        composite(EngineeringDocumentIteration.class, "ENG_DOCUMENT");
     }
 
     // ==================== 字段元数据配置 ====================
@@ -182,6 +189,19 @@ public class AttributeInitializer implements CommandLineRunner {
         // ---------- PartIteration 特有字段 ----------
         fm("unit",    "单位",   76, true,  true,  true);
         fm("source",  "来源",   77, true,  true,  true);
+
+        // ---------- EngineeringDocumentIteration 特有字段（ENG_DOCUMENT 工程数据） ----------
+        fm("cadName",     "CAD 名称",      78, true,  true,  true);
+        fm("cadType",     "CAD 类型",      79, true,  true,  true);
+        fm("cadTool",     "来源 CAD 工具", 80, true,  true,  true);
+        fm("sheetSize",   "图幅",          81, false, true,  true);
+        fm("scale",       "比例",          82, false, true,  true);
+        fm("sheetNumber", "图号",          83, true,  true,  true);
+        fm("sheetCount",  "图纸张数",      84, false, true,  true);
+        fm("projection",  "投影方式",      85, false, true,  true);
+        fm("author",      "设计者",        86, false, true,  true);
+        fm("material",    "材料",          87, true,  true,  true);
+        fm("weight",      "重量",          88, false, true,  true);
     }
 
     // ==================== 构造注入 ====================
@@ -240,6 +260,8 @@ public class AttributeInitializer implements CommandLineRunner {
         reinitPartAttributes();
         // ===== FUNCTIONAL + FunctionalIteration 复合实体属性完全重建 =====
         reinitFunctionalAttributes();
+        // ===== ENG_DOCUMENT + EngineeringDocumentIteration 复合实体属性完全重建 =====
+        reinitEngineeringDocumentAttributes();
         // ===== ProductLine / ProductModel 属性完全重建 =====
         reinitProductLineAttributes();
         reinitProductModelAttributes();
@@ -308,6 +330,26 @@ public class AttributeInitializer implements CommandLineRunner {
         }
         int count = service.reinitSystemAttributes(entityCode, allDefs);
         log.info("  √ [重建] {}: {} 个属性定义已重建", label, count);
+    }
+
+    /**
+     * ENG_DOCUMENT 复合实体属性重建（先清后建，确保与实体类字段完全一致）。
+     *
+     * <p>工程数据由 Master（{@link EngineeringDocument}）+ Iteration
+     * （{@link EngineeringDocumentIteration}）两部分字段构成，与
+     * DOCUMENT / PART / FUNCTIONAL 采用同一重建策略；此前遗漏，导致该根类型
+     * 只走增量注册、无法随实体类字段变化自动校正。
+     */
+    private void reinitEngineeringDocumentAttributes() {
+        String entityCode = "ENG_DOCUMENT";
+        try {
+            List<AttributeDefinition> engDefs = scanFields(EngineeringDocument.class);
+            List<AttributeDefinition> iterDefs = scanFields(EngineeringDocumentIteration.class);
+            mergeAndReinit(entityCode, engDefs, iterDefs,
+                    "EngineeringDocument + EngineeringDocumentIteration → ENG_DOCUMENT");
+        } catch (Exception e) {
+            log.error("  ✗ [重建] ENG_DOCUMENT 属性定义失败: {}", e.getMessage(), e);
+        }
     }
 
     /** ProductLine 属性重建 */

@@ -66,6 +66,12 @@ public class IbaDataSupport {
             "ckfileOid", "attachmentOid",
             // 容器 / 位置 / 属性
             "folderOid", "stageOid", "unit", "source", "location",
+            // EngineeringDocumentIteration 的 CAD 专有属性与 2D 制图属性（真实列，勿误存为 IBA）
+            "cadName", "cadType", "cadTool",
+            "sheetSize", "scale", "sheetNumber", "sheetCount", "projection",
+            "author", "material", "weight",
+            // EcadProject 专有属性（真实列，勿误存为 IBA）
+            "domainOid", "relatedProduct", "projectPhase", "owner",
             // ProductLine / 树形展示特有
             "code", "thumbnail", "teamOid", "parentOid", "children", "nodeType", "icon", "extAttrs",
             // 通用标识 / 持久化状态

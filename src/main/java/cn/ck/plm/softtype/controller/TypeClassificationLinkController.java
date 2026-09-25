@@ -53,7 +53,12 @@ public class TypeClassificationLinkController {
                 cls.setChildren(java.util.Collections.emptyList());
                 return ApiResponse.ok(cls);
             }
-            return ApiResponse.fail(404, "分类不存在: " + link.getClassificationOid());
+            // 绑定指向的分类已经不存在了（分类被删过 → 悬空绑定）。这里必须说清"哪条绑定坏了、
+            // 去哪修"，而不是甩一个裸 oid —— 界面上没有任何入口能让用户理解那个 oid 是什么，
+            // 只会得到一个像是程序出错的提示（这条信息原来就是"分类不存在: <oid>"）。
+            return ApiResponse.fail(404, "该类型绑定的分类已不存在（可能已被删除），"
+                    + "请在「业务配置 → 数据模型」里为它重新绑定分类。分类 oid: "
+                    + link.getClassificationOid());
         }
         return ApiResponse.ok(subtree);
     }
