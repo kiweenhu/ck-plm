@@ -43,91 +43,93 @@ public class PageLayoutInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         log.info("开始初始化 OOTB 默认页面布局...");
-        int inserted = 0, failed = 0;
+        // existing 计数的是"已存在、幂等跳过"，不是失败 —— 早前把它叫 failed，
+        // 于是每次启动日志都在喊"失败 12 个"，白白吓人一跳（真实的失败由 ensureLayout 内的 warn/error 报出）。
+        int inserted = 0, existing = 0;
 
         try {
             // ==== PRODUCT_LINE: list ====
             if (ensureLayout("PRODUCT_LINE", "list", "产品系列列表", buildProductLineListLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== PRODUCT_LINE: create ====
             if (ensureLayout("PRODUCT_LINE", "create", "新建产品系列", buildProductLineCreateLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== PRODUCT_LINE: update ====
             if (ensureLayout("PRODUCT_LINE", "update", "编辑产品系列", buildProductLineUpdateLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== PRODUCT_LINE: detail ====
             if (ensureLayout("PRODUCT_LINE", "detail", "产品系列详情", buildProductLineDetailLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== PRODUCT_MODEL: list ====
             if (ensureLayout("PRODUCT_MODEL", "list", "产品型号列表", buildProductModelListLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== PRODUCT_MODEL: create ====
             if (ensureLayout("PRODUCT_MODEL", "create", "新建产品型号", buildProductModelCreateLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== PRODUCT_MODEL: update ====
             if (ensureLayout("PRODUCT_MODEL", "update", "编辑产品型号", buildProductModelUpdateLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== PRODUCT_MODEL: detail ====
             if (ensureLayout("PRODUCT_MODEL", "detail", "产品型号详情", buildProductModelDetailLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== DOCUMENT: list ====
             if (ensureLayout("DOCUMENT", "list", "文档列表", buildDocumentListLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== DOCUMENT: create ====
             if (ensureLayout("DOCUMENT", "create", "新建文档", buildDocumentCreateLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== DOCUMENT: update ====
             if (ensureLayout("DOCUMENT", "update", "编辑文档", buildDocumentUpdateLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== DOCUMENT: detail ====
             if (ensureLayout("DOCUMENT", "detail", "文档详情", buildDocumentDetailLayout())) {
                 inserted++;
             } else {
-                failed++;
+                existing++;
             }
 
             // ==== Part 子类型继承 PART 当前定义的布局 ====
@@ -138,21 +140,29 @@ public class PageLayoutInitializer implements CommandLineRunner {
             return;
         }
 
-        log.info("OOTB 默认页面布局初始化完成: 成功 {} 个, 失败 {} 个", inserted, failed);
+        log.info("OOTB 默认页面布局初始化完成: 新增 {} 个, 已存在 {} 个", inserted, existing);
     }
 
     /**
      * 注册一条页面布局记录。先在 ck_type_definition 中查找 entity_oid，然后插入 ck_type_page_layout。
-     * <p>幂等：已存在的布局不会重复插入（如需更新布局请通过 PageDesigner 手动操作或手动删除 DB 记录）。
      *
-     * @return true 表示新插入，false 表示已存在跳过或 entity_oid 未找到
+     * <p><b>幂等口径是 entity_code + operation_code</b>（与类注释一致）。早期实现按
+     * {@code entity_oid + operation_code} 判断 —— 类型定义行的 oid 一旦变更（历史上整批重建过），
+     * 旧布局就"看起来不存在"，于是再插一份：同一实体同一操作出现<b>两套布局</b>，
+     * 其中一套挂在已不存在的类型 oid 上（界面按当前 oid 查，僵尸行永远读不到，只积垃圾）。
+     * 现在查到旧 oid 的行会<b>原地改挂到当前 oid</b>（自愈），不再产生重复。
+     *
+     * @return true 表示新插入，false 表示已存在跳过、已自愈改挂或实体类型未找到
      */
     private boolean ensureLayout(String entityCode, String operationCode, String operationName, String layoutJson) {
-        // 1. 查找 entity_oid
-        String findOidSql = "SELECT oid FROM ck_type_definition WHERE code = ?";
+        // 1. 查找 entity_oid（同一 code 有平台行 + 租户覆盖行时取"当前租户优先"的一条，
+        //    避免 queryForObject 因多行直接抛异常、被当成"找不到类型"）
+        String findOidSql = "SELECT oid FROM ck_type_definition WHERE code = ? "
+                + "ORDER BY CASE WHEN tenant_oid = ? THEN 0 ELSE 1 END LIMIT 1";
         String entityOid;
         try {
-            entityOid = jdbcTemplate.queryForObject(findOidSql, String.class, entityCode);
+            entityOid = jdbcTemplate.queryForObject(findOidSql, String.class, entityCode,
+                    TenantContext.get());
         } catch (Exception e) {
             log.warn("  ✗ 未找到实体类型定义: {}", entityCode);
             return false;
@@ -163,10 +173,22 @@ public class PageLayoutInitializer implements CommandLineRunner {
             return false;
         }
 
-        // 2. 检查是否已存在（幂等：通过 entity_oid + operation_code 判断，已存在则跳过）
-        String countSql = "SELECT COUNT(*) FROM ck_type_page_layout WHERE entity_oid = ? AND operation_code = ?";
-        Integer count = jdbcTemplate.queryForObject(countSql, Integer.class, entityOid, operationCode);
-        if (count != null && count > 0) {
+        // 2. 幂等 + 自愈：按 entity_code + operation_code 找既有布局；
+        //    若它的 entity_oid 已失效（指向不存在的类型），原地改挂到当前 oid，而不是再插第二份
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT oid, entity_oid FROM ck_type_page_layout WHERE entity_code = ? AND operation_code = ?",
+                entityCode, operationCode);
+        if (!rows.isEmpty()) {
+            Object rowEntityOid = rows.get(0).get("entity_oid");
+            if (rowEntityOid != null && !entityOid.equals(rowEntityOid.toString())) {
+                jdbcTemplate.update(
+                        "UPDATE ck_type_page_layout SET entity_oid = ?, updated_at = now() WHERE oid = ?",
+                        entityOid, rows.get(0).get("oid").toString());
+                log.info("  √ {}/{} 布局已自愈：entity_oid 由 {}… 改挂到当前类型 {}…",
+                        entityCode, operationCode,
+                        rowEntityOid.toString().substring(0, 8), entityOid.substring(0, 8));
+                return false;
+            }
             log.debug("  - {}/{} 已存在，跳过", entityCode, operationCode);
             return false;
         }

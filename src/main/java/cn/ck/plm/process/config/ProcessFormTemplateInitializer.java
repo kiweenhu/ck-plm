@@ -20,17 +20,14 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 流程表单模板：建表 + 内置模板自动登记。
+ * 流程表单模板：内置模板自动登记（幂等）。
  *
- * <p>启动时做两件事，都幂等：
- * <ol>
- *   <li><b>建表</b> {@code ck_process_form_template}（{@code CREATE TABLE IF NOT EXISTS}）——
- *       {@code schema.sql} 也有一份完整 DDL，但那是"手工执行全量脚本"的口径；
- *       这里保证<b>老库升级后不用人工跑脚本</b>也能用；</li>
- *   <li><b>登记内置模板</b>：把代码里的内置表单写进表（按 code 判存在）。
- *       内置模板是"运行期真的要用的表单"，注册表留在代码里、清单落进表里 ——
- *       这样业务配置页能看到它们，企业也知道自己有哪些表单可以挂到节点上。</li>
- * </ol>
+ * <p>只做一件事：把代码里的内置表单写进 {@code ck_process_form_template}（按 code 判存在）。
+ * 内置模板是"运行期真的要用的表单"，注册表留在代码里、清单落进表里 ——
+ * 这样业务配置页能看到它们，企业也知道自己有哪些表单可以挂到节点上。
+ *
+ * <p>表结构（含唯一键与两个索引）在 {@code src/main/resources/schema.sql}，
+ * 本类不再建表：结构只留一处来源，改表不必再改 Java 里的 SQL 字符串。
  *
  * <p>内置模板归属<b>平台租户</b>（表在 {@code TenantStatementInterceptor} 里是 PLATFORM_SHARED）：
  * 平台内置对所有租户可见、不可改不可删，租户要改就自己新建一张自定义模板。
@@ -80,7 +77,6 @@ public class ProcessFormTemplateInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         try {
-            createTable();
             int inserted = 0, refreshed = 0;
             for (BuiltIn builtIn : BUILT_INS) {
                 if (ensureBuiltIn(builtIn)) {
@@ -94,30 +90,6 @@ public class ProcessFormTemplateInitializer implements CommandLineRunner {
             // 表单模板初始化失败不该拦住应用启动：设计器下拉会退回前端内置注册表
             log.error("流程表单模板初始化失败: {}", e.getMessage(), e);
         }
-    }
-
-    private void createTable() {
-        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + TABLE + " ("
-                + "oid CHAR(36) PRIMARY KEY, "
-                + "code VARCHAR(64) NOT NULL, "
-                + "name VARCHAR(128) NOT NULL, "
-                + "node_types VARCHAR(256) NOT NULL, "
-                + "component VARCHAR(64), "
-                + "builtin BOOLEAN NOT NULL DEFAULT FALSE, "
-                + "enabled BOOLEAN NOT NULL DEFAULT TRUE, "
-                + "sort_order INTEGER NOT NULL DEFAULT 0, "
-                + "description VARCHAR(1024), "
-                + "tenant_oid CHAR(36) NOT NULL, "
-                + "creator VARCHAR(64), created_at TIMESTAMP, "
-                + "updater VARCHAR(64), updated_at TIMESTAMP)");
-        // 一个租户内 code 唯一：formRef 只有一个字符串，同名会让运行期不知道该用谁的，
-        // 因此唯一键包含租户列、并在服务层禁止跨租户重名。
-        jdbcTemplate.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_ck_process_form_template_code "
-                + "ON " + TABLE + " (tenant_oid, code)");
-        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_pft_sort "
-                + "ON " + TABLE + " (builtin, sort_order)");
-        jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_pft_tenant "
-                + "ON " + TABLE + " (tenant_oid)");
     }
 
     /**

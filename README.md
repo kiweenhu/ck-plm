@@ -101,6 +101,10 @@ psql -U postgres -c "CREATE DATABASE ck_plm;"
 
 # 方式二：手动导入 schema
 psql -U postgres -d ck_plm -f src/main/resources/schema.sql
+
+# 注：schema.sql 是 UTF-8（无 BOM），且首行已自行 SET client_encoding='UTF8' ——
+#     中文 Windows 的 GBK 控制台下也能直接 psql -f 导入，不必改代码页；
+#     请勿把该文件另存为 GBK，否则带中文注释的语句会整条失败、建表缺一大半。
 ```
 
 > 📌 `src/main/resources/db/migration/` 下的脚本是**演进留档**，供 DBA 在手建/升级库时按版本号顺序手工参考执行。当前项目未集成 Flyway/Liquibase，这些脚本不会由应用自动执行。

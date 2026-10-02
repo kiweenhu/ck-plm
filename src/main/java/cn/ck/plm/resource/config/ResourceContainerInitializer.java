@@ -22,46 +22,22 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * 企业级资源库初始化：
+ * 企业级资源库初始化（种子 + 数据自愈，幂等）：
  * <ol>
- *   <li>创建资源库容器表 {@code ck_resource_container}（含旧表 ck_container 迁移）</li>
- *   <li>幂等预置「企业资源库」根节点与 7 个资源子库（平台级共享）</li>
- *   <li>为「元器件库」子库准备归属阶段（Part 需要 stage_oid）</li>
- *   <li>清理早期临时方案：借用在 ck_product_line 的 CORP_RESOURCE 行及其阶段</li>
+ *   <li>幂等预置「企业资源库」根节点与资源子库（平台级共享）；</li>
+ *   <li>为「元器件库」子库准备归属阶段（Part 需要 stage_oid）；</li>
+ *   <li>清理早期临时方案：借用在 ck_product_line 的 CORP_RESOURCE 行及其阶段。</li>
  * </ol>
+ *
+ * <p>容器表 {@code ck_resource_container} 的结构（含 code 唯一键与父节点索引）在
+ * {@code src/main/resources/schema.sql} —— 本类原先自带的建表语句与
+ * {@code ck_container → ck_resource_container} 的更名迁移已退场
+ * （口径：结构只留一处来源；不做老库迁移）。
  */
 @Component
 public class ResourceContainerInitializer implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ResourceContainerInitializer.class);
-
-    private static final String TABLE = "ck_resource_container";
-    private static final String LEGACY_TABLE = "ck_container";
-
-    private static final String CREATE_TABLE_SQL =
-            "CREATE TABLE IF NOT EXISTS ck_resource_container (" +
-            "    oid             CHAR(36)     PRIMARY KEY," +
-            "    code            VARCHAR(50)  NOT NULL," +
-            "    name            VARCHAR(200) NOT NULL," +
-            "    description     VARCHAR(1000)," +
-            "    container_type  VARCHAR(30)  NOT NULL DEFAULT 'CORP_RESOURCE'," +
-            "    thumbnail       VARCHAR(500)," +
-            "    parent_oid      CHAR(36)," +
-            "    team_oid        CHAR(36)," +
-            "    sort_order      INTEGER      NOT NULL DEFAULT 0," +
-            "    tenant_oid      CHAR(36)," +
-            "    delete_mark     BOOLEAN      NOT NULL DEFAULT FALSE," +
-            "    creator         VARCHAR(100)," +
-            "    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP," +
-            "    updater         VARCHAR(100)," +
-            "    updated_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP" +
-            ")";
-
-    private static final String CREATE_CODE_UNIQUE =
-            "CREATE UNIQUE INDEX IF NOT EXISTS uk_resource_container_code ON ck_resource_container(code)";
-
-    private static final String CREATE_PARENT_IDX =
-            "CREATE INDEX IF NOT EXISTS idx_resource_container_parent ON ck_resource_container(parent_oid)";
 
     private final ResourceContainerMapper mapper;
     private final ResourceLibraryMapper resourceLibraryMapper;
@@ -75,60 +51,8 @@ public class ResourceContainerInitializer implements CommandLineRunner {
         this.dataSource = dataSource;
     }
 
-    /**
-     * 表更名迁移：早期表名为 {@code ck_container}，现统一为 {@code ck_resource_container}。
-     * <ul>
-     *   <li>仅旧表存在 → 直接 RENAME（数据与索引一并保留）</li>
-     *   <li>两表都存在 → 补齐新表缺失的行后删除旧表</li>
-     * </ul>
-     */
-    private void migrateLegacyTable(Connection conn, Statement stmt) throws Exception {
-        boolean legacyExists = tableExists(conn, LEGACY_TABLE);
-        if (!legacyExists) {
-            return;
-        }
-        boolean newExists = tableExists(conn, TABLE);
-        if (!newExists) {
-            stmt.execute("ALTER TABLE " + LEGACY_TABLE + " RENAME TO " + TABLE);
-            log.info("资源库表已更名: {} → {}", LEGACY_TABLE, TABLE);
-            return;
-        }
-        int moved = stmt.executeUpdate(
-                "INSERT INTO " + TABLE + " (oid, code, name, description, container_type, thumbnail, " +
-                "parent_oid, team_oid, sort_order, tenant_oid, delete_mark, creator, created_at, updater, updated_at) " +
-                "SELECT oid, code, name, description, container_type, thumbnail, " +
-                "parent_oid, team_oid, sort_order, tenant_oid, delete_mark, creator, created_at, updater, updated_at " +
-                "FROM " + LEGACY_TABLE + " l " +
-                "WHERE NOT EXISTS (SELECT 1 FROM " + TABLE + " n WHERE n.code = l.code)");
-        stmt.execute("DROP TABLE " + LEGACY_TABLE);
-        if (moved > 0) {
-            log.info("资源库表迁移完成：{} → {}（迁移 {} 行）", LEGACY_TABLE, TABLE, moved);
-        } else {
-            log.info("资源库表迁移完成：已删除旧表 {}", LEGACY_TABLE);
-        }
-    }
-
-    private boolean tableExists(Connection conn, String table) throws Exception {
-        try (java.sql.ResultSet rs = conn.createStatement().executeQuery(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '" + table + "'")) {
-            rs.next();
-            return rs.getLong(1) > 0;
-        }
-    }
-
     @Override
     public void run(String... args) {
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
-            migrateLegacyTable(conn, stmt);
-            stmt.execute(CREATE_TABLE_SQL);
-            stmt.execute(CREATE_CODE_UNIQUE);
-            stmt.execute(CREATE_PARENT_IDX);
-        } catch (Exception e) {
-            log.error("ck_resource_container 表初始化失败: {}", e.getMessage(), e);
-            return;
-        }
-
         try {
             ResourceContainer root = mapper.selectRoot();
             if (root == null) {

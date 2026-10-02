@@ -69,7 +69,11 @@ public class TenantStatementInterceptor implements Interceptor {
             // 属性定义/编码段（无 tenant_oid 列，跨租户共享）
             "ck_attribute_definition", "ck_number_segment",
             // 计量单位（无 tenant_oid 列，跨租户共享）
-            "ck_unit"
+            "ck_unit",
+            // 业务域（类型树/对象的域标签）：平台预置、不允许租户自定义，所有租户共享同一套域。
+            // 放在"完全共享"里（而不是 PLATFORM_SHARED）：域行只有平台租户一份，
+            // 完全共享即不做任何租户过滤，查询天然可见。
+            "ck_business_domain"
     ));
 
     /** 平台层共享表 —— 查询时注入 tenant_oid IN ('platform_oid', ?)；INSERT 时注入 ? */
@@ -85,6 +89,9 @@ public class TenantStatementInterceptor implements Interceptor {
             "ck_number", "ck_version_rule",
             // 类型系统（ck_iba / ck_type_iba 已实现 TenantEntity，按业务表隔离）
             "ck_type_definition",
+            // 业务域（类型树第一层）：平台预置、不允许租户自定义 → 查询侧注入"平台租户 or 当前租户"，
+            // 否则域行（tenant_oid=平台租户）会被当成业务表按当前租户过滤掉，类型树第一层会凭空消失
+            "ck_business_domain",
             // 布局
             "ck_type_page_layout", "ck_cls_page_layout",
             // 视图

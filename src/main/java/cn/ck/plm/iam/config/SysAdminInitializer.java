@@ -61,8 +61,8 @@ public class SysAdminInitializer implements CommandLineRunner {
     public void run(String... args) {
         log.info("开始初始化平台级角色及平台管理员账号...");
 
-        // 0. 先确保所有业务表都有 tenant_oid 列（在任何 MyBatis 操作之前，用 JDBC 直接执行）
-        ensureTenantOidColumnsExist();
+        // 注：原先这里会先跑一段「给 33 张业务表补 tenant_oid / 给 ck_token 补 tenant_name」的兜底 DDL，
+        //     已随「结构归 schema.sql、不做老库迁移」的口径退场 —— 这些列在 schema.sql 建表语句里都有。
 
         // 初始化阶段不设置 TenantContext（null），让 TenantStatementInterceptor 跳过 SQL 改写
         try {
@@ -104,27 +104,13 @@ public class SysAdminInitializer implements CommandLineRunner {
     }
 
     /**
-     * 直接通过 JDBC 修正平台级角色和角色成员的 tenant_oid，
-     * 避免多租户拦截器导致 tenant_oid 为 NULL 或默认值。
+     * 直接通过 JDBC 修正平台级角色、角色成员与 sysadmin 账号的 tenant_oid，
+     * 避免多租户拦截器把启动期的写入归到错误租户（NULL 或"默认租户"）。
+     *
+     * <p>注：原方法 {@code ensureTenantOidColumnsExist()}（给 33 张业务表补 {@code tenant_oid}、
+     * 给 {@code ck_token} 补 {@code tenant_name} 的兜底 DDL）已退场 —— 这些列在
+     * {@code schema.sql} 的建表语句里都有，口径为"结构只留一处来源、不做老库迁移"。
      */
-    private void ensureTenantOidColumnsExist() {
-        String[] tables = {"ck_role", "ck_role_member", "ck_user", "ck_token",
-                "ck_organization", "ck_product_line", "ck_product_model", "ck_stage",
-                "ck_folder", "ck_team", "ck_team_member", "ck_document",
-                "ck_document_iteration", "ck_file", "ck_attachment", "ck_media",
-                "ck_process_category", "ck_process_entity_set", "ck_user_activity", "ck_type_iba_data",
-                "ck_type_page_layout", "ck_type_definition", "ck_cls_page_layout",
-                "ck_number", "ck_version_rule", "ck_lifecycle_status",
-                "ck_lifecycle_template", "ck_lifecycle_template_iteration",
-                "ck_lifecycle_template_state", "ck_lifecycle_template_transition",
-                "ck_view", "ck_view_transition", "ck_stage_template"};
-        for (String table : tables) {
-            try { jdbcTemplate.execute("ALTER TABLE " + table + " ADD COLUMN tenant_oid CHAR(36)"); } catch (Exception ignored) {}
-        }
-        try { jdbcTemplate.execute("ALTER TABLE ck_token ADD COLUMN tenant_name VARCHAR(100)"); } catch (Exception ignored) {}
-        log.info("  tenant_oid 列检查完成");
-    }
-
     private void fixTenantOidForPlatformData() {
         try {
             // 平台级角色归属平台租户

@@ -43,7 +43,7 @@ import java.util.*;
  *
  * <h3>字段属性约定</h3>
  * <ul>
- *   <li>static / transient 字段 → 自动跳过</li>
+ *   <li>static / transient 字段、系统字段（{@code oid} / {@code tenantOid}，见 {@link #SKIP_FIELDS}）→ 自动跳过</li>
  *   <li>Boolean / boolean → dataType=BOOLEAN, uiComponent=switch</li>
  *   <li>Integer / int / Long / long → dataType=INTEGER, uiComponent=input-number</li>
  *   <li>Float / double / Double / BigDecimal → dataType=FLOAT</li>
@@ -61,7 +61,7 @@ import java.util.*;
  * <p>幂等：已存在的属性不会重复注册（由 {@link AttributeDefinitionService#registerSystemAttributes} 保证）。</p>
  */
 @Component
-@Order(3) // 在 PageLayoutMigration(1) → TypeDefinitionInitializer(2) 之后执行
+@Order(3) // 在 TypeDefinitionInitializer(@Order=2) 之后执行
 public class AttributeInitializer implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AttributeInitializer.class);
@@ -122,11 +122,21 @@ public class AttributeInitializer implements CommandLineRunner {
         }
     }
 
+    /**
+     * 不注册为属性的系统字段（扫描时直接跳过）。
+     *
+     * <p>二者都是平台基础设施列，不属于业务属性：
+     * <ul>
+     *   <li>{@code oid} —— 主键，行标识由框架直接用，不需要属性定义；</li>
+     *   <li>{@code tenantOid} —— 租户隔离列，注册出来还会被当成"可搜索 / 可列表 / 可编辑"的业务字段。</li>
+     * </ul>
+     */
+    private static final Set<String> SKIP_FIELDS = new LinkedHashSet<>(Arrays.asList("oid", "tenantOid"));
+
     private static final Map<String, FieldMeta> FIELD_META = new LinkedHashMap<>();
     static {
         // ---------- BaseEntity 审计字段 ----------
-        // oid：系统主键，不在 UI 中展示
-        fm("oid",          "唯一标识", 91, false, false, false);
+        // 注：oid / tenantOid 不在此列 —— 它们已在 SKIP_FIELDS 中，根本不注册为属性
         fm("createdAt",    "创建时间", 92, false, false, false);
         fm("creator",      "创建者",   93, false, true,  false);
         fm("updatedAt",    "更新时间", 94, false, false, false);
@@ -169,6 +179,10 @@ public class AttributeInitializer implements CommandLineRunner {
         fm("masterOid",                     "主文档OID",           60, false, false, false);
         fm("revision",                      "大版本",               61, false, true,  false);
         fm("iteration",                     "小版本号",             62, false, true,  false);
+        // 显示版本（A.1 这种）。必须写进映射：漏了会走 camelToHuman 回退，
+        // 注册出来的显示名就成了英文 "Display Version"（用户反馈过）。
+        // sortOrder 103 与已注册的行一致 —— 换名字不该顺带把它在列表里的位置挪走。
+        fm("displayVersion",                "显示版本",            103, true,  true,  true);
         fm("checkedOut",                    "已检出",               63, false, true,  false);
         fm("checkedOutBy",                  "检出人",               64, false, true,  false);
         fm("checkedOutComment",             "检出注释",             65, false, false, false);
@@ -428,6 +442,9 @@ public class AttributeInitializer implements CommandLineRunner {
             // 去重：子类可能声明与父类同名字段（field hiding）
             if (!seen.add(fieldName)) continue;
 
+            // 系统字段（oid 主键 / tenantOid 租户隔离列）不注册为属性
+            if (SKIP_FIELDS.contains(fieldName)) continue;
+
             // 构建属性定义
             AttributeDefinition def = buildDefinition(field, sortBase + idx);
             defs.add(def);
@@ -543,13 +560,16 @@ public class AttributeInitializer implements CommandLineRunner {
         return spaced.substring(0, 1).toUpperCase() + spaced.substring(1);
     }
 
-    /** 判断字段是否为类审计字段（createdAt / updatedAt / creator / updater / oid） */
+    /**
+     * 判断字段是否为审计字段（createdAt / updatedAt / creator / updater）——
+     * 用于 FIELD_META 未声明的字段推断默认值（审计字段默认不可编辑）。
+     * <p>oid / tenantOid 不在此判断内：它们是系统字段，在 {@link #SKIP_FIELDS} 中直接跳过。
+     */
     private static boolean isAuditLike(String fieldName) {
         return "createdAt".equalsIgnoreCase(fieldName)
                 || "updatedAt".equalsIgnoreCase(fieldName)
                 || "creator".equalsIgnoreCase(fieldName)
-                || "updater".equalsIgnoreCase(fieldName)
-                || "oid".equalsIgnoreCase(fieldName);
+                || "updater".equalsIgnoreCase(fieldName);
     }
 
     // ==================== 内部工具 ====================

@@ -53,3 +53,4 @@ design.png
 .start-backend.cmd
 playwright-report/
 test-results/
+backup-*.sql

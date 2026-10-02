@@ -377,7 +377,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_process_category_name_tenant ON ck_process_
 -- 列名刻意不叫 version：本模块里还有"流程模板版本 / 流程定义版本"，entity_version 才一眼是业务对象的版本。
 -- type_code / root_type_code 冗余存一份：免 join，且是"当时关联的是什么类型"的快照。
 -- 列名前身：entity_iteration_oid（迭代 oid）→ version → entity_version，由建表器幂等迁移。
--- 实际建表由 ProcessTemplateSchemaInitializer#createEntitySetTable 执行（与同模块的模板表一致），此处为 DDL 参考。
+-- 注：此前实际建表由 Java 启动初始化器执行、此处仅作 DDL 参考；现统一以本脚本为准。
 CREATE TABLE IF NOT EXISTS ck_process_entity_set (
     oid                  VARCHAR(64) PRIMARY KEY,
     business_key         VARCHAR(128),
@@ -404,7 +404,7 @@ CREATE INDEX IF NOT EXISTS idx_pes_tenant         ON ck_process_entity_set(tenan
 -- ==================== 流程节点执行日志 ====================
 -- 「这个节点后台跑了什么、报了什么错」：自动服务（设置状态 / 自动服务 / 通知）由后台执行，
 -- 失败时用户只看到"流程卡住了"，原因原本只留在服务器日志里。落库后流程详情页点开节点即可查看。
--- 实际建表由 ProcessNodeLogSchemaInitializer 执行（与本模块其它表一致），此处为 DDL 参考。
+-- 注：此前实际建表由 Java 启动初始化器执行、此处仅作 DDL 参考；现统一以本脚本为准。
 CREATE TABLE IF NOT EXISTS ck_process_node_log (
     oid                  CHAR(36)     PRIMARY KEY,
     tenant_oid           CHAR(36)     NOT NULL,
@@ -428,7 +428,585 @@ CREATE INDEX IF NOT EXISTS idx_pnl_instance_level
 -- type_kind = 'SOFT_TYPE' → 基于 OOTB 或另一个 SOFT_TYPE 创建的子类型
 -- parent_oid 自引用：OOTB 为 NULL，SOFT_TYPE 指向其父类型 oid
 -- oid 为全局唯一主键，code 为全局业务唯一键
+-- ==================== 业务域 (BusinessDomain) ====================
+-- 类型/对象的「域标签」：域是业务的划分（产品主数据域 / 电子设计域 / 结构设计域 …），
+-- 与类型继承（ck_type_definition.parent_oid）是两个正交维度，允许子类型与父类型不同域。
+-- 平台预置、不允许租户自定义 → 全租户共享同一套域（TenantStatementInterceptor 里按共享表处理）。
+-- 类型通过 ck_type_definition.domain_oid 软引用本表 oid（不加外键）。
+CREATE TABLE IF NOT EXISTS ck_business_domain (
+    oid          CHAR(36)     PRIMARY KEY,
+    code         VARCHAR(64)  NOT NULL,
+    name         VARCHAR(200) NOT NULL,
+    icon         VARCHAR(100),
+    description  VARCHAR(1000),
+    sort_order   INTEGER      NOT NULL DEFAULT 0,
+    enabled      BOOLEAN      NOT NULL DEFAULT TRUE,
+    source       VARCHAR(20)  NOT NULL DEFAULT 'OOTB',
+    tenant_oid   CHAR(36)     NOT NULL,
+    creator      VARCHAR(100),
+    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater      VARCHAR(100),
+    updated_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_business_domain_code ON ck_business_domain(code);
+
+-- ==================== 流程模板 / 交付物 / 零件-文档关联（最后一批） ====================
+-- 来源：ck_process_template 原先由 Java 启动初始化器在代码里建（DDL 已迁入本脚本）、
+--       备份库结构（ck_deliverable / ck_part_document_link 及其索引）。
+CREATE TABLE IF NOT EXISTS ck_process_template (
+    oid                   VARCHAR(64)  PRIMARY KEY,
+    key                   VARCHAR(128) NOT NULL,
+    name                  VARCHAR(255) NOT NULL,
+    display_name          VARCHAR(255),
+    category_oid          VARCHAR(64),
+    description           TEXT,
+    dsl_json              TEXT,
+    latest_version        INTEGER      NOT NULL DEFAULT 0,
+    enabled               BOOLEAN      NOT NULL DEFAULT TRUE,
+    deployed_version      INTEGER,
+    deployment_id         VARCHAR(64),
+    process_definition_id VARCHAR(128),
+    deployed_at           TIMESTAMP,
+    tenant_oid            VARCHAR(64)  NOT NULL,
+    creator               VARCHAR(128),
+    created_at            TIMESTAMP,
+    updater               VARCHAR(128),
+    updated_at            TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_process_template_key_tenant ON ck_process_template (key, tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_process_template_tenant ON ck_process_template (tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_process_template_category_oid ON ck_process_template (category_oid);
+
+-- 产品线交付物（阶段交付清单）
+CREATE TABLE IF NOT EXISTS ck_deliverable (
+    oid              CHAR(36)     PRIMARY KEY,
+    product_line_oid CHAR(36)     NOT NULL,
+    stage_key        VARCHAR(30)  NOT NULL,
+    title            VARCHAR(200) NOT NULL,
+    description      VARCHAR(1000),
+    status           VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    owner            VARCHAR(100),
+    due_date         DATE,
+    attachments      JSONB        DEFAULT '[]'::jsonb,
+    sort_order       INTEGER      NOT NULL DEFAULT 0,
+    creator          VARCHAR(100),
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater          VARCHAR(100),
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_del_pl_stage ON ck_deliverable (product_line_oid, stage_key);
+CREATE INDEX IF NOT EXISTS idx_del_status ON ck_deliverable (product_line_oid, status);
+
+-- 零件 ↔ 文档 关联
+CREATE TABLE IF NOT EXISTS ck_part_document_link (
+    oid          CHAR(36)     PRIMARY KEY,
+    code         VARCHAR(50),
+    name         VARCHAR(200),
+    description  VARCHAR(1000),
+    part_oid     CHAR(36)     NOT NULL,
+    document_oid CHAR(36)     NOT NULL,
+    link_type    VARCHAR(20)  NOT NULL DEFAULT 'REFERENCE',
+    enabled      BOOLEAN      NOT NULL DEFAULT TRUE,
+    tenant_oid   CHAR(36),
+    creator      VARCHAR(100),
+    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater      VARCHAR(100),
+    updated_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_part_document_link_doc ON ck_part_document_link (document_oid);
+CREATE INDEX IF NOT EXISTS idx_part_document_link_part ON ck_part_document_link (part_oid);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_part_document_link ON ck_part_document_link (part_oid, document_oid, link_type);
+
+-- 零件 ↔ 文档 关联（权威表）：Windchill 两分模型 DESCRIBES / REFERENCE，迭代级。
+-- 由 PartDescribeLink 与 PartReferenceLink 共享，用 link_type 区分；
+-- 上面的 ck_part_document_link 是主数据级旧表（DESCRIPTION / REFERENCE），仅作历史迁移来源。
+-- 注：本表原先只由 Java 启动初始化器在代码里建，现已收进本脚本。
+CREATE TABLE IF NOT EXISTS ck_doc_part_link (
+    oid                    CHAR(36)     PRIMARY KEY,
+    link_type              VARCHAR(30)  NOT NULL,
+    part_iteration_oid     CHAR(36)     NOT NULL,
+    doc_master_oid         CHAR(36)     NOT NULL,
+    doc_iteration_oid      CHAR(36),
+    resolved_iteration_oid CHAR(36),
+    category               VARCHAR(100),
+    tenant_oid             CHAR(36),
+    creator                VARCHAR(100),
+    created_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                VARCHAR(100),
+    updated_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_dpl_part_iter  ON ck_doc_part_link(part_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_dpl_doc_master ON ck_doc_part_link(doc_master_oid);
+CREATE INDEX IF NOT EXISTS idx_dpl_type       ON ck_doc_part_link(link_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_dpl_triple
+    ON ck_doc_part_link(part_iteration_oid, doc_master_oid, link_type);
+
+-- ==================== 通用件阈值 / 标准件入库 配置（一租户一行） ====================
+-- 来源：原先由 Java 启动初始化器在代码里建，DDL 原样迁移到本脚本。
+-- 注：两张表的"租户唯一"索引也已在脚本中（uk_std_part_inbound_config_tenant 见下方，
+--     uk_gen_part_threshold_config_tenant 见文件末尾租户索引段）。
+CREATE TABLE IF NOT EXISTS ck_gen_part_threshold_config (
+    oid                  CHAR(36)  PRIMARY KEY,
+    enabled              BOOLEAN   NOT NULL DEFAULT TRUE,
+    min_model_count      INTEGER   NOT NULL DEFAULT 3,
+    min_usage_count      INTEGER   NOT NULL DEFAULT 5,
+    stat_window_months   INTEGER   NOT NULL DEFAULT 12,
+    scope_type_code      VARCHAR(50),
+    process_template_oid VARCHAR(64),
+    description          VARCHAR(500),
+    tenant_oid           CHAR(36)  NOT NULL,
+    creator              VARCHAR(100),
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater              VARCHAR(100),
+    updated_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ck_std_part_inbound_config (
+    oid                  CHAR(36)  PRIMARY KEY,
+    enabled              BOOLEAN   NOT NULL DEFAULT FALSE,
+    process_template_oid VARCHAR(64),
+    description          VARCHAR(500),
+    tenant_oid           CHAR(36)  NOT NULL,
+    creator              VARCHAR(100),
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater              VARCHAR(100),
+    updated_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_std_part_inbound_config_tenant
+    ON ck_std_part_inbound_config(tenant_oid);
+
+-- ==================== 流程模板版本 ====================
+-- 来源：原先由 Java 启动初始化器在代码里建（DDL 已迁入本脚本）；唯一索引 uk_process_template_version 见文件末尾索引段。
+CREATE TABLE IF NOT EXISTS ck_process_template_version (
+    oid            VARCHAR(64) PRIMARY KEY,
+    template_oid   VARCHAR(64) NOT NULL,
+    version        INTEGER     NOT NULL,
+    dsl_json       TEXT        NOT NULL,
+    bpmn_xml       TEXT,
+    change_note    VARCHAR(512),
+    deployed       BOOLEAN     NOT NULL DEFAULT FALSE,
+    deployment_id  VARCHAR(64),
+    tenant_oid     VARCHAR(64) NOT NULL,
+    creator        VARCHAR(128),
+    created_at     TIMESTAMP
+);
+
+-- ==================== 目标系统注册表 ====================
+-- 来源：原先由 Java 启动初始化器在代码里建（该初始化器已退场），结构以本脚本为准。
+CREATE TABLE IF NOT EXISTS ck_target_system (
+    oid          VARCHAR(64)  PRIMARY KEY,
+    code         VARCHAR(64)  NOT NULL,
+    name         VARCHAR(128) NOT NULL,
+    base_url     VARCHAR(512) NOT NULL,
+    auth_type    VARCHAR(16)  NOT NULL DEFAULT 'NONE',
+    username     VARCHAR(128),
+    secret       VARCHAR(1024),
+    enabled      BOOLEAN      NOT NULL DEFAULT TRUE,
+    sort_order   INTEGER      NOT NULL DEFAULT 0,
+    description  VARCHAR(512),
+    tenant_oid   VARCHAR(64)  NOT NULL,
+    creator      VARCHAR(128),
+    created_at   TIMESTAMP,
+    updater      VARCHAR(128),
+    updated_at   TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_target_system_code_tenant ON ck_target_system (code, tenant_oid);
+CREATE INDEX IF NOT EXISTS idx_target_system_tenant ON ck_target_system (tenant_oid);
+
+-- ==================== 工程数据子版本 / 引用链接 ====================
+-- 来源：EngineeringDocumentSchemaInitializer，DDL 原样迁移。
+-- 注：ck_eng_doc_ref_link 与 ck_eng_doc_member_link 的索引已收全，见本文件末尾 idx_engml_* / idx_engrl_* 段。
+CREATE TABLE IF NOT EXISTS ck_eng_document_iteration (
+    oid                              CHAR(36)     PRIMARY KEY,
+    master_oid                       CHAR(36)     NOT NULL,
+    revision                         VARCHAR(20),
+    iteration                        INTEGER,
+    display_version                  VARCHAR(30),
+    checked_out                      BOOLEAN      NOT NULL DEFAULT FALSE,
+    checked_out_by                   VARCHAR(100),
+    checked_out_comment              VARCHAR(1000),
+    latest                           BOOLEAN      NOT NULL DEFAULT FALSE,
+    derived_from_oid                 CHAR(36),
+    derived_at                       TIMESTAMP,
+    status                           VARCHAR(50),
+    lifecycle_template_iteration_oid CHAR(36),
+    version_sort                     INTEGER,
+    branch_id                        VARCHAR(64),
+    delete_mark                      BOOLEAN      NOT NULL DEFAULT FALSE,
+    ckfile_oid                       CHAR(36),
+    cad_name                         VARCHAR(200),
+    cad_type                         VARCHAR(30),
+    cad_tool                         VARCHAR(100),
+    sheet_size                       VARCHAR(20),
+    scale                            VARCHAR(30),
+    sheet_number                     VARCHAR(100),
+    sheet_count                      INTEGER,
+    projection                       VARCHAR(20),
+    author                           VARCHAR(100),
+    material                         VARCHAR(200),
+    weight                           VARCHAR(100),
+    tenant_oid                       CHAR(36),
+    creator                          VARCHAR(100),
+    created_at                       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                          VARCHAR(100),
+    updated_at                       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_engd_iter_master ON ck_eng_document_iteration(master_oid);
+CREATE INDEX IF NOT EXISTS idx_engd_iter_latest ON ck_eng_document_iteration(latest);
+
+-- 工程数据 ↔ 工程数据：横向引用（对应 Windchill EPMReferenceLink）
+CREATE TABLE IF NOT EXISTS ck_eng_doc_ref_link (
+    oid                         CHAR(36)     PRIMARY KEY,
+    referenced_by_iteration_oid CHAR(36)     NOT NULL,
+    references_master_oid       CHAR(36)     NOT NULL,
+    references_type             VARCHAR(30)  NOT NULL DEFAULT 'ENG_DOCUMENT',
+    reference_type              VARCHAR(50)  NOT NULL DEFAULT 'DEPENDENCY',
+    as_stored_child_name        VARCHAR(200),
+    dep_type                    INTEGER      NOT NULL DEFAULT 0,
+    required                    BOOLEAN      NOT NULL DEFAULT FALSE,
+    unique_link_id              BIGINT,
+    tenant_oid                  CHAR(36),
+    creator                     VARCHAR(100),
+    created_at                  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                     VARCHAR(100),
+    updated_at                  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==================== 企业资源库容器 / 资源库分类绑定 ====================
+-- 来源：两张表原先均由 Java 启动初始化器在代码里建，DDL 已全部迁入本脚本。
+CREATE TABLE IF NOT EXISTS ck_resource_container (
+    oid            CHAR(36)     PRIMARY KEY,
+    code           VARCHAR(50)  NOT NULL,
+    name           VARCHAR(200) NOT NULL,
+    description    VARCHAR(1000),
+    container_type VARCHAR(30)  NOT NULL DEFAULT 'CORP_RESOURCE',
+    thumbnail      VARCHAR(500),
+    parent_oid     CHAR(36),
+    team_oid       CHAR(36),
+    sort_order     INTEGER      NOT NULL DEFAULT 0,
+    tenant_oid     CHAR(36),
+    delete_mark    BOOLEAN      NOT NULL DEFAULT FALSE,
+    creator        VARCHAR(100),
+    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater        VARCHAR(100),
+    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_resource_container_code ON ck_resource_container(code);
+CREATE INDEX IF NOT EXISTS idx_resource_container_parent ON ck_resource_container(parent_oid);
+
+CREATE TABLE IF NOT EXISTS ck_library_cls_config (
+    oid                     CHAR(36)  PRIMARY KEY,
+    tenant_oid              CHAR(36)  NOT NULL,
+    resource_code           VARCHAR(50),
+    resource_node_oid       CHAR(36),
+    root_classification_oid CHAR(36)  NOT NULL,
+    created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_library_cls_config_tenant_code
+    ON ck_library_cls_config(tenant_oid, COALESCE(resource_code, ''));
+
+-- ==================== 电子设计项目 / 工程数据 ====================
+-- 来源：EcadSchemaInitializer（ck_ecad_project）、EngineeringDocumentSchemaInitializer（ck_eng_*），DDL 原样迁移。
+CREATE TABLE IF NOT EXISTS ck_ecad_project (
+    oid             CHAR(36)     PRIMARY KEY,
+    code            VARCHAR(50)  NOT NULL,
+    name            VARCHAR(200) NOT NULL,
+    description     VARCHAR(1000),
+    container_type  VARCHAR(30)  NOT NULL DEFAULT 'ECAD_PROJECT',
+    parent_oid      CHAR(36),
+    domain_oid      CHAR(36),
+    related_product CHAR(36),
+    project_phase   VARCHAR(20)  NOT NULL DEFAULT 'PLAN',
+    owner           VARCHAR(100),
+    tenant_oid      CHAR(36),
+    creator         VARCHAR(100),
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater         VARCHAR(100),
+    updated_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ecad_project_code ON ck_ecad_project(code);
+CREATE INDEX IF NOT EXISTS idx_ecad_project_domain ON ck_ecad_project(domain_oid);
+
+-- 工程数据主数据（对应 Windchill EPMDocumentMaster）
+CREATE TABLE IF NOT EXISTS ck_eng_document (
+    oid                  CHAR(36)     PRIMARY KEY,
+    number               VARCHAR(100),
+    name                 VARCHAR(200),
+    description          VARCHAR(1000),
+    container_oid        CHAR(36),
+    container_type       VARCHAR(50),
+    type_definition_code VARCHAR(100),
+    folder_oid           CHAR(36),
+    stage_oid            CHAR(36),
+    cls_oid              CHAR(36),
+    tenant_oid           CHAR(36),
+    creator              VARCHAR(100),
+    created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater              VARCHAR(100),
+    updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_eng_document_number ON ck_eng_document(number);
+CREATE INDEX IF NOT EXISTS idx_eng_document_type ON ck_eng_document(type_definition_code);
+CREATE INDEX IF NOT EXISTS idx_eng_document_folder ON ck_eng_document(folder_oid);
+
+-- 工程数据 ↔ 零部件（对应 Windchill EPMBuildRule）
+CREATE TABLE IF NOT EXISTS ck_eng_doc_part_link (
+    oid                    CHAR(36)     PRIMARY KEY,
+    eng_document_oid       CHAR(36)     NOT NULL,
+    part_oid               CHAR(36)     NOT NULL,
+    assoc_type             VARCHAR(30)  NOT NULL DEFAULT 'CONTENT',
+    build_structure        BOOLEAN      NOT NULL DEFAULT FALSE,
+    build_attribute        BOOLEAN      NOT NULL DEFAULT FALSE,
+    build_representation   BOOLEAN      NOT NULL DEFAULT FALSE,
+    assoc_source           VARCHAR(20)  NOT NULL DEFAULT 'MANUAL',
+    is_primary             BOOLEAN      NOT NULL DEFAULT FALSE,
+    sort_order             INTEGER      NOT NULL DEFAULT 0,
+    tenant_oid             CHAR(36),
+    creator                VARCHAR(100),
+    created_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                VARCHAR(100),
+    updated_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_engpl_doc ON ck_eng_doc_part_link(eng_document_oid);
+CREATE INDEX IF NOT EXISTS idx_engpl_part ON ck_eng_doc_part_link(part_oid);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_engpl_doc_part ON ck_eng_doc_part_link(eng_document_oid, part_oid);
+CREATE INDEX IF NOT EXISTS idx_engpl_assoc ON ck_eng_doc_part_link(assoc_type);
+-- Windchill EPMBuildRule 基数约束：每个 Part 至多 1 个 Owner 关联、至多 1 个 Contributing Image 关联
+-- （这两条原先只由 Java 启动初始化器在代码里建，现已收进本脚本）
+CREATE UNIQUE INDEX IF NOT EXISTS uk_engpl_part_owner
+    ON ck_eng_doc_part_link(part_oid) WHERE assoc_type = 'OWNER';
+CREATE UNIQUE INDEX IF NOT EXISTS uk_engpl_part_contrib_image
+    ON ck_eng_doc_part_link(part_oid) WHERE assoc_type = 'CONTRIBUTING_IMAGE';
+
+-- 工程数据 ↔ 工程数据：装配成员 / BOM 结构（对应 Windchill EPMMemberLink）
+-- 注：该表的索引已收全（idx_engml_usedby_iter / idx_engml_uses_master / uk_engml_iter_master），见文件末尾索引段。
+CREATE TABLE IF NOT EXISTS ck_eng_doc_member_link (
+    oid                     CHAR(36)      PRIMARY KEY,
+    used_by_iteration_oid   CHAR(36)      NOT NULL,
+    uses_master_oid         CHAR(36)      NOT NULL,
+    quantity                NUMERIC(18,4) NOT NULL DEFAULT 1,
+    placed                  BOOLEAN       NOT NULL DEFAULT FALSE,
+    has_transform           BOOLEAN       NOT NULL DEFAULT FALSE,
+    transform               TEXT,
+    fixed                   BOOLEAN       NOT NULL DEFAULT FALSE,
+    substitute              BOOLEAN       NOT NULL DEFAULT FALSE,
+    suppressed              BOOLEAN       NOT NULL DEFAULT FALSE,
+    annotated               BOOLEAN       NOT NULL DEFAULT FALSE,
+    model_item_owner_id     VARCHAR(200),
+    model_item_owner_type   VARCHAR(50),
+    comp_number             INTEGER       NOT NULL DEFAULT -1,
+    comp_rev_number         INTEGER       NOT NULL DEFAULT -1,
+    comp_layer_index        INTEGER       NOT NULL DEFAULT -1,
+    name                    VARCHAR(200),
+    identifier              INTEGER,
+    identifier_space_name   VARCHAR(100),
+    as_stored_child_name    VARCHAR(200),
+    dep_type                INTEGER       NOT NULL DEFAULT 0,
+    required                BOOLEAN       NOT NULL DEFAULT FALSE,
+    unique_link_id          BIGINT,
+    sort_order              INTEGER       NOT NULL DEFAULT 0,
+    tenant_oid              CHAR(36),
+    creator                 VARCHAR(100),
+    created_at              TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                 VARCHAR(100),
+    updated_at              TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==================== 电子域：3D 模型关联 / 设计项目关联 / 设计实例 ====================
+-- 同样来自 EcadSchemaInitializer，DDL 原样迁移。
+CREATE TABLE IF NOT EXISTS ck_footprint_3d_link (
+    oid           CHAR(36) PRIMARY KEY,
+    footprint_oid CHAR(36) NOT NULL,
+    model3d_oid   CHAR(36) NOT NULL,
+    is_default    BOOLEAN  NOT NULL DEFAULT FALSE,
+    scale         FLOAT    NOT NULL DEFAULT 1.0,
+    offset_x      FLOAT,
+    offset_y      FLOAT,
+    offset_z      FLOAT,
+    rotation_x    FLOAT,
+    rotation_y    FLOAT,
+    rotation_z    FLOAT,
+    tenant_oid    CHAR(36),
+    creator       VARCHAR(100),
+    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater       VARCHAR(100),
+    updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_f3l_footprint ON ck_footprint_3d_link(footprint_oid);
+
+CREATE TABLE IF NOT EXISTS ck_ecad_project_design_link (
+    oid         CHAR(36)    PRIMARY KEY,
+    project_oid CHAR(36)    NOT NULL,
+    design_oid  CHAR(36)    NOT NULL,
+    design_type VARCHAR(30) NOT NULL,
+    sort_order  INTEGER     NOT NULL DEFAULT 0,
+    tenant_oid  CHAR(36),
+    creator     VARCHAR(100),
+    created_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater     VARCHAR(100),
+    updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_epdl_project ON ck_ecad_project_design_link(project_oid);
+CREATE INDEX IF NOT EXISTS idx_epdl_design ON ck_ecad_project_design_link(design_oid);
+
+CREATE TABLE IF NOT EXISTS ck_design_instance (
+    oid           CHAR(36)    PRIMARY KEY,
+    design_oid    CHAR(36)    NOT NULL,
+    design_type   VARCHAR(30) NOT NULL,
+    reference     VARCHAR(50),
+    component_oid CHAR(36),
+    footprint_oid CHAR(36),
+    symbol_oid    CHAR(36),
+    quantity      INTEGER     NOT NULL DEFAULT 1,
+    tenant_oid    CHAR(36),
+    creator       VARCHAR(100),
+    created_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater       VARCHAR(100),
+    updated_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_dins_design ON ck_design_instance(design_oid);
+CREATE INDEX IF NOT EXISTS idx_dins_component ON ck_design_instance(component_oid);
+CREATE INDEX IF NOT EXISTS idx_dins_footprint ON ck_design_instance(footprint_oid);
+
+-- 电子域（域实例，供设计项目引用）——注意与"业务域" ck_business_domain 的分工：
+--   ck_business_domain = 类型体系的业务划分（域标签）；ck_ecad_domain = 电子设计域的实例。
+CREATE TABLE IF NOT EXISTS ck_ecad_domain (
+    oid         CHAR(36)     PRIMARY KEY,
+    code        VARCHAR(50)  NOT NULL,
+    name        VARCHAR(200) NOT NULL,
+    description VARCHAR(1000),
+    enabled     BOOLEAN      NOT NULL DEFAULT TRUE,
+    tenant_oid  CHAR(36),
+    creator     VARCHAR(100),
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater     VARCHAR(100),
+    updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ecad_domain_code ON ck_ecad_domain(code);
+
+CREATE TABLE IF NOT EXISTS ck_ecad_footprint_ext (
+    oid              CHAR(36)     PRIMARY KEY,
+    ipc_name         VARCHAR(200) NOT NULL,
+    mount_type       VARCHAR(20)  NOT NULL,
+    pad_count        INTEGER      NOT NULL,
+    pitch_mm         FLOAT,
+    body_size        VARCHAR(100),
+    height_mm        FLOAT,
+    ipc_compliant    BOOLEAN      NOT NULL DEFAULT FALSE,
+    eda_format       VARCHAR(20)  NOT NULL,
+    preview_file_oid CHAR(36),
+    source_library   VARCHAR(200),
+    datasheet_url    VARCHAR(500),
+    tenant_oid       CHAR(36),
+    creator          VARCHAR(100),
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater          VARCHAR(100),
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==================== 电子域扩展表 (ECAD) ====================
+-- 以下表原先只在 EcadSchemaInitializer 里 CREATE TABLE，现并入本文件（DDL 原样迁移，未做改动）。
+-- 说明：域归属由类型体系的 ck_business_domain 表达，本组表只存"域扩展属性"。
+
+CREATE TABLE IF NOT EXISTS ck_ecad_symbol_ext (
+    oid              CHAR(36)     PRIMARY KEY,
+    symbol_category  VARCHAR(30)  NOT NULL,
+    pin_count        INTEGER      NOT NULL,
+    pin_mapping      VARCHAR(2000),
+    eda_format       VARCHAR(20)  NOT NULL,
+    preview_file_oid CHAR(36),
+    source_library   VARCHAR(200),
+    tenant_oid       CHAR(36),
+    creator          VARCHAR(100),
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater          VARCHAR(100),
+    updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ck_ecad_schematic_ext (
+    oid             CHAR(36)    PRIMARY KEY,
+    sheet_count     INTEGER,
+    eda_tool        VARCHAR(100),
+    design_phase    VARCHAR(20),
+    component_count INTEGER,
+    tenant_oid      CHAR(36),
+    creator         VARCHAR(100),
+    created_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater         VARCHAR(100),
+    updated_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ck_ecad_pcb_ext (
+    oid                CHAR(36)     PRIMARY KEY,
+    layer_count        INTEGER      NOT NULL,
+    board_thickness_mm FLOAT,
+    board_size         VARCHAR(100),
+    stackup            VARCHAR(2000),
+    impedance_ctrl     VARCHAR(500),
+    surface_finish     VARCHAR(20),
+    gerber_file_oid    CHAR(36),
+    tenant_oid         CHAR(36),
+    creator            VARCHAR(100),
+    created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater            VARCHAR(100),
+    updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==================== 元器件 ↔ 封装 / 图符 关联表 ====================
+CREATE TABLE IF NOT EXISTS ck_component_footprint_link (
+    oid            CHAR(36)     PRIMARY KEY,
+    component_oid  CHAR(36)     NOT NULL,
+    footprint_oid  CHAR(36)     NOT NULL,
+    is_default     BOOLEAN      NOT NULL DEFAULT FALSE,
+    variant_note   VARCHAR(500),
+    sort_order     INTEGER      NOT NULL DEFAULT 0,
+    tenant_oid     CHAR(36),
+    creator        VARCHAR(100),
+    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater        VARCHAR(100),
+    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_cfl_component ON ck_component_footprint_link(component_oid);
+CREATE INDEX IF NOT EXISTS idx_cfl_footprint ON ck_component_footprint_link(footprint_oid);
+
+CREATE TABLE IF NOT EXISTS ck_component_symbol_link (
+    oid           CHAR(36)     PRIMARY KEY,
+    component_oid CHAR(36)     NOT NULL,
+    symbol_oid    CHAR(36)     NOT NULL,
+    is_default    BOOLEAN      NOT NULL DEFAULT FALSE,
+    variant_note  VARCHAR(500),
+    tenant_oid    CHAR(36),
+    creator       VARCHAR(100),
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater       VARCHAR(100),
+    updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_csl_component ON ck_component_symbol_link(component_oid);
+CREATE INDEX IF NOT EXISTS idx_csl_symbol ON ck_component_symbol_link(symbol_oid);
+
 CREATE TABLE IF NOT EXISTS ck_type_definition (
+    -- 业务域归属（软引用 ck_business_domain.oid）：域是业务划分、允许跨域；
+    -- 与 parent_oid（类型继承）正交，历史上由 parent_oid 兼表域归属，已拆分
+    domain_oid   CHAR(36),
     oid            CHAR(36)     PRIMARY KEY,
     code           VARCHAR(50)  NOT NULL UNIQUE,
     name           VARCHAR(100) NOT NULL,
@@ -593,7 +1171,6 @@ CREATE TABLE IF NOT EXISTS ck_type_page_layout (
     oid            CHAR(36)     PRIMARY KEY,
     entity_oid     CHAR(36)     NOT NULL,                 -- 关联 ck_type_definition.oid
     entity_code    VARCHAR(50),                           -- 实体类型编码（如 PRODUCT_LINE）
-    entity_type    VARCHAR(20)  NOT NULL,                 -- 实体类型: OOTB | SOFT_TYPE
     operation_code VARCHAR(30)  NOT NULL DEFAULT 'list',  -- 操作编码: list|create|update|detail|用户自定义
     operation_name VARCHAR(50),                           -- 操作显示名称
     layout_json    JSONB        NOT NULL DEFAULT '{}',    -- 布局 JSON 配置
@@ -602,10 +1179,10 @@ CREATE TABLE IF NOT EXISTS ck_type_page_layout (
     created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updater        VARCHAR(100),
     updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (entity_oid, entity_type, operation_code, tenant_oid)
+    UNIQUE (entity_oid, operation_code, tenant_oid)
 );
 
-CREATE INDEX IF NOT EXISTS idx_pl_entity ON ck_type_page_layout(entity_oid, entity_type);
+
 
 -- ==================== 租户 ====================
 -- oid 为全局唯一主键，tenant_id 为租户标识
@@ -683,6 +1260,8 @@ CREATE INDEX IF NOT EXISTS idx_token_expire ON ck_token(expire_at);
 -- oid 为全局唯一主键，code 为业务唯一键，team_oid 关联团队
 -- parent_oid 自引用外键，支持多级树形结构
 CREATE TABLE IF NOT EXISTS ck_product_line (
+    -- 逻辑删除标记（原先只由初始化器 ALTER 补列）
+    delete_mark     BOOLEAN DEFAULT FALSE,
     oid              CHAR(36)     PRIMARY KEY,
     code             VARCHAR(50)  NOT NULL UNIQUE,
     name             VARCHAR(100) NOT NULL,
@@ -705,6 +1284,8 @@ CREATE INDEX IF NOT EXISTS idx_product_line_parent ON ck_product_line(parent_oid
 -- oid 为全局唯一主键，code 为业务唯一键，parent_oid 关联所属产品系列（复用父类字段）
 -- 继承 ProductLine 全部字段，parent_oid 表示归属产品系列
 CREATE TABLE IF NOT EXISTS ck_product_model (
+    -- 逻辑删除标记（原先只由初始化器 ALTER 补列）
+    delete_mark      BOOLEAN DEFAULT FALSE,
     oid              CHAR(36)     PRIMARY KEY,
     code             VARCHAR(50)  NOT NULL UNIQUE,
     name             VARCHAR(100) NOT NULL,
@@ -712,7 +1293,6 @@ CREATE TABLE IF NOT EXISTS ck_product_model (
     thumbnail        VARCHAR(500),
     team_oid         CHAR(36),
     parent_oid       CHAR(36)     NOT NULL,
-    ext_attrs        JSONB        NOT NULL DEFAULT '{}',
     tenant_oid       CHAR(36),
     creator          VARCHAR(100),
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -729,6 +1309,8 @@ CREATE INDEX IF NOT EXISTS idx_model_parent_oid ON ck_product_model(parent_oid);
 -- owner_type: LINE（产品系列）/ MODEL（产品型号）
 -- default_folders 为 JSON 数组字符串，存储该阶段默认文件夹名称列表
 CREATE TABLE IF NOT EXISTS ck_stage (
+    -- 该阶段可管理的对象类型（逗号分隔；原先只由初始化器 ALTER 补列）
+    managed_object_types VARCHAR(500),
     oid              CHAR(36)     PRIMARY KEY,
     code             VARCHAR(50)  NOT NULL,
     name             VARCHAR(100) NOT NULL,
@@ -934,6 +1516,9 @@ CREATE INDEX IF NOT EXISTS idx_part_cls       ON ck_part(cls_oid);
 -- ==================== 部件子版本 (Part Iteration) ====================
 -- 参考 Windchill WTPart，与 Part 为 1:N 版本历史关系
 CREATE TABLE IF NOT EXISTS ck_part_iteration (
+    -- 主文件 oid / 版本固化的生命周期模板迭代（原先只由初始化器 ALTER 补列，现随建表就位）
+    ckfile_oid                       CHAR(36),
+    lifecycle_template_iteration_oid CHAR(36),
     oid                              CHAR(36)     PRIMARY KEY,
     master_oid                       CHAR(36)     NOT NULL REFERENCES ck_part(oid) ON DELETE CASCADE,
     revision                         VARCHAR(10)  NOT NULL DEFAULT 'A',
@@ -1162,6 +1747,9 @@ CREATE TABLE IF NOT EXISTS ck_file_storage_config (
 
 -- ==================== 研发阶段模板 ====================
 CREATE TABLE IF NOT EXISTS ck_stage_template (
+    -- 行业（默认传统行业）/ 可管理的对象类型（原先只由初始化器 ALTER 补列）
+    industry             VARCHAR(50)  DEFAULT 'TRADITIONAL',
+    managed_object_types VARCHAR(500),
     oid            CHAR(36)     PRIMARY KEY,
     code           VARCHAR(50)  NOT NULL,
     name           VARCHAR(100) NOT NULL,
@@ -1531,3 +2119,27 @@ CREATE TABLE IF NOT EXISTS ck_process_form_template (
 CREATE UNIQUE INDEX IF NOT EXISTS uk_ck_process_form_template_code ON ck_process_form_template(tenant_oid, code);
 CREATE INDEX IF NOT EXISTS idx_pft_sort        ON ck_process_form_template(builtin, sort_order);
 CREATE INDEX IF NOT EXISTS idx_pft_tenant      ON ck_process_form_template(tenant_oid);
+
+-- ==================== 补全索引（批 2 收尾；**必须放在文件末尾**） ====================
+-- 这些索引原先由迁移方法 / 初始化器建立。放在最后：本文件是按模块顺序执行的，
+-- 若排在相关建表语句之前，首次执行会因"关系不存在"报错（幂等的 IF NOT EXISTS 救不了顺序问题）。
+CREATE UNIQUE INDEX IF NOT EXISTS uk_gen_part_threshold_config_tenant
+    ON ck_gen_part_threshold_config (tenant_oid);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_process_template_version
+    ON ck_process_template_version (template_oid, version);
+CREATE INDEX IF NOT EXISTS idx_process_template_version_tenant
+    ON ck_process_template_version (tenant_oid);
+
+CREATE INDEX IF NOT EXISTS idx_engml_usedby_iter ON ck_eng_doc_member_link (used_by_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_engml_uses_master ON ck_eng_doc_member_link (uses_master_oid);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_engml_iter_master
+    ON ck_eng_doc_member_link (used_by_iteration_oid, uses_master_oid);
+
+CREATE INDEX IF NOT EXISTS idx_engrl_refby_iter ON ck_eng_doc_ref_link (referenced_by_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_engrl_refs_master ON ck_eng_doc_ref_link (references_master_oid);
+CREATE INDEX IF NOT EXISTS idx_engrl_refs_type_iter
+    ON ck_eng_doc_ref_link (references_master_oid, reference_type, referenced_by_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_engrl_reftype ON ck_eng_doc_ref_link (reference_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_engrl_iter_master
+    ON ck_eng_doc_ref_link (referenced_by_iteration_oid, references_master_oid);

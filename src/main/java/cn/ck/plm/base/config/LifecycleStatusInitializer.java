@@ -60,6 +60,11 @@ public class LifecycleStatusInitializer implements CommandLineRunner {
         if (mapper.existsByCode(code) == 0) {
             LifecycleStatus status = new LifecycleStatus(code, name);
             status.setDisplayName(name);
+            // 显式归属「平台租户」：状态字典是系统预置、全租户共享的数据。
+            // 不写这一行时会落到 TenantContext.get() 的兜底值（默认租户 …0001）——
+            // 而查询侧是 tenant_oid IN (平台租户 …, 当前租户)，于是这 6 个状态在界面上
+            // 永远读不到（状态列表空白），只能靠人工改库救回。
+            status.setTenantOid(cn.ck.plm.base.util.TenantContext.PLATFORM_TENANT_OID);
             LocalDateTime now = LocalDateTime.now();
             status.setCreatedAt(now);
             status.setUpdatedAt(now);
