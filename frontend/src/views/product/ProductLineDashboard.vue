@@ -23,37 +23,45 @@
             <h2 class="pl-title">{{ line?.name || '—' }}</h2>
             <a-tag v-if="line?.code" color="default" class="pl-code-tag">{{ line.code }}</a-tag>
           </div>
-          <p class="pl-meta" v-if="line">
-            <template v-if="line.description">{{ line.description }}<span class="pl-meta-sep" /></template>
-            <span>创建于 {{ formatTime(line.createdAt) }}</span>
-          </p>
         </div>
 
-        <div class="pl-header-stats" v-if="line">
-          <!-- 产品系列：显示子系列数量 -->
-          <template v-if="line.nodeType !== 'PRODUCT_MODEL'">
-            <div
-              class="pl-stat-pill"
-              :class="{ 'pl-stat-pill--active': showChildren }"
-              @click="showChildren = !showChildren"
-            >
-              <TeamOutlined class="pl-stat-pill-icon" style="color:#52c41a" />
-              <span class="pl-stat-pill-num">{{ children.length }}</span>
-              <span class="pl-stat-pill-label">子系列</span>
-              <CaretDownOutlined v-if="children.length" class="pl-stat-pill-arrow" :class="{ up: showChildren }" />
-            </div>
+        <!-- 右侧一列：统计信息在上，描述与创建信息在它下面。
+             描述/创建原本占着标题下面的一整行，左侧因此比右侧高出两行；收到右列后
+             左侧只剩「面包屑 + 标题 + 编码」，页头少一行 —— 内容区就多一行可用高度 -->
+        <div class="pl-header-side" v-if="line">
+          <div class="pl-header-stats">
+            <!-- 产品系列：显示子系列数量 -->
+            <template v-if="line.nodeType !== 'PRODUCT_MODEL'">
+              <div
+                class="pl-stat-pill"
+                :class="{ 'pl-stat-pill--active': showChildren }"
+                @click="showChildren = !showChildren"
+              >
+                <TeamOutlined class="pl-stat-pill-icon" style="color:#52c41a" />
+                <span class="pl-stat-pill-num">{{ children.length }}</span>
+                <span class="pl-stat-pill-label">子系列</span>
+                <CaretDownOutlined v-if="children.length" class="pl-stat-pill-arrow" :class="{ up: showChildren }" />
+              </div>
+              <div class="pl-stat-pill">
+                <GoldOutlined class="pl-stat-pill-icon" style="color:#1677ff" />
+                <span class="pl-stat-pill-num">{{ modelCount }}</span>
+                <span class="pl-stat-pill-label">型号</span>
+              </div>
+            </template>
+            <!-- 产品型号：不显示子系列和型号数量 -->
             <div class="pl-stat-pill">
-              <GoldOutlined class="pl-stat-pill-icon" style="color:#1677ff" />
-              <span class="pl-stat-pill-num">{{ modelCount }}</span>
-              <span class="pl-stat-pill-label">型号</span>
+              <ExperimentOutlined class="pl-stat-pill-icon" style="color:#722ed1" />
+              <span class="pl-stat-pill-num">{{ stageDefs.length }}</span>
+              <span class="pl-stat-pill-label">阶段</span>
             </div>
-          </template>
-          <!-- 产品型号：不显示子系列和型号数量 -->
-          <div class="pl-stat-pill">
-            <ExperimentOutlined class="pl-stat-pill-icon" style="color:#722ed1" />
-            <span class="pl-stat-pill-num">{{ stageDefs.length }}</span>
-            <span class="pl-stat-pill-label">阶段</span>
           </div>
+
+          <!-- 描述是变长的：自己截断（悬停看全），"创建于"始终留在可见位置 -->
+          <p class="pl-meta">
+            <span v-if="line.description" class="pl-meta-desc" :title="line.description">{{ line.description }}</span>
+            <span v-if="line.description" class="pl-meta-sep" />
+            <span class="pl-meta-created">创建于 {{ formatTime(line.createdAt) }}</span>
+          </p>
         </div>
       </div>
 
@@ -3006,8 +3014,10 @@ onMounted(() => {
   background: #fff;
   border: 1px solid var(--pl-border);
   border-radius: var(--pl-radius);
-  padding: 20px 24px 16px;
-  margin-bottom: 16px;
+  /* 页头是"每条都要看一眼"的信息条，本该尽量矮：上下内边距与下外边距各收紧一档，
+     把省下的高度让给内容区（阶段页签 + 文件夹树 + 表格）—— 用户反馈"往上移动、加大利用空间" */
+  padding: 12px 20px 10px;
+  margin-bottom: 12px;
   box-shadow: var(--pl-shadow);
   position: relative;
   overflow: hidden;
@@ -3029,13 +3039,14 @@ onMounted(() => {
 
 .pl-header-info { min-width: 0; }
 
-.pl-breadcrumb { margin-bottom: 6px; }
+.pl-breadcrumb { margin-bottom: 2px; }
 
 .pl-title-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 4px;
+  /* 描述/创建已挪到右列，标题行下面不再需要预留空挡 */
+  margin-bottom: 0;
 }
 .pl-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--pl-text); letter-spacing: -.3px; }
 .pl-code-tag { font-family: monospace; font-size: 12px; }
@@ -3046,12 +3057,27 @@ onMounted(() => {
   color: var(--pl-text-muted);
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
 }
-.pl-meta-sep { display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: #d9d9d9; }
+/* 描述是变长的：由它自己截断（悬停看全）——不能让它把"创建于"挤出可视区。
+   注意 text-overflow 加在 flex 容器上对子项无效，必须落在这一层 */
+.pl-meta-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pl-meta-created { flex-shrink: 0; }
+.pl-meta-sep { display: inline-block; width: 3px; height: 3px; border-radius: 50%; background: #d9d9d9; flex-shrink: 0; }
+
+/* 右侧一列：统计 pill 在上，描述/创建信息在它下面（同一列、靠右对齐） */
+.pl-header-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 52%;
+  min-width: 0;
+}
 
 /* 统计 pill */
 .pl-header-stats {
@@ -3064,7 +3090,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  /* 比原来的 8px 14px 矮 4px：三个 pill 并排是页头里第二高的元素，收一点就够看 */
+  padding: 6px 12px;
   border-radius: 20px;
   background: var(--pl-bg);
   border: 1px solid var(--pl-border);

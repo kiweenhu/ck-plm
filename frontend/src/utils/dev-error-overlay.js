@@ -13,6 +13,20 @@
 const MAX_ITEMS = 8
 const seen = new Set()
 
+/**
+ * 明确忽略的「浏览器噪声」——它们不是业务错误，却会走 window.onerror 被画到浮层上。
+ *
+ * <ul>
+ *   <li>{@code ResizeObserver loop completed with undelivered notifications.}：
+ *       浏览器在"ResizeObserver 回调里又改了尺寸"时的提示，规范允许、不中断任何逻辑。
+ *       最典型的触发场景：打开带表格/自适应布局的弹窗（例如「成组替代」弹窗）——
+ *       用户看到红框会以为功能坏了，实际功能完全正常。真正需要排查的渲染错误仍会照常显示。</li>
+ * </ul>
+ */
+const IGNORED_MESSAGES = [
+  /ResizeObserver loop/i,
+]
+
 /** 收集到的错误条目 */
 const items = []
 
@@ -81,6 +95,11 @@ function ensurePanel() {
  */
 export function reportDevError(source, error, info) {
   const message = error && error.message ? error.message : String(error)
+  // 浏览器噪声（见 IGNORED_MESSAGES）不进浮层：它们不是业务错误，
+  // 画出来只会误导（"点了个按钮就报错"）。要看原始信息仍可在控制台/浏览器里看到。
+  if (IGNORED_MESSAGES.some((pattern) => pattern.test(message))) {
+    return
+  }
   const stack = error && error.stack ? String(error.stack).split('\n').slice(0, 4).join('\n') : ''
   // 去重：同一错误反复触发（渲染循环）只留一条，避免刷屏
   const key = `${source}|${message}`

@@ -1469,6 +1469,9 @@ public class ProcessServiceImpl implements ProcessService {
         vo.setProcessDefinitionName(pi.getProcessDefinitionName());
         vo.setBusinessKey(pi.getBusinessKey());
         vo.setStartUserId(pi.getStartUserId());
+        // 发起人同样给显示名：办理页「流程信息」里显示出账号（Kiween.Hu）而「负责人」是姓名，
+        // 是同一页里两套口径（见 ProcessInstanceVO#startUserName）
+        vo.setStartUserName(displayNameOf(pi.getStartUserId()));
         vo.setStartTime(pi.getStartTime());
         vo.setTenantId(pi.getTenantId());
         vo.setStatus(pi.isSuspended() ? "suspended" : "running");
@@ -1484,6 +1487,7 @@ public class ProcessServiceImpl implements ProcessService {
         vo.setProcessDefinitionName(hpi.getProcessDefinitionName());
         vo.setBusinessKey(hpi.getBusinessKey());
         vo.setStartUserId(hpi.getStartUserId());
+        vo.setStartUserName(displayNameOf(hpi.getStartUserId()));
         vo.setStartTime(hpi.getStartTime());
         vo.setEndTime(hpi.getEndTime());
         vo.setDeleteReason(hpi.getDeleteReason());

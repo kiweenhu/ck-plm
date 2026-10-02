@@ -39,8 +39,18 @@ public class ProcessInstanceVO {
     /** 业务标识（业务对象 oid 等） */
     private String businessKey;
 
-    /** 发起人（username） */
+    /** 发起人（username）—— Flowable 存的就是这个原样标识，界面上不该直接显示它 */
     private String startUserId;
+
+    /**
+     * 发起人<b>显示名</b>（姓名）。
+     *
+     * <p>为什么要与 {@code startUserId} 分开：后者是 Flowable 的原样标识（如 {@code Kiween.Hu} 这种账号），
+     * 直接显示出来就是"发起人是账号、负责人却是姓名"的口径不一致。显示名按与办理人<b>同一套</b>解析
+     * （{@code ProcessServiceImpl#displayNameOf}：先按人员 oid、再按用户名查，取 displayName），
+     * 解析不到时为空，由前端回落到 {@code startUserId} —— 宁可在界面上看到一个账号，也不要看到空白。
+     */
+    private String startUserName;
 
     /** 状态：running / suspended / completed / terminated */
     private String status;
@@ -99,6 +109,9 @@ public class ProcessInstanceVO {
 
     public String getStartUserId() { return startUserId; }
     public void setStartUserId(String startUserId) { this.startUserId = startUserId; }
+
+    public String getStartUserName() { return startUserName; }
+    public void setStartUserName(String startUserName) { this.startUserName = startUserName; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

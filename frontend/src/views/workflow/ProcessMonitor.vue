@@ -25,6 +25,9 @@
               </div>
             </div>
           </template>
+          <template v-if="column.key === 'startUser'">
+            {{ record.startUserName || record.startUserId || '—' }}
+          </template>
           <template v-if="column.key === 'status'">
             <a-tag :color="statusColor(record.status)">
               {{ statusText(record.status) }}
@@ -89,7 +92,8 @@ const apiMap = {
 
 const columns = [
   { title: '所属流程 / 业务标识', key: 'process' },
-  { title: '发起人', dataIndex: 'startUserId', width: 100 },
+  // 发起人显示姓名（startUserName）；用 key 走 #bodyCell 才能做"姓名 → 账号"的回落
+  { title: '发起人', key: 'startUser', width: 100 },
   { title: '状态', key: 'status', width: 80, align: 'center' },
   { title: '开始时间', key: 'startTime', width: 160 },
   { title: '结束时间', key: 'endTime', width: 160 },

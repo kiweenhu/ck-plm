@@ -33,7 +33,10 @@
             </a-descriptions-item>
             <a-descriptions-item label="流程名称">{{ detail.processDefinitionName || '—' }}</a-descriptions-item>
             <a-descriptions-item label="流程 Key">{{ detail.processDefinitionKey || '—' }}</a-descriptions-item>
-            <a-descriptions-item label="发起人">{{ detail.startUserId || '—' }}</a-descriptions-item>
+            <!-- 显示姓名（startUserName，后端按办理人同口径解析）；解析不到回落到账号 -->
+            <a-descriptions-item label="发起人">
+              {{ detail.startUserName || detail.startUserId || '—' }}
+            </a-descriptions-item>
             <a-descriptions-item label="状态">
               <a-tag :color="statusColor(detail.status)">{{ statusText(detail.status) }}</a-tag>
             </a-descriptions-item>

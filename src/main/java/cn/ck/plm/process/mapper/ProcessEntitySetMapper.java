@@ -24,7 +24,7 @@ public interface ProcessEntitySetMapper {
      * 写入一条关联（幂等）。
      *
      * <p>实现用 {@code ON CONFLICT DO NOTHING}：同一流程实例重复记录同一实体时不报错、不重复入行
-     * （唯一键见 {@code ProcessTemplateSchemaInitializer#createEntitySetTable}）。
+     * （唯一键见 {@code schema.sql} 里的 {@code uk_pes_instance_entity}）。
      *
      * @return 实际新增行数（已存在则为 0）
      */

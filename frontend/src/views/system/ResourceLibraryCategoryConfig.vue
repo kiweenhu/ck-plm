@@ -1,13 +1,16 @@
 <template>
   <div class="clcc-page">
-    <div class="clcc-header">
-      <div class="clcc-header-left">
-        <h3 class="clcc-title">资源库分类绑定</h3>
-        <span class="clcc-subtitle">为元器件库 / 标准件库 / 通用件库各自绑定「分类管理」中的分类根节点，决定各资源库左侧展示的分类子树</span>
-      </div>
-    </div>
+    <!-- 「资源库配置」按页签组织：与资源库相关的配置都收在这里，别再往左侧导航里加条目 -->
+    <a-tabs v-model:activeKey="activeTab" size="small">
+      <a-tab-pane key="category" tab="资源库分类绑定">
+        <div class="clcc-header">
+          <div class="clcc-header-left">
+            <h3 class="clcc-title">资源库分类绑定</h3>
+            <span class="clcc-subtitle">为元器件库 / 标准件库 / 通用件库各自绑定「分类管理」中的分类根节点，决定各资源库左侧展示的分类子树</span>
+          </div>
+        </div>
 
-    <a-spin :spinning="loading">
+        <a-spin :spinning="loading">
       <!--
         三行资源库绑定：直接用 v-for + v-model 绑定 rows（标准 Vue 响应式），
         不经过 a-table 的 slot record 代理层 —— 彻底避免「选择值显示 OK 但保存读到旧值」的脱钩问题。
@@ -43,7 +46,19 @@
         <code>ck_library_cls_config</code>，通过 <code>resource_code</code> 列区分各自绑定。
         绑定仅由企业/业务管理员维护；各资源库页面只读展示该分类子树并按分类筛选对应软类型的 Part。
       </div>
-    </a-spin>
+        </a-spin>
+      </a-tab-pane>
+
+      <!-- 页签二：通用件阈值配置（从左侧导航搬进来的整页） -->
+      <a-tab-pane key="genpart" tab="通用件阈值配置">
+        <GenPartThresholdConfig />
+      </a-tab-pane>
+
+      <!-- 页签三：标准件入库流程 -->
+      <a-tab-pane key="stdinbound" tab="标准件入库流程">
+        <StdPartInboundConfig />
+      </a-tab-pane>
+    </a-tabs>
   </div>
 </template>
 
@@ -53,6 +68,11 @@ import { message } from 'ant-design-vue'
 import {
   getAllCategoryBindings, bindLibraryCategory, getClassificationTree,
 } from '@/api'
+import GenPartThresholdConfig from '@/views/system/GenPartThresholdConfig.vue'
+import StdPartInboundConfig from '@/views/system/StdPartInboundConfig.vue'
+
+/** 当前页签：category = 资源库分类绑定；genpart = 通用件阈值配置 */
+const activeTab = ref('category')
 
 const loading = ref(false)
 // 按行独立的保存状态：savingKey === 'COMPONENT' 表示元器件库在保存中

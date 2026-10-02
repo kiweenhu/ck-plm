@@ -45,7 +45,7 @@
                   </span>
                 </div>
                 <div class="rp-item-meta">
-                  发起人 {{ item.startUserId || '—' }} · 开始 {{ fmtTime(item.startTime) }}
+                  发起人 {{ item.startUserName || item.startUserId || '—' }} · 开始 {{ fmtTime(item.startTime) }}
                 </div>
                 <div class="rp-item-meta rp-item-current">
                   当前节点：{{ item.currentActivityName || '—' }}（{{ item.currentAssignees || '未指派' }}）
@@ -85,7 +85,7 @@
                   </span>
                 </div>
                 <div class="rp-item-meta">
-                  发起人 {{ item.startUserId || '—' }} · 开始 {{ fmtTime(item.startTime) }}
+                  发起人 {{ item.startUserName || item.startUserId || '—' }} · 开始 {{ fmtTime(item.startTime) }}
                 </div>
                 <div class="rp-item-meta">
                   结束 {{ fmtTime(item.endTime) }}
@@ -114,7 +114,9 @@
           <a-descriptions-item label="状态">
             <a-tag :color="statusColor(detail.status)">{{ statusText(detail.status) }}</a-tag>
           </a-descriptions-item>
-          <a-descriptions-item label="发起人">{{ detail.startUserId || '—' }}</a-descriptions-item>
+          <a-descriptions-item label="发起人">
+            {{ detail.startUserName || detail.startUserId || '—' }}
+          </a-descriptions-item>
           <a-descriptions-item label="开始时间">{{ fmtTime(detail.startTime) }}</a-descriptions-item>
           <a-descriptions-item label="结束时间">{{ detail.endTime ? fmtTime(detail.endTime) : '—' }}</a-descriptions-item>
           <a-descriptions-item label="流程实例 id">

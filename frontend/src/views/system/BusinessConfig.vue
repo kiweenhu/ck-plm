@@ -28,7 +28,10 @@
       <div class="bc-content">
         <!-- 数据模型子模块 -->
         <template v-if="activeModule === 'datamodel'">
-          <div class="bc-embedded-page">
+          <!-- bc-page-fill：只有 TypePage 需要"撑满容器 + 内部滚动"，
+               加这个类是为了让它专属样式（见 style 底部 :deep(.bc-page-fill …)）
+               不再误伤同样以 .st-page 为根类名的其它页面（如研发阶段模板） -->
+          <div class="bc-embedded-page bc-page-fill">
             <TypePage />
           </div>
         </template>
@@ -97,6 +100,7 @@
           </div>
         </template>
 
+
         <!-- 占位模块 -->
         <template v-else>
           <div class="bc-placeholder">
@@ -152,7 +156,8 @@ const modules = [
   { key: 'platform',   label: '平台成员',     icon: TeamOutlined,       desc: '平台级角色（管理员/企业管理员）成员分配与管理' },
   { key: 'dict',       label: '数据字典',     icon: BookOutlined,       desc: '枚举值、代码表与标准化参考数据集中维护' },
   { key: 'unit',       label: '单位配置',     icon: CompassOutlined,    desc: '计量单位体系定义，含量纲类型、SI 标准、换算系数与偏移量' },
-  { key: 'componentlib', label: '资源库分类', icon: ApiOutlined,       desc: '为元器件库 / 标准件库 / 通用件库各自绑定「分类管理」中的分类根节点，决定对应资源库左侧展示的分类子树' },
+  // 与资源库相关的配置统一收在「资源库配置」里，按页签分（分类绑定 / 通用件阈值…），不再各占一个导航项
+  { key: 'componentlib', label: '资源库配置', icon: ApiOutlined,       desc: '资源库相关配置：分类根节点绑定（元器件库/标准件库/通用件库）、通用件阈值与认定流程等，按页签组织' },
   { key: 'cad',        label: 'CAD 集成',     icon: ToolOutlined,       desc: 'AutoCAD / SolidWorks / CATIA 设计工具连接与数据同步配置' },
   { key: 'lightweight',label: '轻量化转换',   icon: ThunderboltOutlined,desc: '3D 模型轻量化处理、多格式转换引擎与服务端点配置' },
 ]
@@ -289,13 +294,14 @@ function switchModule(mod) {
 }
 
 /* 工作流 tabs */
-/* 嵌入「数据模型」（TypePage）时撑满容器，保证内部滚动而非被裁切。
-   注意：TypePage 根类名为 st-*；旧文档中的 softtype-page / tree-container / detail-panel
-   已不存在（原规则为失效代码），此处按真实类名重写。 */
-.bc-content :deep(.st-page) { height: 100%; min-height: 0; overflow: hidden; }
-.bc-content :deep(.st-body) { flex: 1; min-height: 0; overflow: hidden; }
-.bc-content :deep(.st-tree-panel) { min-height: 0; max-height: 100%; }
-.bc-content :deep(.st-tree-spin) { min-height: 0; overflow-y: auto; }
+/* 「数据模型」（TypePage）专属：撑满容器、由页面内部滚动。
+   必须限定在 .bc-page-fill（只加在 datamodel 的容器上）：
+   此前写成 :deep(.st-page)，而「研发阶段模板」的根类名同样是 .st-page ——
+   被连带设成 height:100% + overflow:hidden 后，该页既没有滚动条、下半截还被裁掉。 */
+.bc-content :deep(.bc-page-fill .st-page) { height: 100%; min-height: 0; overflow: hidden; }
+.bc-content :deep(.bc-page-fill .st-body) { flex: 1; min-height: 0; overflow: hidden; }
+.bc-content :deep(.bc-page-fill .st-tree-panel) { min-height: 0; max-height: 100%; }
+.bc-content :deep(.bc-page-fill .st-tree-spin) { min-height: 0; overflow-y: auto; }
 
 /* 嵌入子页面通用样式 */
 .bc-embedded-page {

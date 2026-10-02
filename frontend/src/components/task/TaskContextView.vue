@@ -43,7 +43,11 @@
         <a-descriptions-item label="状态">
           <a-tag :color="statusColor(process?.status)">{{ statusText(process?.status) }}</a-tag>
         </a-descriptions-item>
-        <a-descriptions-item label="发起人">{{ process?.startUserId || '—' }}</a-descriptions-item>
+        <!-- 发起人显示姓名：startUserId 是 Flowable 的账号标识（如 Kiween.Hu），
+             startUserName 由后端按「负责人」同一套口径解析；解析不到才回落到账号 -->
+        <a-descriptions-item label="发起人">
+          {{ process?.startUserName || process?.startUserId || '—' }}
+        </a-descriptions-item>
         <a-descriptions-item label="开始时间">{{ fmtTime(process?.startTime) }}</a-descriptions-item>
         <a-descriptions-item label="结束时间">{{ fmtTime(process?.endTime) }}</a-descriptions-item>
       </a-descriptions>

@@ -35,7 +35,15 @@
           >
             <template #toolbar>
               <a-space>
-                <a-button type="primary" size="small" @click="openCloneModal" :loading="loadingPlatform">
+                <!-- 克隆是"业务租户把平台模板复制到本租户"的动作：平台管理员本身就在平台租户下，
+                     没有可克隆的来源（克隆会自我复制），故与「克隆平台布局」同口径 —— 平台管理员不显示 -->
+                <a-button
+                  v-if="!isPlatformAdmin"
+                  type="primary"
+                  size="small"
+                  @click="openCloneModal"
+                  :loading="loadingPlatform"
+                >
                   <template #icon><CloudDownloadOutlined /></template>
                   克隆平台模板
                 </a-button>
@@ -58,13 +66,22 @@
                 <a-tag :color="industryColor(record.industry)">{{ industryLabel(record.industry) }}</a-tag>
               </template>
               <template v-else-if="column.key === 'managedObjects'">
-                <a-space size="small" wrap>
-                  <a-tag v-for="t in parseManagedObjects(record.managedObjectTypes)" :key="t" color="purple" size="small">{{ managedObjectLabel(t) }}</a-tag>
+                <!-- 短标签 + nowrap：长文案（"功能 (Functional)"）在窄列里会逐字换行，把整列行高撑乱 -->
+                <a-space size="4" wrap>
+                  <a-tag
+                    v-for="t in parseManagedObjects(record.managedObjectTypes)"
+                    :key="t"
+                    color="purple"
+                    size="small"
+                    style="white-space:nowrap"
+                    :title="managedObjectLabel(t)"
+                  >{{ managedObjectShortLabel(t) }}</a-tag>
                   <span v-if="parseManagedObjects(record.managedObjectTypes).length === 0" style="color:#bfbfbf">-</span>
                 </a-space>
               </template>
               <template v-else-if="column.key === 'defaultFolders'">
-                <a-tooltip :title="record.defaultFolders">
+                <!-- tooltip 给"格式化后"的完整内容，而不是原始 JSON 串 -->
+                <a-tooltip :title="formatFolders(record.defaultFolders)">
                   <span class="st-folders-preview">{{ formatFolders(record.defaultFolders) }}</span>
                 </a-tooltip>
               </template>
@@ -224,6 +241,11 @@ function parseManagedObjects(json) {
 }
 function managedObjectLabel(t) { return MANAGED_OBJECT_LABEL[t] || t }
 
+/** 列表短标签：去掉"（英文）"后缀，窄列里才排得下（完整名称放在标签 title 上） */
+function managedObjectShortLabel(t) {
+  return managedObjectLabel(t).replace(/\s*[（(][^）)]*[）)]\s*$/, '')
+}
+
 const industryOptions = INDUSTRY_OPTIONS.map(({ value, label }) => ({ value, label }))
 const managedObjectOptions = MANAGED_OBJECT_OPTIONS
 
@@ -231,10 +253,11 @@ const hasAnyTemplate = computed(() => templates.value.length > 0)
 
 const columns = [
   { title: '阶段编码', dataIndex: 'code', key: 'code', width: 160 },
-  { title: '名称', dataIndex: 'name', key: 'name', width: 100 },
-  { title: '行业', key: 'industry', width: 140 },
-  { title: '管理对象', key: 'managedObjects', width: 200 },
-  { title: '图标', dataIndex: 'icon', key: 'icon', width: 140 },
+  { title: '名称', dataIndex: 'name', key: 'name', width: 110 },
+  { title: '行业', key: 'industry', width: 130 },
+  // 管理对象列给足宽度（短标签 + wrap 后一行放得下 2-3 个）
+  { title: '管理对象', key: 'managedObjects', width: 240 },
+  { title: '图标', dataIndex: 'icon', key: 'icon', width: 120 },
   { title: '标识色', key: 'color', width: 100 },
   { title: '排序', dataIndex: 'sortOrder', key: 'sortOrder', width: 60 },
   { title: '默认文件夹', key: 'defaultFolders', width: 160, ellipsis: true },

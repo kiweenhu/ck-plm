@@ -60,8 +60,12 @@ export const useUserStore = defineStore('user', () => {
     phone.value = data.phone || ''
     orgOid.value = data.orgOid || ''
     roles.value = data.roles || []
-    tenantOid.value = data.tenantOid || ''
-    tenantName.value = data.tenantName || ''
+    // 注意：/auth/verify（路由守卫每次刷新都会调）与 /auth/login 的返回体里都没有 tenantName，
+    // 租户名由 MainLayout 调 /tenants/current 补齐。早前这两行是无条件赋值 —— 于是每次刷新
+    // 都被 verify 的返回值把已有的租户名清成空串，侧边栏"租户信息"变成空白。
+    // 缺字段时保留原值（token 校验场景就是"补全登录态"，不是"重置"）。
+    tenantOid.value = data.tenantOid || tenantOid.value || ''
+    tenantName.value = data.tenantName || tenantName.value || ''
 
     // 设置过期时间为 3 天后
     const expireMs = Date.now() + 3 * 24 * 60 * 60 * 1000
@@ -69,16 +73,18 @@ export const useUserStore = defineStore('user', () => {
 
     localStorage.setItem('token', data.token)
     localStorage.setItem('tokenExpireAt', expireMs.toString())
+    // 存"store 当前值"而不是 data.* 原样：verify 返回体缺 tenantName 时，
+    // 写 data.tenantName（undefined）会被 JSON 直接丢掉 —— 刷新后 tenantName 又变空。
     localStorage.setItem('user', JSON.stringify({
-      username: data.username,
-      displayName: data.displayName,
-      oid: data.oid,
-      email: data.email,
-      phone: data.phone,
-      orgOid: data.orgOid,
-      roles: data.roles,
-      tenantOid: data.tenantOid,
-      tenantName: data.tenantName
+      username: username.value,
+      displayName: displayName.value,
+      oid: oid.value,
+      email: email.value,
+      phone: phone.value,
+      orgOid: orgOid.value,
+      roles: roles.value,
+      tenantOid: tenantOid.value,
+      tenantName: tenantName.value
     }))
   }
 

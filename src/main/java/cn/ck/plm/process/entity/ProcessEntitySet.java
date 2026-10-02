@@ -13,8 +13,8 @@ import cn.ck.plm.base.entity.TenantEntity;
 /**
  * 流程实例关联的业务实体集合（{@code ck_process_entity_set}）—— <b>一行 = 集合里的一个成员</b>。
  *
- * <p>它取代了流程模板上原来的 {@code primary_object_type}（单一 code 表达不了一个流程
- * 关联多个业务实体，见 {@code ProcessTemplateSchemaInitializer#dropLegacyTemplateColumns}）：
+ * <p>它取代了流程模板上原来的 {@code primary_object_type}（历史列，已由迁移移除；
+ * 单一 code 表达不了一个流程关联多个业务实体）：
  * 一个流程实例可以关联多个业务实体，反向也能回答"这个业务对象参与过哪些流程"。
  *
  * <h3>实体引用（无版本 / 带版本）</h3>

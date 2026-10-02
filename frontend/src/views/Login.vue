@@ -181,7 +181,7 @@
         </div>
       </div>
 
-      <!-- PLM 能力卡片 -->
+      <!-- PLM 能力卡片（0.2.0 口径：多专业域/类型树、低代码页面设计器、资源库与电子域为本版能力） -->
       <div class="plm-capability-card">
         <h3 class="capability-title">平台能力</h3>
         <p class="capability-desc">CK-PLM 为企业提供全栈产品生命周期管理</p>
@@ -191,50 +191,25 @@
           <span class="tech-tag vue">Vue 3</span>
           <span class="tech-tag pg">PostgreSQL</span>
           <span class="tech-tag">MyBatis</span>
+          <span class="tech-tag flowable">Flowable 7</span>
           <span class="tech-tag">BPMN 2.0</span>
         </div>
 
+        <!-- 数据见 script 里的 capabilities：带色图标 + NEW 标记，避免 emoji 在各平台渲染不一致 -->
         <div class="capability-list">
-          <div class="capability-item">
-            <span class="capability-icon">📦</span>
+          <div
+            v-for="cap in capabilities"
+            :key="cap.name"
+            class="capability-item"
+            :style="{ '--cap-color': cap.color }"
+          >
+            <span class="capability-icon"><component :is="cap.icon" /></span>
             <div class="capability-info">
-              <span class="capability-name">产品全生命周期管理</span>
-              <span class="capability-hint">产品系列 · 型号 · 研发阶段</span>
-            </div>
-          </div>
-          <div class="capability-item">
-            <span class="capability-icon">🔧</span>
-            <div class="capability-info">
-              <span class="capability-name">软类型动态建模</span>
-              <span class="capability-hint">实体属性 · IBA扩展 · 页面设计器</span>
-            </div>
-          </div>
-          <div class="capability-item">
-            <span class="capability-icon">🗂️</span>
-            <div class="capability-info">
-              <span class="capability-name">分类与编码管理</span>
-              <span class="capability-hint">分类树 · 编码规则 · 版本控制</span>
-            </div>
-          </div>
-          <div class="capability-item">
-            <span class="capability-icon">🔄</span>
-            <div class="capability-info">
-              <span class="capability-name">复合实体与迭代</span>
-              <span class="capability-hint">Revision/Iteration · 检出检入</span>
-            </div>
-          </div>
-          <div class="capability-item">
-            <span class="capability-icon">🔌</span>
-            <div class="capability-info">
-              <span class="capability-name">可视化工作流引擎</span>
-              <span class="capability-hint">BPMN 2.0 · 生命周期 · 审批</span>
-            </div>
-          </div>
-          <div class="capability-item">
-            <span class="capability-icon">🛡️</span>
-            <div class="capability-info">
-              <span class="capability-name">多租户与权限控制</span>
-              <span class="capability-hint">租户隔离 · RBAC · 平台管理</span>
+              <span class="capability-name">
+                {{ cap.name }}
+                <em v-if="cap.isNew" class="capability-new">NEW</em>
+              </span>
+              <span class="capability-hint">{{ cap.hint }}</span>
             </div>
           </div>
         </div>
@@ -249,7 +224,7 @@
           <span class="oss-link-divider">|</span>
           <span class="oss-link">Apache-2.0</span>
           <span class="oss-link-divider">|</span>
-          <span class="oss-link">v1.0.0</span>
+          <span class="oss-link">v{{ appVersion }}</span>
         </div>
       </div>
     </div>
@@ -264,7 +239,11 @@
 <script setup>
 import { h, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { UserOutlined, LockOutlined } from '@ant-design/icons-vue'
+import {
+  UserOutlined, LockOutlined,
+  ApartmentOutlined, LayoutOutlined, DatabaseOutlined, AppstoreOutlined,
+  TagsOutlined, BranchesOutlined, DeploymentUnitOutlined, SafetyCertificateOutlined
+} from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { login, registerTenant } from '@/api'
 import { useUserStore } from '@/stores/user'
@@ -272,6 +251,24 @@ import { recordLogin } from '@/composables/useActivity'
 
 const router = useRouter()
 const userStore = useUserStore()
+
+/** 版本号：构建期由 vite.config.js 的 define 注入（单一来源：frontend/package.json 的 version） */
+const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.2.0'
+
+/**
+ * 平台能力（0.2.0 口径）—— 前三项是本版新增/重构的能力，界面上带 NEW 标记。
+ * 图标改用 antd 图标 + 每项自带主色（emoji 在不同系统渲染差异大，观感不可控）。
+ */
+const capabilities = [
+  { icon: ApartmentOutlined, color: '#22d3ee', name: '多专业域与类型树', hint: '6 个预置业务域 · 类型继承 · 零改表扩展', isNew: true },
+  { icon: LayoutOutlined, color: '#a78bfa', name: '低代码页面设计器', hint: '列表 / 表单 / 详情编排 · IBA 扩展属性', isNew: true },
+  { icon: DatabaseOutlined, color: '#34d399', name: '资源库与电子域', hint: '标准件 / 通用件库 · 元器件库 · 封装符号库', isNew: true },
+  { icon: AppstoreOutlined, color: '#60a5fa', name: '产品全生命周期管理', hint: '产品系列 · 型号 · 研发阶段' },
+  { icon: TagsOutlined, color: '#fbbf24', name: '分类与编码管理', hint: '分类树 · 编码规则 · 版本控制' },
+  { icon: BranchesOutlined, color: '#f472b6', name: '复合实体与迭代', hint: 'Revision / Iteration · 检出检入 · BOM' },
+  { icon: DeploymentUnitOutlined, color: '#4ade80', name: '可视化工作流引擎', hint: 'BPMN 2.0 · 生命周期模板 · 审批' },
+  { icon: SafetyCertificateOutlined, color: '#fb7185', name: '多租户与权限控制', hint: '租户隔离 · RBAC · 平台管理' }
+]
 
 const formRef = ref()
 const loading = ref(false)
@@ -501,6 +498,8 @@ const handleRegister = async () => {
   border-radius: 16px; border: 1px solid rgba(0,212,255,0.12);
   box-shadow: 0 0 60px rgba(0,180,255,0.05), 0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
   padding: 36px 40px; overflow: hidden;
+  /* 与右侧能力卡等高：内容垂直居中，避免表单下方留出大片空白 */
+  display: flex; flex-direction: column; justify-content: center;
 }
 .card-border-glow {
   position: absolute; top: 0; left: -100%; width: 100%; height: 1px;
@@ -551,23 +550,34 @@ const handleRegister = async () => {
 .capability-desc { font-size: 12px; color: rgba(167,178,200,0.55); margin: 0 0 18px; }
 
 /* 技术栈标签 */
-.tech-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 20px; }
+.tech-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 16px; }
 .tech-tag { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 500; color: rgba(167,178,200,0.7); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); }
 .tech-tag.spring { color: #6db33f; background: rgba(109,179,63,0.1); border-color: rgba(109,179,63,0.25); }
 .tech-tag.vue { color: #42d392; background: rgba(66,211,146,0.1); border-color: rgba(66,211,146,0.25); }
 .tech-tag.pg { color: #4da6ff; background: rgba(77,166,255,0.1); border-color: rgba(77,166,255,0.25); }
+.tech-tag.flowable { color: #f9a03f; background: rgba(249,160,63,0.1); border-color: rgba(249,160,63,0.25); }
 
-/* 能力列表 */
-.capability-list { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.capability-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s ease; }
-.capability-item:hover { background: rgba(74,222,128,0.05); border-color: rgba(74,222,128,0.18); transform: translateX(3px); }
-.capability-icon { font-size: 18px; line-height: 1; flex-shrink: 0; margin-top: 1px; }
-.capability-info { display: flex; flex-direction: column; gap: 1px; }
-.capability-name { font-size: 12px; font-weight: 600; color: #e8edf5; letter-spacing: 0.3px; }
-.capability-hint { font-size: 10px; color: rgba(167,178,200,0.5); }
+/* 能力列表：每项自带主色 --cap-color（由模板按数据注入） */
+.capability-list { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.capability-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s ease; }
+.capability-item:hover { background: rgba(255,255,255,0.06); border-color: var(--cap-color, rgba(74,222,128,0.18)); transform: translateX(3px); box-shadow: 0 0 20px -10px var(--cap-color, rgba(74,222,128,0.5)); }
+/* 图标块：统一尺寸 + 主色描边，替代原来各平台渲染不一的 emoji */
+.capability-icon {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 7px; margin-top: 1px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px; color: var(--cap-color, #4ade80);
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: inset 0 0 12px -6px var(--cap-color, #4ade80);
+  transition: all 0.3s ease;
+}
+.capability-item:hover .capability-icon { border-color: var(--cap-color, #4ade80); box-shadow: 0 0 14px -5px var(--cap-color, #4ade80); }
+.capability-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.capability-name { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: #e8edf5; letter-spacing: 0.3px; }
+.capability-new { font-style: normal; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; line-height: 13px; padding: 0 5px; border-radius: 4px; color: #4ade80; background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.28); }
+.capability-hint { font-size: 11px; line-height: 1.35; color: rgba(167,178,200,0.55); }
 
 /* 底部链接 */
-.capability-footer { margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.capability-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .oss-link { display: inline-flex; align-items: center; gap: 4px; color: rgba(167,178,200,0.55); text-decoration: none; transition: color 0.3s ease; }
 .oss-link:hover { color: rgba(74,222,128,0.8); }
 .oss-link-divider { color: rgba(167,178,200,0.2); }

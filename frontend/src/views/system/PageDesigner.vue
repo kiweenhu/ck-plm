@@ -644,11 +644,14 @@
               </div>
             </div>
 
-            <!-- 页面底部 -->
+            <!-- 页面底部：预览真实页面的操作按钮。
+                 这里必须是真 a-button（而不是 a-tag 模拟件）：a-tag 的盒子与按钮不同高、圆角与内边距也不是按钮的，
+                 两个标签并排还会出现"一深一浅、高度对不齐"的观感 —— 而它是拿来"预览页面长什么样"的。
+                 写法与全站页脚一致（见 TaskFormRenderer / 各详情页脚）：取消在前、主按钮在后。 -->
             <div class="md-page-footer">
-              <a-space size="8">
-                <a-tag size="small" color="blue" v-if="['create','update'].includes(currentOpCode)">提交</a-tag>
-                <a-tag size="small">取消</a-tag>
+              <a-space :size="8">
+                <a-button>取消</a-button>
+                <a-button v-if="['create','update'].includes(currentOpCode)" type="primary">提交</a-button>
               </a-space>
               <span v-if="designMode==='design'" class="md-footer-hint">页面操作按钮</span>
             </div>
@@ -2558,7 +2561,9 @@ onMounted(async () => {
   display: flex; align-items: center; gap: 8px;
   padding-top: 16px; margin-top: 16px; border-top: 1px solid #f0f0f0;
 }
-.md-footer-hint { font-size: 11px; color: #ccc; }
+/* 标注推到行尾：它只是"这块是什么"的说明、不属于页面本身。
+   紧挨按钮放会显得与按钮挤在一起，且这行小字的基线和按钮对不齐 */
+.md-footer-hint { font-size: 11px; color: #ccc; margin-left: auto; }
 
 /* ===== 右栏属性面板 ===== */
 .md-right-panel {

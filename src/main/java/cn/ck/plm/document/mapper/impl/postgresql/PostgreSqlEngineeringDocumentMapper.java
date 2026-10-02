@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * {@link EngineeringDocumentMapper} 的 PostgreSQL 实现（MyBatis 注解模式）。
  *
- * <p>表 {@code ck_eng_document} 由 {@code EngineeringDocumentSchemaInitializer} 建表/迁移。
+ * <p>表 {@code ck_eng_document}（及同族的迭代 / 链接表）结构定义在 {@code src/main/resources/schema.sql}。
  */
 @Mapper
 @ConditionalOnProperty(name = "plm.database.type", havingValue = "postgresql", matchIfMissing = true)
