@@ -68,6 +68,23 @@
             </exclusions>
         </dependency>
 
+        <!--
+          BOM 导出（csv / xls / xlsx / pdf）所需的两个库。
+          · POI（poi-ooxml 会带上 poi）：HSSF 写 .xls、XSSF 写 .xlsx；csv 是纯文本，不用库。
+          · OpenPDF：iText 2.x 的维护分支，自带中文 CID 字体（STSong-Light / UniGB-UCS2-H），
+            PDF 里的中文不必额外打包字库（否则每个部署都要塞一份几 MB 的 TTF）。
+        -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>2.0.3</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
