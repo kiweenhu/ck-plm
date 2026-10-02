@@ -107,7 +107,7 @@ psql -U postgres -d ck_plm -f src/main/resources/schema.sql
 #     请勿把该文件另存为 GBK，否则带中文注释的语句会整条失败、建表缺一大半。
 ```
 
-> 📌 `src/main/resources/db/migration/` 下的脚本是**演进留档**，供 DBA 在手建/升级库时按版本号顺序手工参考执行。当前项目未集成 Flyway/Liquibase，这些脚本不会由应用自动执行。
+> 📌 库结构的唯一真相是 `src/main/resources/schema.sql`。项目未集成 Flyway/Liquibase，应用启动不再自动建表；跨版本升级请按发布说明里的增量 SQL 手工执行。
 
 ### 2. 启动后端
 
@@ -147,7 +147,7 @@ npm run dev
 - **变更管理（ECR/ECO）**尚未实现，需求追溯能力仍依托于功能架构模块
 - **国际化（多语言）**尚未支持，界面与提示目前仅中文
 - BOM 多视图的完整语义（视图间转换、有效性管理）仍在打磨
-- `db/migration` 脚本需人工执行，尚未接入自动迁移框架
+- 跨版本库升级需手工执行增量 SQL（未接入自动迁移框架），`schema.sql` 只描述当前版本的完整结构
 
 ## 后续规划
 
