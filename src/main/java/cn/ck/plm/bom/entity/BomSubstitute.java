@@ -115,8 +115,15 @@ public class BomSubstitute extends WithoutVersionEntity implements TenantEntity 
 
     // ==================== 便捷方法 ====================
 
-    /** 判断替代关系是否启用 */
-    public boolean isEnabled() {
+    /**
+     * 替代关系是否启用（{@code enabled} 为空视为启用）。
+     *
+     * <p><b>方法名不能叫 {@code isEnabled()}</b>：{@code enabled} 是包装类型 {@link Boolean}，
+     * 与 {@code getEnabled()} 并存会造成 JavaBeans 属性类型歧义，MyBatis 反射直接报
+     * {@code Illegal overloaded getter method with ambiguous type}（见 {@code BomSubstituteLink}
+     * 上的同一处说明）。因此用不带 get/is 前缀的名字。
+     */
+    public boolean enabledOrDefault() {
         return enabled == null || enabled;
     }
 

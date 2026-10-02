@@ -111,8 +111,9 @@
               <div class="bom-toolbar-group">
                 <span class="bom-group-label">替代</span>
                 <a-button-group>
-                  <a-tooltip :title="roTitle('设置替代')"><a-button size="small" :disabled="!isLatestVersion || !bomSelectedRow || bomSelectedRow.isRoot" @click="onSubstitute"><SwapOutlined /></a-button></a-tooltip>
-                  <a-tooltip :title="roTitle('成组替代')"><a-button size="small" :disabled="!isLatestVersion || !bomSelectedRow || bomSelectedRow.isRoot" @click="onGroupSubstitute"><ClusterOutlined /></a-button></a-tooltip>
+                  <a-tooltip :title="roTitle('局部替代（仅本 BOM 行生效）')"><a-button size="small" :disabled="!isLatestVersion || !bomSelectedRow || bomSelectedRow.isRoot" @click="onSubstitute"><SwapOutlined /></a-button></a-tooltip>
+                  <!-- 成组替代的原料侧取自"选中行的下挂"，所以必须先选中一行 -->
+                  <a-tooltip :title="roTitle('成组替代（选中行的一组下挂 ↔ 一组替代物料）')"><a-button size="small" :disabled="!isLatestVersion || !bomSelectedRow" @click="onGroupSubstitute"><ClusterOutlined /></a-button></a-tooltip>
                   <a-tooltip :title="roTitle('取消替代')"><a-button size="small" :disabled="!isLatestVersion || !bomSelectedRow || bomSelectedRow.isRoot" @click="onCancelSubstitute"><UndoOutlined /></a-button></a-tooltip>
                 </a-button-group>
               </div>
@@ -132,22 +133,36 @@
                     </template>
                   </a-dropdown>
                   <a-dropdown :trigger="['click']">
-                    <a-tooltip title="过滤器设置">
-                      <a-button size="small"><FilterOutlined /><DownOutlined /></a-button>
+                    <!-- 有过滤条件时按钮高亮、并把它写进 tooltip —— 条件是折叠起来的，最容易被忘掉 -->
+                    <a-tooltip :title="hasBomFilter ? `过滤器设置（当前：${bomFilterSummary}）` : '过滤器设置'">
+                      <a-button size="small" :type="hasBomFilter ? 'primary' : 'default'">
+                        <FilterOutlined /><DownOutlined />
+                      </a-button>
                     </a-tooltip>
                     <template #overlay>
-                      <a-menu @click="onFilterAction">
-                        <a-menu-item key="current">当前过滤器</a-menu-item>
-                        <a-menu-item key="edit">编辑过滤器</a-menu-item>
+                      <a-menu :selected-keys="bomFilterSelectedKeys" @click="onFilterAction">
+                        <!-- 替代关系是"过滤器"体系里的一个条件（不在旁边另占一个按钮）：
+                             勾选 = 只看设有局部替代的 BOM 行，父级层级保留 -->
+                        <a-menu-item key="substituteOnly">
+                          <SwapOutlined />
+                          <span>只看有替代的行</span>
+                          <span class="bom-filter-num">{{ substitutedRowCount }}</span>
+                          <CheckOutlined v-if="onlySubstituted" class="bom-filter-check" />
+                        </a-menu-item>
                         <a-menu-divider />
-                        <a-menu-item key="clear">清除过滤器</a-menu-item>
+                        <!-- 只读展示：当前生效的条件（没条件时显示"无"） -->
+                        <a-menu-item key="current" disabled>当前过滤器：{{ bomFilterSummary }}</a-menu-item>
+                        <a-menu-item key="edit">编辑过滤器…</a-menu-item>
+                        <a-menu-item key="clear" :disabled="!hasBomFilter">清除过滤器</a-menu-item>
                       </a-menu>
                     </template>
                   </a-dropdown>
-                  <!-- 显示/隐藏：控制 BOM 表格列的显隐 -->
+                  <!-- 显示/隐藏：控制 BOM 表格列的显隐。
+                       图标用齿轮而不是眼睛：眼睛已被前面「切换 BOM 视图」占用，
+                       两个一模一样的按钮并排（都带下拉箭头）谁也分不清是哪个 -->
                   <a-dropdown :trigger="['click']">
                     <a-tooltip title="表格列显示与隐藏">
-                      <a-button size="small"><EyeOutlined /><DownOutlined /></a-button>
+                      <a-button size="small"><SettingOutlined /><DownOutlined /></a-button>
                     </a-tooltip>
                     <template #overlay>
                       <div style="padding: 8px 12px; background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); min-width: 150px">
@@ -169,7 +184,21 @@
               <div class="bom-toolbar-group">
                 <span class="bom-group-label">报告</span>
                 <a-button-group>
-                  <a-tooltip title="导出 BOM"><a-button size="small" :disabled="!bomTotalCount" @click="onExportBom"><DownloadOutlined /></a-button></a-tooltip>
+                  <!-- 导出：先选格式再导 —— 四种格式用途不同（Excel 给人看、CSV 给系统导、PDF 给打印评审） -->
+                  <a-dropdown :trigger="['click']">
+                    <a-tooltip title="导出 BOM（csv / xls / xlsx / pdf）">
+                      <a-button size="small" :disabled="!bomTotalCount" :loading="bomExporting"><DownloadOutlined /></a-button>
+                    </a-tooltip>
+                    <template #overlay>
+                      <a-menu @click="onExportBom">
+                        <a-menu-item key="xlsx">Excel 工作簿（.xlsx）</a-menu-item>
+                        <a-menu-item key="xls">Excel 97-2003（.xls）</a-menu-item>
+                        <a-menu-item key="csv">CSV 表格（.csv）</a-menu-item>
+                        <a-menu-divider />
+                        <a-menu-item key="pdf">PDF 报表（.pdf）</a-menu-item>
+                      </a-menu>
+                    </template>
+                  </a-dropdown>
                   <a-tooltip :title="roTitle('导入 BOM')"><a-button size="small" :disabled="!isLatestVersion" @click="onImportBom"><UploadOutlined /></a-button></a-tooltip>
                   <a-tooltip title="成本报告"><a-button size="small" @click="onCostReport"><DollarOutlined /></a-button></a-tooltip>
                   <a-button title="对比两个版本的 BOM 差异" size="small" :disabled="historyList.length < 2" @click="onCompareBom"><DiffOutlined /></a-button>
@@ -179,7 +208,9 @@
               <!-- 子件统计：靠右 -->
               <div class="bom-toolbar-group bom-toolbar-count-group">
                 <span class="bom-group-label">统计</span>
-                <span class="bom-toolbar-count">共 {{ bomTotalCount }} 个子件</span>
+                <span class="bom-toolbar-count">
+                  共 {{ bomTotalCount }} 个子件<template v-if="substitutedRowCount"> · {{ substitutedRowCount }} 行有替代</template>
+                </span>
               </div>
             </div>
           </div>
@@ -190,7 +221,7 @@
             <div class="bom-left" :style="{ width: bomLeftWidth ? `${bomLeftWidth}px` : '55%' }">
               <a-table
                 :columns="bomColumnsFiltered"
-                :data-source="bomTreeData"
+                :data-source="bomTreeDataFiltered"
                 :loading="bomLoading"
                 :pagination="false"
                 row-key="oid"
@@ -224,6 +255,74 @@
                       <a-tag v-if="record.childStatus" :color="statusColor(record.childStatus)" size="small">
                         {{ record.childStatus }}
                       </a-tag>
+                      <!-- 局部替代标记：有替代件才出现（无替代不占位，免得整列都是灰点）。
+                           数字 = 替代件总数，全部停用时置灰；明细 hover 才拉 —— 每行预加载
+                           会给整棵树加 N 次请求，而只有看懂标记的人才会去 hover -->
+                      <a-tooltip
+                        v-if="!record.isRoot && record.substituteCount"
+                        placement="top"
+                        @openChange="(open) => open && loadSubTip(record)"
+                      >
+                        <template #title>
+                          <div class="bom-sub-tip">
+                            <div class="bom-sub-tip-head">
+                              局部替代 {{ record.substituteCount }} 个<template v-if="record.substituteEnabledCount < record.substituteCount">（启用 {{ record.substituteEnabledCount }} 个）</template>
+                            </div>
+                            <div v-if="subTipOf(record).loading" class="bom-sub-tip-note">加载中…</div>
+                            <template v-else>
+                              <div
+                                v-for="s in subTipOf(record).list"
+                                :key="s.oid"
+                                class="bom-sub-tip-row"
+                                :class="{ 'bom-sub-tip-row-off': s.enabled === false }"
+                              >
+                                <code>{{ s.substitutePartNumber || '-' }}</code>
+                                <span class="bom-sub-tip-name">{{ s.substitutePartName || '-' }}</span>
+                                <span v-if="s.substituteVersion" class="bom-sub-tip-ver">{{ s.substituteVersion }}</span>
+                                <span class="bom-sub-tip-qty">×{{ s.substituteQuantity ?? 1 }}</span>
+                                <span v-if="s.enabled === false" class="bom-sub-tip-off">停用</span>
+                              </div>
+                              <div v-if="!subTipOf(record).list.length" class="bom-sub-tip-note">（暂无明细）</div>
+                              <div class="bom-sub-tip-foot">仅本 BOM 行生效 · 点击打开「替代情况」</div>
+                            </template>
+                          </div>
+                        </template>
+                        <span
+                          class="bom-sub-badge"
+                          :class="{ 'bom-sub-badge-off': !record.substituteEnabledCount }"
+                          @click.stop="onClickSubBadge(record)"
+                        >
+                          <SwapOutlined />
+                          <span>{{ record.substituteCount }}</span>
+                        </span>
+                      </a-tooltip>
+                      <!-- 成组替代标记：本行是某个"整组替换"的原料侧成员时出现。
+                           与局部替代分成两个标记 —— 一个是"这行换几颗料"，一个是"这行属于几组整组替换"，
+                           后者不允许拆开换，含义完全不同 -->
+                      <a-tooltip
+                        v-if="!record.isRoot && record.substituteGroupCount"
+                        placement="top"
+                        @openChange="(open) => open && loadGroupTip()"
+                      >
+                        <template #title>
+                          <div class="bom-sub-tip">
+                            <div class="bom-sub-tip-head">成组替代 {{ record.substituteGroupCount }} 组</div>
+                            <div v-if="groupCache.loading" class="bom-sub-tip-note">加载中…</div>
+                            <template v-else>
+                              <div v-for="g in groupsOf(record)" :key="g.oid" class="bom-sub-tip-row">
+                                <span class="bom-sub-tip-name">{{ g.name || '未命名替代组' }}</span>
+                                <span class="bom-sub-tip-ver">{{ (g.substitutes || []).length }} 颗替代物料</span>
+                                <span class="bom-sub-tip-off">{{ g.atomicReplace === false ? '可拆开换' : '整组替换' }}</span>
+                              </div>
+                              <div class="bom-sub-tip-foot">整组替换：拆开只换其中一个不成立 · 点击打开成组替代</div>
+                            </template>
+                          </div>
+                        </template>
+                        <span class="bom-group-badge" @click.stop="onClickGroupBadge">
+                          <ClusterOutlined />
+                          <span>{{ record.substituteGroupCount }}</span>
+                        </span>
+                      </a-tooltip>
                     </div>
                   </template>
                   <!-- 这几列取 bomRowValue：正在编辑的这一层以右侧「子件清单」的草稿为准，
@@ -337,9 +436,84 @@
                   <a-empty description="轻量化预览功能开发中" :image-style="{ height: '48px' }" />
                 </a-tab-pane>
 
-                <!-- 替代情况 -->
+                <!-- 替代情况：选中 BOM 行的局部替代明细（源表 ck_bom_substitute_link） -->
                 <a-tab-pane key="substitute" tab="替代情况">
-                  <a-empty description="替代情况功能开发中" :image-style="{ height: '48px' }" />
+                  <template v-if="bomSelectedRow && !bomSelectedRow.isRoot">
+                    <div class="tab-stats-bar">
+                      <div class="tab-stat-item">
+                        <SwapOutlined class="tab-stat-icon" />
+                        <span class="tab-stat-value">{{ rowSubstitutes.length }}</span>
+                        <span class="tab-stat-label">本行替代件</span>
+                      </div>
+                      <a-divider type="vertical" style="height:24px" />
+                      <div class="tab-stat-item">
+                        <span class="tab-stat-value">{{ rowSubstituteEnabledCount }}</span>
+                        <span class="tab-stat-label">启用</span>
+                      </div>
+                      <div class="tab-stat-actions">
+                        <a-button size="small" type="primary" :disabled="!isLatestVersion" @click="onOpenSubstituteFromTab">
+                          <PlusOutlined /> 设置替代
+                        </a-button>
+                        <a-button
+                          size="small"
+                          danger
+                          :loading="rowSubsBusy"
+                          :disabled="!rowSubstitutes.length || !isLatestVersion"
+                          @click="onClearRowSubstitutes"
+                        >
+                          <DeleteOutlined /> 清空
+                        </a-button>
+                      </div>
+                    </div>
+                    <a-table
+                      :columns="rowSubstituteColumns"
+                      :data-source="rowSubstitutes"
+                      :loading="rowSubsLoading"
+                      :pagination="false"
+                      row-key="oid"
+                      size="small"
+                      :locale="{ emptyText: '本行未设替代件，点「设置替代」添加' }"
+                    >
+                      <template #bodyCell="{ column, record }">
+                        <template v-if="column.key === 'part'">
+                          <a class="bom-sub-link" @click="onGotoSubstitutePart(record)">
+                            {{ record.substitutePartName || '-' }}
+                          </a>
+                          <code style="font-size:12px;background:#f5f5f5;padding:1px 6px;border-radius:3px;color:#595959;margin-left:6px">{{ record.substitutePartNumber || '-' }}</code>
+                        </template>
+                        <template v-else-if="column.key === 'version'">{{ record.substituteVersion || '-' }}</template>
+                        <template v-else-if="column.key === 'type'">
+                          <a-tag :color="(ALTERNATE_TYPE_MAP[record.substituteType] || {}).color || 'default'" size="small">
+                            {{ (ALTERNATE_TYPE_MAP[record.substituteType] || {}).label || record.substituteType || '-' }}
+                          </a-tag>
+                        </template>
+                        <template v-else-if="column.key === 'quantity'">
+                          {{ record.substituteQuantity ?? 1 }}{{ record.substituteUnit || '' }}
+                        </template>
+                        <template v-else-if="column.key === 'priority'">{{ record.priority ?? '-' }}</template>
+                        <template v-else-if="column.key === 'enabled'">
+                          <a-tag :color="record.enabled === false ? 'default' : 'success'" size="small">
+                            {{ record.enabled === false ? '停用' : '启用' }}
+                          </a-tag>
+                        </template>
+                        <template v-else-if="column.key === 'action'">
+                          <a-button
+                            type="link"
+                            size="small"
+                            danger
+                            :disabled="!isLatestVersion"
+                            @click="onDeleteRowSubstitute(record)"
+                          >
+                            删除
+                          </a-button>
+                        </template>
+                      </template>
+                    </a-table>
+                    <div class="bom-sub-tab-note">
+                      局部替代<b>仅在本 BOM 行</b>生效；"这颗料在任意 BOM 中都可被替换"属于全局替代，见零件页签「双向替代」。
+                    </div>
+                  </template>
+                  <a-empty v-else description="请先在左侧选择一条 BOM 行" :image-style="{ height: '48px' }" />
                 </a-tab-pane>
 
                 <!-- 关联文档 -->
@@ -813,6 +987,50 @@
       @close="docViewerVisible = false"
     />
 
+    <!-- 局部替代弹窗：上栏看/删本行已设替代件，下栏选零件添加（仅本 BOM 行生效） -->
+    <BomSubstituteModal
+      v-model:open="substituteModalOpen"
+      :row="bomSelectedRow"
+      :container-options="containerOptions"
+      :default-container-oid="part?.containerOid || ''"
+      :default-container-type="part?.containerType || ''"
+      @changed="onSubstituteChanged"
+    />
+
+    <!-- 成组替代弹窗：一组 BOM 行 ↔ 一组替代物料（整组替换），挂在当前父件迭代上 -->
+    <BomSubstituteGroupModal
+      v-model:open="substituteGroupModalOpen"
+      :parent-iteration-oid="groupParentIterationOid"
+      :part-name="part?.name || ''"
+      :scope-name="bomItemsParentName"
+      :source-options="bomSourceOptions"
+      :container-options="containerOptions"
+      :default-container-oid="part?.containerOid || ''"
+      :default-container-type="part?.containerType || ''"
+      @changed="onSubstituteGroupChanged"
+    />
+
+    <!-- 编辑过滤器：目前只有「替代关系」一个条件，以后的状态/检出/视图等条件都往这里加 -->
+    <a-modal
+      v-model:open="filterModalOpen"
+      title="编辑过滤器"
+      ok-text="应用"
+      cancel-text="取消"
+      width="480px"
+      @ok="applyBomFilterEdit"
+    >
+      <div class="bom-filter-option">
+        <a-checkbox v-model:checked="filterDraft.substituteOnly">只看有替代的行</a-checkbox>
+        <div class="bom-filter-option-desc">
+          局部替代挂在 BOM 行上（只在该行生效）。勾选后只保留设有替代的行，<b>父级层级一起保留</b>，
+          便于看清它挂在哪一层。典型用例：替代件评审、变更影响确认。
+        </div>
+      </div>
+      <div class="bom-filter-preview">
+        当前这张 BOM：<b>{{ substitutedRowCount }}</b> 行设有替代 / 共 {{ bomTotalCount }} 个子件
+      </div>
+    </a-modal>
+
     <!-- 添加替代件弹窗（双向替代 EQUIVALENT）：可搜索选择 Part 对象 -->
     <a-modal
       v-model:visible="addAlternateModalVisible"
@@ -1023,12 +1241,12 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeftOutlined, PlusOutlined, PlusSquareOutlined, PlusCircleOutlined, DownloadOutlined, PartitionOutlined, ApartmentOutlined, FolderOutlined, ExportOutlined, ImportOutlined, InfoCircleOutlined, LockOutlined, RollbackOutlined, EyeOutlined, FilterOutlined, DownOutlined, DeleteOutlined, UploadOutlined, DollarOutlined, SwapOutlined, ClusterOutlined, UndoOutlined, ClockCircleOutlined, ArrowRightOutlined, ArrowUpOutlined, ArrowDownOutlined, SaveOutlined, DiffOutlined, ExpandOutlined, FileTextOutlined, BookOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, PlusOutlined, PlusSquareOutlined, PlusCircleOutlined, DownloadOutlined, PartitionOutlined, ApartmentOutlined, FolderOutlined, ExportOutlined, ImportOutlined, InfoCircleOutlined, LockOutlined, RollbackOutlined, EyeOutlined, FilterOutlined, DownOutlined, DeleteOutlined, UploadOutlined, DollarOutlined, SwapOutlined, ClusterOutlined, UndoOutlined, ClockCircleOutlined, ArrowRightOutlined, ArrowUpOutlined, ArrowDownOutlined, SaveOutlined, DiffOutlined, ExpandOutlined, FileTextOutlined, BookOutlined, CheckOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
 import { registerDynamicStages, getStageTitle } from '@/utils/stageDefs'
 import {
   getEntityByCode, getPartIterations,
-  getBomLinksByParentIteration, getBomLinksByChildPart, getBomTree,
+  getBomLinksByParentIteration, getBomLinksByChildPart, getBomTree, exportBomFile, clearBomSubstitutes,
   createBomLinks, deleteBomLinks, updateBomLinks,
   getPartAlternateLinksByPart,
   createPartAlternateLink, deletePartAlternateLink,
@@ -1038,12 +1256,16 @@ import {
   getStages,
   checkoutPart, checkinPart, undoCheckoutPart,
   getPartsByContainer,
-  getBomDiff, compareBomVersions
+  getBomDiff, compareBomVersions,
+  getBomSubstitutesByLink, deleteBomSubstitute,
+  getBomSubstituteGroups,
 } from '@/api'
 import UnitSelect from '@/components/UnitSelect.vue'
+import BomSubstituteGroupModal from '@/components/bom/BomSubstituteGroupModal.vue'
 import DataTable from '@/components/DataTable.vue'
 import RelatedProcesses from '@/components/RelatedProcesses.vue'
 import BomCostReportModal from '@/components/BomCostReportModal.vue'
+import BomSubstituteModal from '@/components/bom/BomSubstituteModal.vue'
 import DocumentViewer from './DocumentViewer.vue'
 
 const route = useRoute()
@@ -1326,6 +1548,17 @@ const ALTERNATE_TYPE_MAP = {
   PARTIAL: { label: '部分替代', color: 'orange' },
   SUBSTITUTE: { label: '临时替代', color: 'red' },
 }
+
+/** 「替代情况」页签的列定义（局部替代 = BomSubstituteVO） */
+const rowSubstituteColumns = [
+  { title: '替代件', key: 'part', ellipsis: true },
+  { title: '版本', key: 'version', width: 70 },
+  { title: '类型', key: 'type', width: 100 },
+  { title: '数量', key: 'quantity', width: 80, align: 'center' },
+  { title: '优先级', key: 'priority', width: 70, align: 'center' },
+  { title: '状态', key: 'enabled', width: 70, align: 'center' },
+  { title: '操作', key: 'action', width: 70, align: 'center' },
+]
 
 const addExistingColumns = [
   { title: '编码', key: 'number', width: 180 },
@@ -1672,10 +1905,22 @@ function collectForbiddenPartOids() {
 
 // ==================== 右侧「子件清单」可编辑表格 ====================
 
-/** 当前在编辑的这一层子件（左侧树里的真实节点对象）：选中根行/未选中 → 一级子件；选中子件 → 它的直接下层 */
+/**
+ * 当前在编辑的这一层子件：选中根行/未选中 → 一级子件；选中子件 → 它的直接下层。
+ *
+ * <p><b>必须按 oid 从当前树里重新取节点，不能用 bomSelectedRow 里的那份引用。</b>
+ * 因为重载 BOM 之后（保存、检出/检入、上移下移…）才重新定位选中行，而草稿是在
+ * `bomList` 变化时重建的 —— 那一刻 bomSelectedRow 还指着<b>重载前的旧节点</b>，
+ * 它的 children 是旧迭代的行。症状：保存成功、库里已是新值，界面却回到旧值
+ * （"保存后又恢复成原来的数量"，用户实际报过）。按 oid 取当前树就与重载时序无关了。
+ */
 function bomItemsSourceNodes() {
   const selected = bomSelectedRow.value
-  return (selected && !selected.isRoot) ? (selected.children || []) : (bomList.value || [])
+  if (selected && !selected.isRoot) {
+    const fresh = findNodeInTreeData(bomTreeData.value, selected.oid)
+    return (fresh || selected).children || []
+  }
+  return bomList.value || []
 }
 
 /** 把树节点摊平成表格行（列名与列定义对应；保留原始字段，保存时回传避免覆盖） */
@@ -2007,6 +2252,61 @@ function convertTreeNode(node, depth) {
   return row
 }
 
+/** 「只看有替代」开关：替代件的评审/变更场景需要能在这几百行里一眼定位 */
+const onlySubstituted = ref(false)
+
+/** 收集所有"有子节点"的行的 key（展开用） */
+function collectExpandableKeys(nodes) {
+  const keys = []
+  const walk = (list) => {
+    for (const n of (list || [])) {
+      if (n.children && n.children.length) {
+        keys.push(n.oid)
+        walk(n.children)
+      }
+    }
+  }
+  walk(nodes)
+  return keys
+}
+
+/** 切换「只看有替代」：打开时顺手展开全部层级，否则命中的行被折叠父级挡住，看起来像"筛没了" */
+function toggleOnlySubstituted() {
+  onlySubstituted.value = !onlySubstituted.value
+  if (onlySubstituted.value) bomExpandedKeys.value = collectExpandableKeys(bomTreeData.value)
+}
+
+/**
+ * 树数据（过滤后）：只看有替代时，保留"自身或子孙有替代"的节点。
+ *
+ * <p>父链必须一起保留 —— 否则命中的子件被折叠在父级里，用户根本看不到它。
+ * 保留下来的内部节点做浅拷贝（只换 children），不动源节点上的字段。
+ */
+const bomTreeDataFiltered = computed(() => {
+  if (!onlySubstituted.value) return bomTreeData.value
+  const filter = (nodes) => nodes.reduce((acc, node) => {
+    const kids = node.children && node.children.length ? filter(node.children) : []
+    if (node.substituteCount > 0 || kids.length) {
+      acc.push(kids.length ? { ...node, children: kids } : node)
+    }
+    return acc
+  }, [])
+  return filter(bomTreeData.value)
+})
+
+/** 设了替代的行数（统计区显示：让人知道这张 BOM 有多少行挂过替代） */
+const substitutedRowCount = computed(() => {
+  let count = 0
+  const walk = (nodes) => {
+    for (const n of (nodes || [])) {
+      if (!n.isRoot && n.substituteCount > 0) count += 1
+      if (n.children && n.children.length) walk(n.children)
+    }
+  }
+  walk(bomTreeData.value)
+  return count
+})
+
 /** BOM 行高亮 class：选中行加背景色 */
 function bomRowClassName(record) {
   return bomSelectedRow.value && record.oid === bomSelectedRow.value.oid
@@ -2264,20 +2564,123 @@ function onViewChange({ key }) {
   message.info(`已切换到${labelMap[key] || key}`)
 }
 
-/** 过滤器操作（占位，后续接入完整过滤逻辑） */
+/** 是否有生效中的过滤条件（目前只有「替代关系」一个，后续条件往这里加） */
+const hasBomFilter = computed(() => onlySubstituted.value)
+
+/** 过滤条件摘要：出现在「当前过滤器」与过滤器按钮的 tooltip 上 —— 折叠起来的条件最容易被忘掉 */
+const bomFilterSummary = computed(() => (onlySubstituted.value
+  ? `只看有替代的行（${substitutedRowCount.value} 行）`
+  : '无'))
+
+/** 下拉菜单里"已勾选"的条件（菜单高亮用） */
+const bomFilterSelectedKeys = computed(() => (onlySubstituted.value ? ['substituteOnly'] : []))
+
+/** 编辑过滤器弹窗：草稿与当前状态分开，点「应用」才生效 */
+const filterModalOpen = ref(false)
+const filterDraft = ref({ substituteOnly: false })
+
+function openFilterEdit() {
+  filterDraft.value = { substituteOnly: onlySubstituted.value }
+  filterModalOpen.value = true
+}
+
+function applyBomFilterEdit() {
+  const next = !!filterDraft.value.substituteOnly
+  filterModalOpen.value = false
+  if (next === onlySubstituted.value) return
+  toggleOnlySubstituted()
+  message.success(next
+    ? `已启用过滤：只看有替代的行（${substitutedRowCount.value} 行）`
+    : '已取消「只看有替代的行」')
+}
+
+/** 过滤器操作：替代关系是这套"过滤器"体系的第一个条件 */
 function onFilterAction({ key }) {
+  if (key === 'substituteOnly') {
+    toggleOnlySubstituted()
+    message.success(onlySubstituted.value
+      ? `已启用过滤：只看有替代的行（${substitutedRowCount.value} 行）`
+      : '已取消「只看有替代的行」')
+    return
+  }
+  if (key === 'edit') {
+    openFilterEdit()
+    return
+  }
   if (key === 'clear') {
+    if (!hasBomFilter.value) return
+    onlySubstituted.value = false
     message.info('已清除过滤器')
-  } else if (key === 'edit') {
-    message.info('编辑过滤器功能开发中')
-  } else if (key === 'current') {
-    message.info('当前过滤器功能开发中')
   }
 }
 
-/** BOM 操作：导出（占位，后续接入 BOM 导出接口） */
-function onExportBom() {
-  message.info('BOM 导出功能开发中')
+/** 导出中的转圈状态（大 BOM 生成要几秒，没反馈用户会重复点） */
+const bomExporting = ref(false)
+
+/**
+ * BOM 报告：导出（csv / xls / xlsx / pdf）。
+ *
+ * <p>口径＝<b>当前查看的那一版</b>（工具栏版本选择器决定），与左侧 BOM 结构、成本报告同一版 ——
+ * 导出跟着版本走，不自行挑"最新版"，否则会出现"页面看的是 A.4、导出的是 B.1"的错配。
+ *
+ * <p>失败时后端返回的是 JSON（被包在 blob 里）：把它读出来给用户一句能懂的话，
+ * 而不是干巴巴的"服务器错误"。
+ */
+async function onExportBom({ key }) {
+  const iterOid = currentIterationOid.value
+  if (!iterOid) {
+    message.warning('尚未确定当前版本，无法导出')
+    return
+  }
+  const format = key || 'xlsx'
+  bomExporting.value = true
+  try {
+    const blob = await exportBomFile(iterOid, format)
+    saveBlob(blob, exportFileName(format))
+    message.success(`BOM 已导出（${format.toUpperCase()}）`)
+  } catch (e) {
+    const detail = await errorMessageOf(e)
+    message.error(detail || 'BOM 导出失败，请稍后重试')
+  } finally {
+    bomExporting.value = false
+  }
+}
+
+/** 文件名与后端同构：编码-版本-BOM-时间戳.扩展名（后端也在响应头里给了一份） */
+function exportFileName(format) {
+  const iter = (historyList.value || []).find(h => h.oid === currentIterationOid.value) || {}
+  const code = part.value?.number || 'BOM'
+  const version = iter.displayVersion || ''
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+    + `-${pad(now.getHours())}${pad(now.getMinutes())}`
+  return [code, version, `BOM-${stamp}`].filter(Boolean).join('-') + `.${format}`
+}
+
+/** 触发浏览器下载（用完即回收 objectURL，否则大文件会一直占着内存） */
+function saveBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+/** 从失败响应里取一句可读的话（blob 响应要先把 JSON 读出来） */
+async function errorMessageOf(error) {
+  const data = error?.response?.data
+  if (data instanceof Blob) {
+    try {
+      return JSON.parse(await data.text())?.message || null
+    } catch {
+      return null
+    }
+  }
+  return data?.message || null
 }
 
 /** BOM 报告：导入（占位，后续接入 BOM 导入接口） */
@@ -2301,25 +2704,354 @@ function onCostReport() {
 
 // ==================== 替代操作栏 ====================
 
-/** 替代：为选中的 BOM 行指定单个替代件（占位，后续接入替代件选择器） */
+/** 局部替代弹框开关 */
+const substituteModalOpen = ref(false)
+
+/**
+ * 局部替代：给选中的 BOM 行设置替代件（仅该行生效）。
+ *
+ * <p>入口参数是<b>选中行的 oid</b>（BOM 行 oid），不是零件 oid —— 局部替代挂在 BOM 行上，
+ * 同一颗料装在别处能不能被替换是另一回事（那是「全局替代」的口径，见页签上的「添加替代件」）。
+ */
 function onSubstitute() {
   const row = bomSelectedRow.value
   if (!row || row.isRoot) return
-  message.info(`替代功能开发中：${row.childName || row.childNumber}`)
+  // 先把容器下拉的选项加载好：弹窗里那个「所属容器」是 a-select，值只有落在
+  // options 里才显示成名称；选项为空时它只能把 containerOid 原样回显（用户看到的是一个 oid）。
+  // 另外三个「选零件/选文档」弹窗打开时都做了这一步，这里保持一致。
+  loadContainerOptions()
+  substituteModalOpen.value = true
 }
 
-/** 成组替代：为多个 BOM 行指定成组替代（占位） */
-function onGroupSubstitute() {
+// ==================== 局部替代的可视化（行内标记 + 「替代情况」页签） ====================
+//
+// 数据源只有一处：ck_bom_substitute_link（挂在 BOM 行上，只在该行生效）。
+// 树上每行的数量由后端 buildTree 一次性批量回填（substituteCount / substituteEnabledCount）；
+// 明细按需拉取 —— hover 行内标记、或选中行切到「替代情况」页签时才请求。
+
+/** 行内标记的工具提示缓存：{ [bomLinkOid]: { loading, list } }
+ *  用 oid 作键而不是挂在行对象上：「只看有替代」会把树浅拷贝一份，
+ *  挂在行上的缓存被拷贝后就与源对象脱钩（改了源、拷贝里还是旧的） */
+const subTipCache = ref({})
+const EMPTY_SUB_TIP = { loading: false, list: [] }
+
+/** 取某行的工具提示数据（取不到给空对象，模板里不必再判空） */
+function subTipOf(record) {
+  return subTipCache.value[record?.oid] || EMPTY_SUB_TIP
+}
+
+function setSubTip(oid, value) {
+  subTipCache.value = { ...subTipCache.value, [oid]: value }
+}
+
+/** 清掉某行的缓存（替代增删后明细已过期） */
+function invalidateSubTip(oid) {
+  if (!subTipCache.value[oid]) return
+  const next = { ...subTipCache.value }
+  delete next[oid]
+  subTipCache.value = next
+}
+
+/** 悬停行内标记时加载明细（每行预加载会给整棵树加 N 次请求，所以只在 hover 时拉） */
+async function loadSubTip(record) {
+  const oid = record?.oid
+  if (!oid || subTipCache.value[oid]) return
+  setSubTip(oid, { loading: true, list: [] })
+  try {
+    const res = await getBomSubstitutesByLink(oid)
+    setSubTip(oid, { loading: false, list: res?.data || [] })
+  } catch {
+    setSubTip(oid, { loading: false, list: [] })
+  }
+}
+
+/** 「替代情况」页签：选中行的替代件清单 */
+const rowSubstitutes = ref([])
+const rowSubsLoading = ref(false)
+const rowSubsBusy = ref(false)
+const rowSubstituteEnabledCount = computed(() => rowSubstitutes.value.filter(s => s.enabled !== false).length)
+
+/** 加载选中行的替代件 */
+async function loadRowSubstitutes() {
   const row = bomSelectedRow.value
-  if (!row || row.isRoot) return
-  message.info(`成组替代功能开发中：${row.childName || row.childNumber}`)
+  if (!row || row.isRoot || !row.oid) {
+    rowSubstitutes.value = []
+    return
+  }
+  rowSubsLoading.value = true
+  try {
+    const res = await getBomSubstitutesByLink(row.oid)
+    rowSubstitutes.value = res?.data || []
+  } catch {
+    rowSubstitutes.value = []
+  } finally {
+    rowSubsLoading.value = false
+  }
 }
 
-/** 取消替代：移除选中 BOM 行的替代关系（占位） */
+/**
+ * 把某行的替代数量回填到树上（增删替代后不必整棵树重载，交互不闪）。
+ *
+ * <p>同时更新"选中行"那一份：开了「只看有替代」时，选中行可能是过滤拷贝出来的对象。
+ */
+function patchSubstituteCount(bomLinkOid, total, enabled) {
+  // 注意：一定要改 bomList（源树），不能改 bomTreeData.value ——
+  // 后者是 computed，每次产出的是 {...rest} 拷出来的行对象；改副本既不触发重渲染
+  // （它不在依赖里），下一次重算还会被覆盖。真的踩过：改完替代件，行内标记不动。
+  const node = findNodeInTreeData(bomList.value, bomLinkOid)
+  if (node && !node.isRoot) {
+    node.substituteCount = total
+    node.substituteEnabledCount = enabled
+  }
+  if (bomSelectedRow.value && bomSelectedRow.value.oid === bomLinkOid) {
+    bomSelectedRow.value.substituteCount = total
+    bomSelectedRow.value.substituteEnabledCount = enabled
+  }
+  invalidateSubTip(bomLinkOid)
+}
+
+/** 重新拉当前行的替代件并回填数量（弹窗变动 / 页签删除 / 清空 三个入口共用） */
+async function refreshRowSubstitutes() {
+  const row = bomSelectedRow.value
+  await loadRowSubstitutes()
+  if (row && !row.isRoot) {
+    patchSubstituteCount(row.oid, rowSubstitutes.value.length, rowSubstituteEnabledCount.value)
+  }
+}
+
+/** 点行内标记：选中该行并切到「替代情况」页签（浏览不打断 —— 不直接弹编辑框） */
+function onClickSubBadge(record) {
+  bomSelectedRow.value = record
+  bomRightTab.value = 'substitute'
+  loadRowSubstitutes()
+}
+
+/** 页签里的「设置替代」：复用同一个弹窗（它自己会刷新清单并 emit changed） */
+function onOpenSubstituteFromTab() {
+  onSubstitute()
+}
+
+/** 页签里删除一条替代 */
+function onDeleteRowSubstitute(record) {
+  Modal.confirm({
+    title: `删除替代件「${record.substitutePartName || record.substitutePartNumber}」？`,
+    content: '只影响本 BOM 行；零件主数据上的全局替代关系不受影响。',
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      rowSubsBusy.value = true
+      try {
+        const res = await deleteBomSubstitute(record.oid)
+        if (res?.code === 200) {
+          message.success('已删除')
+          await refreshRowSubstitutes()
+        } else {
+          message.error(res?.message || '删除失败')
+        }
+      } catch (e) {
+        message.error(e?.response?.data?.message || e.message)
+      } finally {
+        rowSubsBusy.value = false
+      }
+    },
+  })
+}
+
+/** 页签里清空本行全部替代（与工具栏「取消替代」同一动作，入口不同） */
+function onClearRowSubstitutes() {
+  onCancelSubstitute()
+}
+
+/** 跳到替代件的零件页 */
+function onGotoSubstitutePart(record) {
+  if (!record?.substitutePartOid) return
+  router.push({ name: 'PartDetail', params: { oid: record.substitutePartOid } })
+}
+
+/** 替代关系变动后的钩子（弹窗里增/删/清空都会触发）：刷新页签清单 + 回填行内标记 */
+function onSubstituteChanged() {
+  refreshRowSubstitutes()
+}
+
+// 选中行变化、或切到「替代情况」页签时，加载该行的替代件
+watch([() => bomSelectedRow.value?.oid, bomRightTab], ([, tab]) => {
+  if (tab === 'substitute') loadRowSubstitutes()
+})
+
+// ==================== 成组替代（一组行 ↔ 一组物料） ====================
+//
+// 与局部替代的分工：局部替代换"一颗料"、挂在一条 BOM 行上；成组替代换"一组行"、挂在父件迭代上，
+// 带"整组替换"约束。所以行内是两个标记：⇄ 是局部替代、⧉ 是成组替代。
+
+/** 成组替代弹窗开关 */
+const substituteGroupModalOpen = ref(false)
+
+/** 本版全部成组替代组（行内标记的 tooltip 与"改完同步计数"共用；按迭代缓存） */
+const groupCache = ref({ iterationOid: '', loading: false, groups: [] })
+
+/**
+ * 成组替代弹窗的「原料侧」候选：<b>选中行的下挂</b>（与右侧「子件清单」同一口径）。
+ *
+ * <p>口径必须与选中行一致：成组替代说的是"这一层里哪几行被整组换掉"
+ * （典型场景就是同一父件下的几个分立元件换成一颗集成模块）。早先这里把整棵树拍平，
+ * 结果把选中行自己和更深层的行混进同一张候选表，用户看到的是"平级"的假象。
+ */
+const bomSourceOptions = computed(() => bomItemsSourceNodes().map((b) => ({
+  oid: b.oid,
+  lineNumber: b.lineNumber,
+  // 树的节点与原始节点字段名不同（前者已带 childName/childNumber），两种都认
+  partNumber: b.childNumber || b.childPartNumber || '-',
+  partName: b.childName || b.childPartName || '-',
+  // 子件主对象 oid：弹窗用它把"已选作原料侧"的物料从替代侧候选里剔掉
+  partOid: b.childPartOid,
+  quantity: b.quantity,
+  unit: b.unit,
+  // 这一行"属于哪一版"：成组替代的组必须挂在原料侧行所属的迭代上，
+  // 否则后端会以「原料侧的 BOM 行不属于当前版本」拒掉（选了子件行时它与当前迭代不同）
+  parentIterationOid: b.parentIterationOid,
+})))
+
+/**
+ * 成组替代弹窗的挂载迭代 = <b>原料侧行所属的那一版</b>。
+ *
+ * <p>不能直接用 {@code currentIterationOid}：候选是"选中行的下挂"，选了子件行时它的下挂
+ * 属于<b>那个子件的迭代</b>，与当前页面的迭代不是同一个 —— 组挂错版本，后端必拒
+ * （用户报的「原料侧的 BOM 行不属于当前版本」就是这么来的）。
+ * 一行都没有时退回当前迭代（按钮此时是禁用的，取什么都不会用到）。
+ */
+const groupParentIterationOid = computed(() => {
+  const first = bomSourceOptions.value[0]
+  return (first && first.parentIterationOid) || currentIterationOid.value || ''
+})
+
+/**
+ * 打开成组替代弹窗。
+ *
+ * <p>原料侧 = 选中行的下挂，所以必须先有选中行（根行也吃：那就是一级子件）。
+ * 容器下拉的选项要先备好，否则它只能回显 oid（局部替代那次踩过）。
+ */
+function onGroupSubstitute() {
+  if (!bomSelectedRow.value) {
+    message.warning('请先在左侧选中一条 BOM 行 —— 成组替代的原料侧取自它的下挂')
+    return
+  }
+  loadContainerOptions()
+  substituteGroupModalOpen.value = true
+}
+
+/** 点行内 ⧉ 标记：同样打开弹窗（不改变选中行 —— 组不依附某一行） */
+function onClickGroupBadge() {
+  onGroupSubstitute()
+}
+
+/** 悬停 ⧉ 时才拉本版全部组（一次拉完，之后命中缓存） */
+function loadGroupTip() {
+  loadSubstituteGroups()
+}
+
+/** 本行被哪些组引用（tooltip 明细） */
+function groupsOf(record) {
+  const oid = record?.oid
+  if (!oid) return []
+  return (groupCache.value.groups || []).filter(
+    (g) => (g.sources || []).some((m) => m.bomLinkOid === oid),
+  )
+}
+
+/** 拉取本版成组替代（force=false 时命中"按迭代"的缓存） */
+async function loadSubstituteGroups(force = false) {
+  const iterOid = currentIterationOid.value
+  if (!iterOid) return []
+  if (!force && groupCache.value.iterationOid === iterOid) return groupCache.value.groups
+  // 加载中保留上一批 groups：清空会让 tooltip 先闪一下"暂无明细"，
+  // 更糟的是与行内计数互相打架（本行计数是后端给的，前端只是在改完组后回填）
+  groupCache.value = { iterationOid: iterOid, loading: true, groups: groupCache.value.groups || [] }
+  try {
+    const res = await getBomSubstituteGroups(iterOid)
+    const list = res?.code === 200 ? res.data || [] : []
+    groupCache.value = { iterationOid: iterOid, loading: false, groups: list }
+  } catch {
+    groupCache.value = { iterationOid: iterOid, loading: false, groups: [] }
+  }
+  applySubstituteGroupCounts(groupCache.value.groups)
+  return groupCache.value.groups
+}
+
+/**
+ * 把"每行被几组引用"回填到树上（改完组不必整树重载，交互不闪）。
+ *
+ * <p>计数口径 = 该行作为<b>原料侧</b>成员出现在几个组里，与后端树接口的
+ * {@code substituteGroupCount} 保持一致。
+ */
+function applySubstituteGroupCounts(groups) {
+  const counts = {}
+  for (const g of (groups || [])) {
+    for (const m of (g.sources || [])) {
+      if (m.bomLinkOid) counts[m.bomLinkOid] = (counts[m.bomLinkOid] || 0) + 1
+    }
+  }
+  const walk = (nodes) => {
+    for (const n of (nodes || [])) {
+      // 只回填"属于本版"的行：跨层的行（parentIterationOid 指向子件的迭代）不在这批组的作用域里，
+      // 拿本版的组去算它只会把后端给的计数抹成 0 —— 症状就是鼠标移上去、行内 ⧉ 标记凭空消失
+      // （tooltip 的锚点没了，浮层也跟着关）。
+      if (!n.parentIterationOid || n.parentIterationOid === groupCache.value.iterationOid) {
+        const next = counts[n.oid] || 0
+        if (n.substituteGroupCount !== next) n.substituteGroupCount = next
+      }
+      if (n.children && n.children.length) walk(n.children)
+    }
+  }
+  // 同 patchSubstituteCount：改源树（bomList），不是 computed 产出的副本，否则界面不会更新
+  walk(bomList.value)
+  const sel = bomSelectedRow.value
+  if (sel && !sel.isRoot && (!sel.parentIterationOid || sel.parentIterationOid === groupCache.value.iterationOid)) {
+    sel.substituteGroupCount = counts[sel.oid] || 0
+  }
+}
+
+/** 弹窗里增/改/删之后：刷新缓存与行内计数（弹窗自己维护列表） */
+function onSubstituteGroupChanged(groups) {
+  groupCache.value = { iterationOid: currentIterationOid.value, loading: false, groups: groups || [] }
+  applySubstituteGroupCounts(groupCache.value.groups)
+}
+
+// 换版本（切历史版本 / 检出）后缓存失效：旧版本的组不能拿去解释新版本的树
+watch(currentIterationOid, () => {
+  groupCache.value = { iterationOid: '', loading: false, groups: [] }
+})
+
+/**
+ * 取消替代：清空选中 BOM 行的全部<b>局部</b>替代。
+ *
+ * <p>两个名字很像的按钮作用域完全不同（这个只删本行的局部替代，不动零件主数据上的全局替代），
+ * 所以确认框里把边界写明 —— 用户分不清时最容易误删的就是这一类。
+ */
 function onCancelSubstitute() {
   const row = bomSelectedRow.value
   if (!row || row.isRoot) return
-  message.info(`取消替代功能开发中：${row.childName || row.childNumber}`)
+  Modal.confirm({
+    title: `清空「${row.childName || row.childNumber}」这一行的全部替代件？`,
+    content: '只影响本 BOM 行的局部替代；零件主数据上的全局替代关系不受影响。',
+    okText: '清空',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        const res = await clearBomSubstitutes(row.oid)
+        if (res?.code === 200) {
+          message.success(`已清空 ${res.data ?? 0} 条替代关系`)
+          // 两处显示同步归零：行内标记（substituteCount）+「替代情况」页签清单
+          await refreshRowSubstitutes()
+        } else {
+          message.error(res?.message || '取消失败')
+        }
+      } catch (e) {
+        message.error(e?.response?.data?.message || e.message)
+      }
+    },
+  })
 }
 
 /** 检出：打开检出注释弹窗 */
@@ -3056,11 +3788,16 @@ onMounted(async () => {
   border: 1px solid #f0f0f0;
   border-radius: 6px;
   margin-bottom: 12px;
+  /* 右侧详情栏是可拖窄的：内容整体横向滚动，
+     否则「本行替代件」「启用」这类标签会被挤成两行 */
+  overflow-x: auto;
 }
 .tab-stat-item {
   display: flex;
   align-items: center;
   gap: 5px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tab-stat-icon {
   font-size: 14px;
@@ -3076,12 +3813,14 @@ onMounted(async () => {
 .tab-stat-label {
   font-size: 12px;
   color: #8c8c8c;
+  white-space: nowrap;
 }
 .tab-stat-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 /* 部件编码超链接：指向该 Part 最新版本详情页 */
 .alternate-part-link {
@@ -3267,6 +4006,147 @@ onMounted(async () => {
 .bom-subject :deep(.ant-tag) {
   margin-inline-end: 0;
   white-space: nowrap;
+}
+
+/* ===== 局部替代的行内标记（BOM 树）===== */
+/* 与工具栏「替代」按钮同一套图标（SwapOutlined），位置固定在状态标签之后；
+   尺寸压到 18px 是为了不把 BOM 行的行高撑起来 */
+.bom-sub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: #531dab;
+  background: #f9f0ff;
+  border: 1px solid #d3adf7;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.bom-sub-badge:hover {
+  background: #efdbff;
+}
+/* 替代件全被停用：置灰 —— 别让人以为这行现在还能被替换 */
+.bom-sub-badge-off {
+  color: #8c8c8c;
+  background: #fafafa;
+  border-color: #d9d9d9;
+}
+.bom-sub-badge-off:hover {
+  background: #f0f0f0;
+}
+
+/* 成组替代的行内标记：橙色系，与局部替代的紫色系一眼分得开
+   （两个标记含义不同：⇄ 是"这行换几颗料"，⧉ 是"这行属于几组整组替换"） */
+.bom-group-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: #d46b08;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.bom-group-badge:hover {
+  background: #ffe7ba;
+}
+
+/* 标记的工具提示：深色底，所以用半透明白做层次，不引主题色 */
+.bom-sub-tip {
+  max-width: 440px;
+}
+.bom-sub-tip-head {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.bom-sub-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+}
+.bom-sub-tip-row code {
+  background: rgba(255, 255, 255, 0.16);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.bom-sub-tip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bom-sub-tip-ver,
+.bom-sub-tip-qty {
+  opacity: 0.8;
+}
+.bom-sub-tip-row-off {
+  opacity: 0.6;
+}
+.bom-sub-tip-off {
+  color: #ffccc7;
+}
+.bom-sub-tip-note {
+  opacity: 0.75;
+}
+.bom-sub-tip-foot {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  opacity: 0.75;
+}
+
+/* ===== 「替代情况」页签 ===== */
+.bom-sub-link {
+  color: #1677ff;
+}
+.bom-sub-link:hover {
+  text-decoration: underline;
+}
+.bom-sub-tab-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8c8c8c;
+  line-height: 1.6;
+}
+
+/* ===== 过滤器菜单里的条件项 +「编辑过滤器」弹窗 ===== */
+.bom-filter-num {
+  margin-left: 6px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+.bom-filter-check {
+  margin-left: 4px;
+  font-size: 12px;
+  color: #1677ff;
+}
+.bom-filter-option {
+  margin-bottom: 12px;
+}
+.bom-filter-option-desc {
+  margin: 6px 0 0 24px;
+  font-size: 12px;
+  color: #8c8c8c;
+  line-height: 1.7;
+}
+.bom-filter-preview {
+  padding: 8px 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #595959;
 }
 
 /* ===== BOM 树形连接线：rail（竖线）+ branch（竖线 + 水平线连接到父级） ===== */

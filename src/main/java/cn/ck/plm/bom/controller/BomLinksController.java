@@ -10,11 +10,16 @@ package cn.ck.plm.bom.controller;
 import cn.ck.plm.bom.dto.BomCostReportVO;
 import cn.ck.plm.bom.dto.BomTreeNode;
 import cn.ck.plm.bom.entity.BomLinks;
+import cn.ck.plm.bom.service.BomExportService;
 import cn.ck.plm.bom.service.api.BomLinksService;
 import cn.ck.plm.iam.dto.ApiResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -26,6 +31,9 @@ public class BomLinksController {
 
     @Autowired
     private BomLinksService bomLinksService;
+
+    @Autowired
+    private BomExportService bomExportService;
 
     @PostMapping
     public ApiResponse<BomLinks> create(@RequestBody BomLinks bomLinks) {
@@ -80,6 +88,47 @@ public class BomLinksController {
     @GetMapping("/cost-report/{parentIterationOid}")
     public ApiResponse<BomCostReportVO> getCostReport(@PathVariable String parentIterationOid) {
         return ApiResponse.ok(bomLinksService.costReport(parentIterationOid));
+    }
+
+    /**
+     * 导出 BOM（{@code csv} / {@code xls} / {@code xlsx} / {@code pdf}）——
+     * 当前这一版的<b>完整多层结构 + 成本</b>。
+     *
+     * <p>入参与成本报告同口径（父件迭代 oid）：导出跟着版本走，不自行挑"最新版"，
+     * 否则会出现"页面看的是 A.4、导出的是 B.1"的错配，而两份文件放一起看不出来。
+     *
+     * <p>返回文件字节（Content-Disposition 里带文件名）；前端要用 blob 拉取后本地保存 ——
+     * 这个接口要鉴权，{@code window.open} 带不上 Authorization 头。
+     */
+    @GetMapping("/export/{parentIterationOid}")
+    public ResponseEntity<byte[]> export(@PathVariable String parentIterationOid,
+                                         @RequestParam(name = "format", defaultValue = "xlsx") String format) {
+        BomExportService.ExportFile file;
+        try {
+            file = bomExportService.export(parentIterationOid, format);
+        } catch (IllegalArgumentException e) {
+            // 找不到版本这类"用户可纠正"的错误给 404 + JSON：前端拿的是 blob，
+            // 只有 JSON 体才能把这句话读出来显示（否则只能弹"服务器错误 (500)"）
+            String json = "{\"code\":404,\"message\":\"" + escapeJson(e.getMessage()) + "\",\"data\":null}";
+            return ResponseEntity.status(404)
+                    .header(HttpHeaders.CONTENT_TYPE, "application/json; charset=UTF-8")
+                    .body(json.getBytes(StandardCharsets.UTF_8));
+        }
+        // 文件名可能是中文：filename= 给 ASCII 兜底，filename*= 给 UTF-8 真名（RFC 5987）
+        String ascii = file.getFileName().replaceAll("[^\\x20-\\x7E]", "_");
+        String encoded = URLEncoder.encode(file.getFileName(), StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, file.getContentType())
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + encoded)
+                .body(file.getBytes());
+    }
+
+    private static String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     @GetMapping("/by-child-part/{childPartOid}")

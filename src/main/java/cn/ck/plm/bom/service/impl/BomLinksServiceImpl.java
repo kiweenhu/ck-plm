@@ -11,6 +11,8 @@ import cn.ck.plm.bom.dto.BomCostReportVO;
 import cn.ck.plm.bom.dto.BomTreeNode;
 import cn.ck.plm.bom.entity.BomLinks;
 import cn.ck.plm.bom.mapper.BomLinksMapper;
+import cn.ck.plm.bom.mapper.BomSubstituteGroupMapper;
+import cn.ck.plm.bom.mapper.BomSubstituteLinkMapper;
 import cn.ck.plm.bom.service.BomCostCalculator;
 import cn.ck.plm.bom.service.api.BomLinksService;
 import cn.ck.plm.part.entity.Part;
@@ -22,8 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -113,9 +117,114 @@ public class BomLinksServiceImpl implements BomLinksService {
         bomLinksMapper.updateResolvedIterationOid(oid, resolvedIterationOid);
     }
 
+    @Autowired
+    private BomSubstituteLinkMapper bomSubstituteLinkMapper;
+
+    @Autowired
+    private BomSubstituteGroupMapper bomSubstituteGroupMapper;
+
     @Override
     public List<BomTreeNode> buildTree(String parentIterationOid) {
-        return buildTreeRecursive(parentIterationOid, new HashSet<>(), 0);
+        List<BomTreeNode> roots = buildTreeRecursive(parentIterationOid, new HashSet<>(), 0);
+        fillSubstituteCounts(roots);
+        fillSubstituteGroupCounts(roots);
+        return roots;
+    }
+
+    /**
+     * 批量回填「局部替代件数量」。
+     *
+     * <p>整棵树<b>只查一次</b>：先把所有行 oid 拍平，再一条 GROUP BY 拿回数量，最后写回节点。
+     * 逐节点查在这里就是 N+1（BOM 动辄几百行），所以宁可多一次带 IN 条件的查询。
+     */
+    private void fillSubstituteCounts(List<BomTreeNode> roots) {
+        List<BomTreeNode> flat = new ArrayList<>();
+        collectNodes(roots, flat);
+        if (flat.isEmpty()) {
+            return;
+        }
+        List<String> oids = new ArrayList<>(flat.size());
+        for (BomTreeNode node : flat) {
+            // 先把默认值写成 0：前端据此判断"这行有没有替代"，undefined/0 都是"没有"
+            node.setSubstituteCount(0);
+            node.setSubstituteEnabledCount(0);
+            if (node.getOid() != null && !node.getOid().isEmpty()) {
+                oids.add(node.getOid());
+            }
+        }
+        if (oids.isEmpty()) {
+            return;
+        }
+        Map<String, int[]> counts = new HashMap<>();
+        for (Map<String, Object> row : bomSubstituteLinkMapper.countByBomLinkOids(String.join(",", oids))) {
+            Object linkOid = row.get("bomLinkOid");
+            if (linkOid == null) {
+                continue;
+            }
+            counts.put(String.valueOf(linkOid).trim(), new int[]{
+                    toInt(row.get("substituteCount")), toInt(row.get("substituteEnabledCount"))});
+        }
+        for (BomTreeNode node : flat) {
+            int[] count = counts.get(node.getOid());
+            if (count != null) {
+                node.setSubstituteCount(count[0]);
+                node.setSubstituteEnabledCount(count[1]);
+            }
+        }
+    }
+
+    /** 递归拍平树节点（回填替代数量用） */
+    private void collectNodes(List<BomTreeNode> nodes, List<BomTreeNode> out) {
+        if (nodes == null) {
+            return;
+        }
+        for (BomTreeNode node : nodes) {
+            out.add(node);
+            collectNodes(node.getChildren(), out);
+        }
+    }
+
+    /** 计数结果转 int：PostgreSQL 的 COUNT/SUM 经 JDBC 回来是 Long 等 Number 子类 */
+    private int toInt(Object value) {
+        return value instanceof Number ? ((Number) value).intValue() : 0;
+    }
+
+    /**
+     * 批量回填「本行被几个成组替代组当作原料侧引用」。
+     *
+     * <p>与局部替代的计数一样只查一次。为什么不与它合并成一个方法：两者数据源不同表、
+     * 语义也不同（一个数"这行换几颗料"，一个数"这行属于几组整组替换"），
+     * 混在一起只会让下次改其中一个时被迫把另一个也读一遍。
+     */
+    private void fillSubstituteGroupCounts(List<BomTreeNode> roots) {
+        List<BomTreeNode> flat = new ArrayList<>();
+        collectNodes(roots, flat);
+        if (flat.isEmpty()) {
+            return;
+        }
+        List<String> oids = new ArrayList<>(flat.size());
+        for (BomTreeNode node : flat) {
+            node.setSubstituteGroupCount(0);
+            if (node.getOid() != null && !node.getOid().isEmpty()) {
+                oids.add(node.getOid());
+            }
+        }
+        if (oids.isEmpty()) {
+            return;
+        }
+        Map<String, Integer> counts = new HashMap<>();
+        for (Map<String, Object> row : bomSubstituteGroupMapper.countGroupsByBomLinkOids(String.join(",", oids))) {
+            Object linkOid = row.get("bomLinkOid");
+            if (linkOid != null) {
+                counts.put(String.valueOf(linkOid).trim(), toInt(row.get("groupCount")));
+            }
+        }
+        for (BomTreeNode node : flat) {
+            Integer count = counts.get(node.getOid());
+            if (count != null) {
+                node.setSubstituteGroupCount(count);
+            }
+        }
     }
 
     /** 递归构建 BOM 树，pathVisited 按路径防环（仅阻止当前路径上的环，不阻止不同分支重复展开），depth 限制深度 */

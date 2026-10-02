@@ -101,6 +101,27 @@ public class BomTreeNode {
     /** 子件自身的最新迭代 oid（用于递归加载孙件 / 在子件下添加孙件） */
     private String childLatestIterationOid;
 
+    // ==================== 局部替代（BOM 行级）====================
+
+    /**
+     * 本行已设的<b>局部替代件总数</b>（含已停用）；0 表示未设替代。
+     *
+     * <p>由 {@code BomLinksServiceImpl#buildTree} 建完树后<b>一次性批量回填</b>：
+     * 前端要在每一行上标出"这行有替代件"，逐行查就是 N+1（BOM 动辄几百行）。
+     */
+    private Integer substituteCount;
+
+    /** 其中<b>启用中</b>的个数；等于 0 而总数为正说明替代件全被停用，前端据此置灰展示 */
+    private Integer substituteEnabledCount;
+
+    /**
+     * 本行作为<b>原料侧成员</b>被多少个「成组替代」组引用；0 表示没被卷进任何成组替代。
+     *
+     * <p>与 {@link #substituteCount} 分开：一个是"这行换几颗料"，一个是"这行属于几组整组替换"，
+     * 界面上是两个标记（成组替代不允许拆开换，含义完全不同）。
+     */
+    private Integer substituteGroupCount;
+
     // ==================== 子节点 ====================
 
     /** 子节点（子件的子件） */
@@ -176,6 +197,15 @@ public class BomTreeNode {
 
     public String getChildLatestIterationOid() { return childLatestIterationOid; }
     public void setChildLatestIterationOid(String childLatestIterationOid) { this.childLatestIterationOid = childLatestIterationOid; }
+
+    public Integer getSubstituteCount() { return substituteCount; }
+    public void setSubstituteCount(Integer substituteCount) { this.substituteCount = substituteCount; }
+
+    public Integer getSubstituteEnabledCount() { return substituteEnabledCount; }
+    public void setSubstituteEnabledCount(Integer substituteEnabledCount) { this.substituteEnabledCount = substituteEnabledCount; }
+
+    public Integer getSubstituteGroupCount() { return substituteGroupCount; }
+    public void setSubstituteGroupCount(Integer substituteGroupCount) { this.substituteGroupCount = substituteGroupCount; }
 
     public List<BomTreeNode> getChildren() { return children; }
     public void setChildren(List<BomTreeNode> children) { this.children = children; }

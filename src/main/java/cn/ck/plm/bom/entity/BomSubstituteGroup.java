@@ -108,13 +108,20 @@ public class BomSubstituteGroup extends WithoutVersionEntity implements TenantEn
         return "APPROVED".equalsIgnoreCase(status);
     }
 
-    /** 判断是否启用 */
-    public boolean isEnabled() {
+    /**
+     * 组是否启用（{@code enabled} 为空视为启用）。
+     *
+     * <p><b>方法名不能叫 {@code isEnabled()}</b>：{@code enabled} 是包装类型 {@link Boolean}，
+     * 与 {@code getEnabled()} 并存会让 JavaBeans 出现"同一属性两种类型"的歧义，MyBatis 反射取
+     * 该属性时直接抛 {@code ambiguous type for property 'enabled'} ——
+     * 同 {@link BomSubstituteLink#enabledOrDefault()}，那条注释是先踩过坑才写下的。
+     */
+    public boolean enabledOrDefault() {
         return enabled == null || enabled;
     }
 
-    /** 判断是否要求整组替换 */
-    public boolean isAtomicReplace() {
+    /** 组是否要求整组替换（{@code atomicReplace} 为空视为要求；同样不能叫 {@code isAtomicReplace()}，理由同上） */
+    public boolean atomicReplaceOrDefault() {
         return atomicReplace == null || atomicReplace;
     }
 

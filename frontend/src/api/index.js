@@ -2086,6 +2086,104 @@ export function getBomCostReport(parentIterationOid) {
   return request.get(`/bom-links/cost-report/${parentIterationOid}`)
 }
 
+// ==================== 局部替代（BOM 行替代） ====================
+// 与「全局替代」（part-alternates：物料主数据级）区分：这里的关系只在该 BOM 行上下文生效。
+
+/** 某 BOM 行的局部替代件清单（带替代件编码/名称/类型/版本） */
+export function getBomSubstitutesByLink(bomLinkOid) {
+  return request.get(`/bom-substitutes/by-bom-link/${bomLinkOid}`)
+}
+
+/** 设置局部替代（同一行 + 同一替代件重复提交 = 更新其参数） */
+export function setBomSubstitute(data) {
+  return request.post('/bom-substitutes', data)
+}
+
+/** 删除一条局部替代关系 */
+export function deleteBomSubstitute(oid) {
+  return request.delete(`/bom-substitutes/${oid}`)
+}
+
+/** 取消替代：清空某 BOM 行的全部局部替代（返回删除条数） */
+export function clearBomSubstitutes(bomLinkOid) {
+  return request.delete(`/bom-substitutes/by-bom-link/${bomLinkOid}`)
+}
+
+// ==================== 成组替代（BOM 行成组替换） ====================
+// 与局部替代的区别：局部替代换"一颗料"、挂在一条 BOM 行上；成组替代换"一组行"、
+// 挂在父件迭代上，并带"整组替换"（atomicReplace）约束。
+
+/** 某父件迭代下的全部成组替代组（含两侧成员） */
+export function getBomSubstituteGroups(parentIterationOid) {
+  return request.get(`/bom-substitute-groups/by-parent-iteration/${parentIterationOid}`)
+}
+
+/** 新建成组替代组（body：parentIterationOid / name / description / atomicReplace / enabled / sources[] / substitutes[]） */
+export function createBomSubstituteGroup(data) {
+  return request.post('/bom-substitute-groups', data)
+}
+
+/** 更新成组替代组（两侧成员整体替换；已批准的组被改动会退回 DRAFT） */
+export function updateBomSubstituteGroup(oid, data) {
+  return request.put(`/bom-substitute-groups/${oid}`, data)
+}
+
+/** 删除成组替代组（成员随组级联删除） */
+export function deleteBomSubstituteGroup(oid) {
+  return request.delete(`/bom-substitute-groups/${oid}`)
+}
+
+/** 成组替代组状态流转：DRAFT / APPROVED / OBSOLETE */
+export function changeBomSubstituteGroupStatus(oid, status) {
+  return request.put(`/bom-substitute-groups/${oid}/status`, { status })
+}
+
+// ==================== 通用件阈值配置（业务配置中心） ====================
+// 口径：自研结构件被多少个型号、多少条 BOM 行引用达到阈值 → 通知管理员 → 走绑定的流程认定
+// 为通用件（可跨产品系列/型号重用）。
+
+/** 读取本租户的通用件阈值配置（未配置时后端返回默认口径） */
+export function getGenPartThresholdConfig() {
+  return request.get('/gen-part-threshold-config')
+}
+
+/** 保存通用件阈值配置 */
+export function saveGenPartThresholdConfig(data) {
+  return request.put('/gen-part-threshold-config', data)
+}
+
+/** 读取本租户的标准件入库流程配置（未配置时后端返回默认：不启用流程） */
+export function getStdPartInboundConfig() {
+  return request.get('/std-part-inbound-config')
+}
+
+/** 保存标准件入库流程配置 */
+export function saveStdPartInboundConfig(data) {
+  return request.put('/std-part-inbound-config', data)
+}
+
+/** 业务域列表（平台预置、共享表；用于类型/对象的「域」标签与「按域查看」视图） */
+export function getBusinessDomains() {
+  return request.get('/business-domains')
+}
+
+/**
+ * 导出 BOM（csv / xls / xlsx / pdf）：当前这一版的完整多层结构 + 成本。
+ *
+ * <p>用 blob 而不是 window.open：这个接口要鉴权（Authorization 头），window.open 带不上 token。
+ * 返回的是文件字节本身（响应拦截器只在"带 code+data 的包装体"上做判断，blob 会原样透传）。
+ *
+ * @param parentIterationOid 父件迭代 oid（哪一版）—— 与成本报告同口径
+ * @param format csv | xls | xlsx | pdf
+ */
+export function exportBomFile(parentIterationOid, format = 'xlsx') {
+  return request.get(`/bom-links/export/${parentIterationOid}`, {
+    params: { format },
+    responseType: 'blob',
+    timeout: 60000,
+  })
+}
+
 /** 创建 BOM 行（把指定 Part 添加为子件） */
 export function createBomLinks(data) {
   return request.post('/bom-links', data)
