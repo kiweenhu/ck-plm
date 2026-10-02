@@ -21,10 +21,19 @@ import java.util.List;
 @ConditionalOnProperty(name = "plm.database.type", havingValue = "postgresql", matchIfMissing = true)
 public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
 
+    /**
+     * 更新业务域归属。单独一条 SQL，语义与 {@code parent_oid}（类型继承）分开。
+     * {@code #{domainOid}} 为 null 时等价于"清空域归属"。
+     */
     @Override
-    @Insert("INSERT INTO ck_type_definition (oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
+    @Update("UPDATE ck_type_definition SET domain_oid = #{domainOid}, updated_at = CURRENT_TIMESTAMP "
+            + "WHERE oid = #{oid}")
+    int updateDomainOid(@Param("oid") String oid, @Param("domainOid") String domainOid);
+
+    @Override
+    @Insert("INSERT INTO ck_type_definition (oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at) " +
-            "VALUES (#{oid}, #{code}, #{name}, #{icon}, #{source}, #{typeKind}, #{parentOid}, #{rootTypeCode}, " +
+            "VALUES (#{oid}, #{code}, #{name}, #{icon}, #{source}, #{typeKind}, #{parentOid}, #{rootTypeCode}, #{domainOid}, " +
             "#{description}, #{sortOrder}, #{enabled}, #{tenantOid}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(TypeDefinition td);
 
@@ -40,7 +49,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
 
     // ==================== 查询映射 ====================
 
-    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
+    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition WHERE oid = #{oid}")
     @Results(id = "tdResult", value = {
@@ -52,6 +61,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
             @Result(property = "typeKind",    column = "type_kind"),
             @Result(property = "parentOid",   column = "parent_oid"),
             @Result(property = "rootTypeCode",column = "root_type_code"),
+            @Result(property = "domainOid",   column = "domain_oid"),
             @Result(property = "description", column = "description"),
             @Result(property = "sortOrder",   column = "sort_order"),
             @Result(property = "enabled",     column = "enabled"),
@@ -64,7 +74,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
     @Override
     TypeDefinition selectByOid(@Param("oid") String oid);
 
-    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
+    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition WHERE code = #{code} " +
             "AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
@@ -78,7 +88,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
     /**
      * 查询全部类型（平台 + 本租户），优先本租户
      */
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
+    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
             "WHERE tenant_oid IN (#{tenantOid}, #{platformOid}) " +
@@ -91,7 +101,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
     /**
      * 查询已启用的类型（平台 + 本租户），优先本租户
      */
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
+    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
             "WHERE enabled = true AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
@@ -101,7 +111,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
     List<TypeDefinition> selectEnabled(@Param("tenantOid") String tenantOid,
                                         @Param("platformOid") String platformOid);
 
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
+    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
             "WHERE UPPER(type_kind) = UPPER(#{typeKind}) AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
@@ -112,7 +122,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
                                            @Param("tenantOid") String tenantOid,
                                            @Param("platformOid") String platformOid);
 
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
+    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
             "WHERE parent_oid = #{parentOid} AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
@@ -123,7 +133,7 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
                                             @Param("tenantOid") String tenantOid,
                                             @Param("platformOid") String platformOid);
 
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, " +
+    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
             "WHERE parent_oid IS NULL AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +

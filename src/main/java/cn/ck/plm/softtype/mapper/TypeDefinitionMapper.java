@@ -70,6 +70,14 @@ public interface TypeDefinitionMapper {
      */
     int normalizeTypeKindCase();
 
-    /** 更新类型的父类型 oid（类型树结构调整 / 数据迁移，如电子域类型改挂到域锚点下） */
+    /** 更新类型的父类型 oid（**只表达类型继承/类型树父子**，与域归属无关） */
     int updateParentOid(@Param("oid") String oid, @Param("parentOid") String parentOid);
+
+    /**
+     * 更新类型的业务域归属（软引用 {@code ck_business_domain.oid}）。
+     *
+     * <p>与 {@link #updateParentOid} 分成两个方法/两列：域是业务划分、允许跨域；
+     * 类型继承是对象能力的细化 —— 两个正交维度，历史上都由 parent_oid 表达才有那堆问题。
+     */
+    int updateDomainOid(@Param("oid") String oid, @Param("domainOid") String domainOid);
 }

@@ -52,8 +52,46 @@
         -->
         <div class="st-tree-spin">
           <a-spin :spinning="treeLoading">
+            <!-- 视图切换：按类型（树）／按业务域（域下的对象列表）。
+                 业务域只在这里成组呈现，不挂在类型名后面当标签。 -->
+            <a-radio-group v-model:value="bizView" size="small" button-style="solid" style="margin-bottom:8px">
+              <a-radio-button value="type">按类型</a-radio-button>
+              <a-radio-button value="domain">按业务域</a-radio-button>
+            </a-radio-group>
+
+            <div v-if="bizView === 'domain'" style="max-height:60vh;overflow:auto;padding-right:4px">
+              <a-empty v-if="!businessDomains.length" description="暂无业务域" :image-style="{ height: '48px' }" />
+              <div
+                v-for="d in businessDomains"
+                :key="d.oid"
+                style="margin-bottom:10px;border:1px solid #f0f0f0;border-radius:6px;overflow:hidden"
+              >
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fafafa;flex-wrap:nowrap">
+                  <span style="font-weight:600;white-space:nowrap;flex:0 0 auto">{{ d.name }}</span>
+                  <code style="font-size:11px;color:#8c8c8c;white-space:nowrap;flex:0 0 auto">{{ d.code }}</code>
+                  <a-tag size="small" color="blue" style="flex:0 0 auto">{{ (typesByDomain[d.oid] || []).length }} 个对象</a-tag>
+                </div>
+                <div v-if="!(typesByDomain[d.oid] || []).length" style="padding:8px 12px;color:#bfbfbf;font-size:12px">
+                  该域下暂无类型
+                </div>
+                <div
+                  v-for="t in (typesByDomain[d.oid] || [])"
+                  :key="t.oid"
+                  style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;border-top:1px solid #fafafa"
+                  :style="{ background: selectedKeys.includes(t.oid) ? '#e6f4ff' : '' }"
+                  @click="onSelectTypeRow(t)"
+                >
+                  <component :is="getIconComponent(t.icon)" class="st-tree-icon" style="flex:0 0 auto" />
+                  <span style="flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.name }}</span>
+                  <code style="font-size:11px;color:#8c8c8c;white-space:nowrap;flex:0 0 auto">{{ t.code }}</code>
+                  <a-tag v-if="t.typeKind === 'OOTB'" color="purple" size="small" style="flex:0 0 auto">内置</a-tag>
+                  <a-tag v-else-if="t.source === 'USER'" color="green" size="small" style="flex:0 0 auto">自定义</a-tag>
+                </div>
+              </div>
+            </div>
+
             <a-tree
-              v-if="filteredTree.length > 0"
+              v-if="bizView === 'type' && filteredTree.length > 0"
               :tree-data="filteredTree"
               :field-names="{ children: 'children', title: 'name', key: 'oid' }"
               v-model:selectedKeys="selectedKeys"
@@ -68,6 +106,7 @@
                   <a-tag v-if="nodeData.typeKind === 'OOTB'" color="purple" size="small" class="st-tree-tag">内置</a-tag>
                   <a-tag v-else-if="nodeData.typeKind === 'DOMAIN'" color="gold" size="small" class="st-tree-tag">域锚点</a-tag>
                   <a-tag v-else-if="nodeData.source === 'USER'" color="green" size="small" class="st-tree-tag">自定义</a-tag>
+
                 </div>
               </template>
             </a-tree>
@@ -921,6 +960,57 @@ function selectIcon(value) {
   iconModalVisible.value = false
   iconSearch.value = ''
 }
+
+// ============ 业务域视图（域 → 域下对象列表） ============
+// 域是独立实体（共享表 ck_business_domain），不挂在类型名后面当标签、也不占类型树的第一层；
+// 这里以"按业务域"视图呈现：每个域一组，组内是该域下的类型/对象。
+const bizView = ref('type')
+
+/** 平铺类型树（域视图分组用；域行早已不在类型表里，这里顺手防御性过滤） */
+function flattenTypes(nodes, out = []) {
+  for (const n of (nodes || [])) {
+    if (n.typeKind === 'DOMAIN') continue
+    out.push(n)
+    if (n.children && n.children.length) flattenTypes(n.children, out)
+  }
+  return out
+}
+
+/** 业务域 oid → 域下类型列表 */
+const typesByDomain = computed(() => {
+  const map = {}
+  for (const t of flattenTypes(treeData.value)) {
+    if (!t.domainOid) continue
+    if (!map[t.domainOid]) map[t.domainOid] = []
+    map[t.domainOid].push(t)
+  }
+  return map
+})
+
+/** 域视图里点一行：与点树节点同效（选中 + 右侧看详情） */
+function onSelectTypeRow(t) {
+  selectedKeys.value = [t.oid]
+  selectedNode.value = t
+}
+
+// ============ 业务域（数据源） ============
+// 域表是共享表（平台预置、全租户共享），取回后用于把 domainOid 翻成域名称；
+// 取不到就静默 —— 标签不显示，不影响类型树本身。
+const businessDomains = ref([])
+
+function domainNameOf(oid) {
+  if (!oid) return ''
+  const hit = businessDomains.value.find((d) => d.oid === oid)
+  return hit ? (hit.name || hit.code || '') : ''
+}
+
+// 动态导入：为一个接口不动本文件顶部的 import 块
+import('@/api')
+  .then(({ getBusinessDomains }) => getBusinessDomains())
+  .then((res) => {
+    if (res?.code === 200) businessDomains.value = res.data || []
+  })
+  .catch(() => {})
 
 // ============ 树 ============
 const treeData = ref([])

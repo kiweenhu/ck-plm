@@ -59,13 +59,26 @@ public class TypeDefinition extends BaseEntity implements TenantEntity {
     private String typeKind;
 
     /**
-     * 父类型 oid（自引用）：
+     * 父类型 oid（自引用）—— <b>只表达"类型继承/类型树父子"</b>：
      * <ul>
-     *   <li>OOTB 类型：null</li>
-     *   <li>SOFT_TYPE：指向其父类型（OOTB 或另一个 SOFT_TYPE）</li>
+     *   <li>OOTB 根类型与自身即能力宿主的类型：null</li>
+     *   <li>SOFT_TYPE：指向其父类型（OOTB 或另一个 SOFT_TYPE，允许跨域）</li>
      * </ul>
+     *
+     * <p>注意：它<b>不再</b>表达"域归属"。历史上域锚点(DOMAIN)行被塞进类型表，域归属借这列表达，
+     * 于是同一列背了两种语义（新建类型沿父链找不到能力宿主就误报"域锚点"错误）。
+     * 域归属已迁至 {@link #domainOid} / {@code ck_business_domain}。
      */
     private String parentOid;
+
+    /**
+     * 业务域 oid（软引用 {@code ck_business_domain.oid}）—— <b>类型归属哪个域</b>。
+     *
+     * <p>独立于 {@link #parentOid}：域是业务划分（如「结构设计域」），类型继承是对象能力的细化，
+     * 两者正交 —— 所以子类型的域可以与父类型不同（跨域允许，创建时默认继承父的域）。
+     * 域是平台预置数据，租户不可自定义。
+     */
+    private String domainOid;
 
     /** 描述 */
     private String description;
@@ -204,6 +217,15 @@ public class TypeDefinition extends BaseEntity implements TenantEntity {
 
     public void setParentOid(String parentOid) {
         this.parentOid = parentOid;
+    }
+
+    /** 业务域 oid（软引用 ck_business_domain.oid）；与 parentOid（类型继承）互不相干 */
+    public String getDomainOid() {
+        return domainOid;
+    }
+
+    public void setDomainOid(String domainOid) {
+        this.domainOid = domainOid;
     }
 
     public String getDescription() {

@@ -38,6 +38,13 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
     private final TypeLifecycleTemplateLinkMapper lifecycleTemplateLinkMapper;
     private final PageLayoutMapper pageLayoutMapper;
 
+    /**
+     * 业务域（类型树第一层的来源）。域是平台预置的只读数据，故用字段注入，避免改动构造函数签名。
+     * <p>类型声明用全限定名，免得为一行注入再动 import 块。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    private cn.ck.plm.softtype.mapper.BusinessDomainMapper businessDomainMapper;
+
     public TypeDefinitionServiceImpl(TypeDefinitionMapper mapper,
                                      TypeIBAMapper typeIBAMapper,
                                      TypeNumberRuleLinkMapper numberRuleLinkMapper,
@@ -132,12 +139,13 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
             if (parentLayouts != null && !parentLayouts.isEmpty()) break;
         }
 
-        // 如果父类型在当前任何租户下都没有 PageLayout，则递归向上查找
+        // 父类型在当前任何租户下都没有 PageLayout → 沿父链继续向上追溯祖先。
+        //
+        // 修：这里原来写成了 inheritPageLayouts(childTd) —— 参数还是自己，等于无限自我递归，
+        // 只要父链上任何一级没有 PageLayout 就 StackOverflowError（新建类型直接 500）。
+        // 真正要的是"从祖父继续往上找"，即下面这次的 inheritFromAncestor（它每层换参数、到顶即停）。
         if (parentLayouts == null || parentLayouts.isEmpty()) {
-            inheritPageLayouts(childTd); // 注意：这里需要基于 parent 继续递归
-            // 重新设计：基于 parent 的 parentOid 递归
             if (parent.isSoftType() && parent.getParentOid() != null && !parent.getParentOid().isEmpty()) {
-                // 继续向上追溯
                 inheritFromAncestor(childTd, parent.getParentOid());
             }
             return;
@@ -313,7 +321,19 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
         return null;
     }
 
-    /** 递归查找根 OOTB 类型的 code（上限 10 层） */
+    /**
+     * 查找根 OOTB 类型的 code（能力宿主，如 PART / DOCUMENT），上限 10 层。
+     *
+     * <p><b>先信 {@code root_type_code}，再退化为沿父链上溯。</b>
+     * 原因：类型树里 {@code parent_oid} 表达的是<b>分类归属</b>（域锚点 oid 相当于分类根 ——
+     * 见 {@code EcadDomain} 与 {@code EcadSchemaInitializer}：域成员表已删，域归属就由它表达），
+     * 而域锚点自身 {@code rootTypeCode=null} 且不是 OOTB，沿它一路上溯<b>到不了能力宿主</b>。
+     * 于是"在域下（或某个 SOFT_TYPE 下）建类型"会误报
+     * 「在域锚点（DOMAIN）下创建子类型必须指定 rootTypeCode（能力宿主，如 PART / DOCUMENT）」——
+     * 报错说的是"域锚点"，实际父节点却是另一个 SOFT_TYPE，这正是字段语义重叠的症状。
+     *
+     * <p>自身即宿主（ECAD_PROJECT、各 OOTB 根）时不返回自身，交回父链继续上溯。
+     */
     private String findRootCode(String oid, int depth) {
         if (oid == null || depth > 10) return null;
         TypeDefinition td = mapper.selectByOid(oid);
@@ -322,6 +342,11 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
         // 大小写敏感判定会让它们无法被识别为根类型，进而误报"域锚点"错误
         if (td.isOotb()) {
             return td.getCode();
+        }
+        // 能力宿主写在 root_type_code 上时不依赖父链即可判定（域下类型、标准件/通用件均如此）
+        String host = td.getRootTypeCode();
+        if (host != null && !host.isEmpty() && !host.equals(td.getCode())) {
+            return host;
         }
         return findRootCode(td.getParentOid(), depth + 1);
     }
@@ -411,23 +436,44 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
         return mapper.selectByParentOid(parentOid, tenantOid(), platformOid());
     }
 
+    /**
+     * 类型树：<b>第一层是业务域</b>，域下面是该域的类型树。
+     *
+     * <p>组装规则（域与类型继承是两个正交维度）：
+     * <ol>
+     *   <li>根层 = {@code ck_business_domain} 里启用的域（按 sort_order）；
+     *       类型表中残留的 DOMAIN 行<b>不参与</b>建树 —— 域不再由类型表承担；</li>
+     *   <li>域下取 {@code domain_oid} = 该域的类型：<b>父在同一域内 → 按 parentOid 正常嵌套</b>；</li>
+     *   <li><b>父为空、或父不在本域（跨域）→ 该类型直接挂在域锚点下</b>（不隐藏，父名仍能显示）；</li>
+     *   <li>域未定/域被停用的类型 → 顶层兜底展示，绝不丢。</li>
+     * </ol>
+     *
+     * <p>返回结构沿用 {@code List<TypeDefinition>}：域节点是一个"形如类型"的节点
+     * （{@code typeKind=DOMAIN}、oid/code/name/icon/sortOrder 取自域），前端无需改协议即可渲染域层。
+     */
     @Override
     public List<TypeDefinition> findTree() {
         List<TypeDefinition> all = mapper.selectAll(tenantOid(), platformOid());
-        if (all == null || all.isEmpty()) return new ArrayList<>();
+        if (all == null) all = new ArrayList<>();
 
-        Map<String, List<TypeDefinition>> childrenMap = all.stream()
+        // 域不再作为类型树的第一层（已与需求方确认撤销）：类型树就是类型树，
+        // 域归属以 TypeDefinition.domainOid 的形式返回给前端做**标签**展示，
+        // 另提供"按域查看"的独立视图数据（GET /business-domains）。此处把域行排除掉，
+        // 免得历史残留的 DOMAIN 行又跑到第一层去。
+        List<TypeDefinition> types = all.stream()
+                .filter(td -> !td.isDomain())
+                .collect(Collectors.toList());
+        Map<String, String> nameMap = types.stream()
+                .collect(Collectors.toMap(TypeDefinition::getOid, TypeDefinition::getName, (a, b) -> a));
+        Map<String, List<TypeDefinition>> globalByParent = types.stream()
                 .filter(td -> td.getParentOid() != null && !td.getParentOid().isEmpty())
                 .collect(Collectors.groupingBy(TypeDefinition::getParentOid));
 
-        Map<String, String> nameMap = all.stream()
-                .collect(Collectors.toMap(TypeDefinition::getOid, TypeDefinition::getName, (a, b) -> a));
-
         List<TypeDefinition> roots = new ArrayList<>();
-        for (TypeDefinition td : all) {
+        for (TypeDefinition td : types) {
             if (td.isRoot()) {
+                buildTree(td, globalByParent, nameMap);
                 roots.add(td);
-                buildTree(td, childrenMap, nameMap);
             }
         }
         return roots;

@@ -16,7 +16,7 @@
 ### 2. 自动初始化
 应用启动时自动执行初始化器，按顺序完成：
 ```
-@Order(1) PageLayoutMigration  → 数据库迁移
+@Order(0) BusinessDomainInitializer  → 业务域种子（域表 + 数据自愈）
 @Order(2) TypeDefinitionInitializer  → 注册类型定义
 @Order(3) AttributeInitializer  → 扫描字段并注册属性
 @Order(4) PageLayoutInitializer  → 创建默认页面布局
@@ -42,10 +42,10 @@
 ```
 cn.ck.plm.softtype/
 ├── config/                      # 初始化配置
+│   ├── BusinessDomainInitializer.java   # 业务域种子（域表 + 数据自愈）
 │   ├── TypeDefinitionInitializer.java   # 类型定义初始化
 │   ├── AttributeInitializer.java        # 属性定义初始化
-│   ├── PageLayoutInitializer.java       # 页面布局初始化
-│   └── PageLayoutMigration.java         # 页面布局迁移
+│   └── PageLayoutInitializer.java       # 页面布局初始化
 ├── entity/                      # 实体类
 │   ├── TypeDefinition.java              # 类型定义实体
 │   ├── AttributeDefinition.java         # 属性定义实体
