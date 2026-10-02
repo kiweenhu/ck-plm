@@ -1,0 +1,69 @@
+# CK-PLM 一键体验环境
+#
+#   docker compose up -d
+#   # 打开 http://localhost:8080
+#
+# 说明三点：
+# 1. 数据库不对外暴露端口，只在 compose 网络内被 backend 访问。
+# 2. schema.sql 只在「数据卷为空的首次启动」导入；已经跑过之后改了库结构，
+#    需要自己进容器执行增量 SQL，或者 docker compose down -v 重来（会清库）。
+# 3. 首次构建要拉 Maven 依赖和 npm 依赖，慢是正常的，之后走缓存。
+name: ck-plm
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ck-plm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-ck_plm}
+      POSTGRES_USER: ${DB_USERNAME:-plm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-plm_pass_2026}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-plm} -d ${DB_NAME:-ck_plm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ck-plm-backend:0.2.0
+    container_name: ck-plm-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ck_plm}
+      DB_USERNAME: ${DB_USERNAME:-plm}
+      DB_PASSWORD: ${DB_PASSWORD:-plm_pass_2026}
+      PLM_STORAGE_BASE: /data/ck-plm
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m}
+    volumes:
+      - plm-data:/data/ck-plm
+    # 暴露出来方便单独调接口；只走前端反代时可以注释掉这段
+    ports:
+      - "8082:8082"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: ck-plm-frontend:0.2.0
+    container_name: ck-plm-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  pgdata:
+  plm-data:

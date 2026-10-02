@@ -7,7 +7,9 @@ spring:
   jackson:
     default-property-inclusion: always
   datasource:
-    url: jdbc:postgresql://localhost:5432/ck_plm
+    # 主机 / 端口 / 库名均可由环境变量覆盖：容器化部署时 DB_HOST=postgres，
+    # 本地直接跑不配任何变量，行为与原先完全一致（localhost:5432/ck_plm）
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ck_plm}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver

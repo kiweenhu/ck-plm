@@ -78,6 +78,32 @@ PLM 的本质不是一堆 CRUD 页面，而是**版本控制引擎 + 生命周�
 
 ## 快速开始
 
+### 方式一：Docker 一键启动（推荐先看效果）
+
+只要装了 Docker，不需要在本机准备 JDK / Maven / PostgreSQL / Node：
+
+```bash
+cp .env.example .env      # 可选：改数据库口令与对外端口
+docker compose up -d
+```
+
+- 前端：<http://localhost:8080>
+- 后端接口：<http://localhost:8082>
+- 首次构建要拉 Maven 与 npm 依赖，会慢一些；之后走镜像缓存
+
+常用操作：
+
+```bash
+docker compose logs -f backend     # 看后端启动日志
+docker compose down                # 停掉（数据卷保留）
+docker compose down -v             # 停掉并清库（下次启动重新导入 schema.sql）
+```
+
+> ⚠️ `schema.sql` 只在**数据卷为空的首次启动**导入一次。之后如果库结构有变更，
+> 需要自己进容器执行增量 SQL，或者 `docker compose down -v` 重建。
+
+### 方式二：本地手动搭建
+
 ### 环境要求
 
 - JDK 17+
