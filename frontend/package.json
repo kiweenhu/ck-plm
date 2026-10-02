@@ -1,6 +1,6 @@
 {
   "name": "ck-plm-frontend",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.vue.json"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
@@ -50,6 +51,7 @@
     "@vitejs/plugin-vue": "^5.0.4",
     "typescript": "^5.4.5",
     "vite": "^5.2.8",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "vue-tsc": "^3.3.11"
   }
 }

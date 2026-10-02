@@ -1,9 +1,17 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import { readFileSync } from 'fs'
+
+// 版本号单一来源：frontend/package.json —— 界面（登录页）用 __APP_VERSION__ 引用，
+// 发版只改 package.json 一处，不再出现"页面版本号忘了跟着改"的漂移
+const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'))
 
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version)
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

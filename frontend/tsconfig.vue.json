@@ -1,0 +1,5 @@
+{
+  "//": "给 vue-tsc 用的配置：在 tsconfig.json 基础上把 .vue 纳入检查，并额外检查 .js（仓库里有少量 JS 模块被 .vue 引用）。单独一份是为了不动 tsconfig.json —— 那份被 vite/编辑器等共用，且 include 只有 .ts（普通 tsc 解析不了 .vue）。",
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue"]
+}
