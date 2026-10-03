@@ -54,3 +54,7 @@ design.png
 playwright-report/
 test-results/
 backup-*.sql
+
+# 浏览器工具（Playwright 等）导出的页面 aria 快照，形如 login.yaml / home.yaml，
+# 属调试产物。只作用于仓库根目录，不影响 src/main/resources 下的应用配置。
+/*.yaml

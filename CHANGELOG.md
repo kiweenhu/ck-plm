@@ -1,5 +1,55 @@
 # 更新日志
 
+## [v0.2.1] - 2026-10-03
+
+### 本次更新摘要
+
+v0.2.1 是一次**以修缺陷为主的维护版本**。修掉了两个会让业务数据算错的毛病（版本规则的序号恒停在第 1 个字母、租户条件被拼到 `RETURNING` 之后导致 SQL 报错），补上自助修改密码缺失的服务端校验，新增「退出其他设备」。同时把 v0.2.0 开始的初始化治理又推进了一步：播种职责从 Service 与建表类里搬进独立的 `*Initializer`。
+
+### 缺陷修复（Fixes）
+
+#### 1. 版本规则自增序号取值失败，版本号恒停在第 1 个字母
+- `UPDATE … RETURNING sequence_value` 走的是 `executeUpdate`，MyBatis 拿不到 `RETURNING` 的值，返回的实际是「影响行数」—— 于是每次读到的序号都是错的，版本生成一直停在序列的第一个字母
+- 拆成两步：`incrementSequence()` 只负责 +1 并返回影响行数，`selectSequenceValue()` 再读新值；同一事务内 `UPDATE` 已持有行锁，读取安全
+- **相关**：租户拦截器 `TenantStatementInterceptor` 的子句边界清单漏了 `RETURNING`，拼出
+  `… WHERE code = ? RETURNING sequence_value AND tenant_oid = '…'`，触发
+  「AND 的参数必需是类型 boolean，而不是类型 bigint」。改为正则词边界匹配并补入 `RETURNING`，
+  顺带避免列名或字面量里出现 `limit`、`union` 时被误当成子句起点
+
+#### 2. 自助修改密码缺少服务端校验
+- 此前只校验旧密码，新密码的长度、是否与原密码相同都没人管 —— 走接口可以设成 1 位，甚至「改」成原密码（前端拦得住，但接口是公开契约）
+- 补：长度不少于 6 位、不得与当前密码相同
+
+### 新增功能（Features）
+
+#### 退出其他设备
+- 新增 `POST /api/auth/logout-others`：保留当前会话，其余 token 立即失效 —— 密码疑似泄露、或曾在别人电脑上登录过之后的处置手段
+- 与注销共用同一套审计口径，操作日志可回溯「谁在什么时候把其他设备踢下线了」
+
+#### 个人中心重构
+- 个人中心改为「账号资料 / 安全设置」两个页签：资料页可编辑姓名与邮箱、查看角色明细，安全页承载改密与退出其他设备
+- 主菜单「个人中心」更名「工作台」，「个人设置」不再提示「开发中」
+
+#### 补全 PART 的四个页面布局
+- PART 是零部件家族的模板根，各子类型自身没有属性定义（属性由能力宿主 PART 解析），前端表单的 `fallbackEntityCode` 也指向它；此前 PART 没有布局，这些表单全是空的
+- 补 `list` / `create` / `update` / `detail` 四套布局
+
+#### 类型页与容器选择器
+- 类型页新增「按类型 / 按业务域」视图切换，域视图下显示对象计数与内置/自定义标签
+- 资源容器选择器：取值落在产品系列、文件夹等非资源库容器时补一条兜底展示项，不再把内部 oid 直接显示给用户
+
+### 重构（Refactor）
+
+#### 初始化职责继续收敛
+- 新增 `NumberRuleInitializer`（`@Order(1)`）、`VersionRuleInitializer`、`EcadDomainInitializer`，把默认编码规则、版本规则、ECAD 域的播种从 Service 与 Schema 类里搬出来
+- 删除 `EcadSchemaInitializer`（建表职责已于 v0.2.0 交给 `schema.sql`）、`ProductLineSeeder`（早已停用）、`sql/ck_user_activity.sql` 留档脚本
+- `TypeDefinitionInitializer` 不再播种编码规则，只负责把类型**绑**到规则上 —— 以后改编号段配置不必再动类型初始化器
+- `schema.sql` 为 `ck_user_activity` 补 `(user_oid, activity_type, created_at DESC)` 索引
+
+### 其他
+- 全仓版权年份统一更新为 `2026~2028`
+- 术语统一：个人中心 → 工作台；`EcadSchemaInitializer` 相关注释改指向 `schema.sql`
+
 ## [v0.2.0] - 2026-10-02
 
 ### 本次更新摘要
