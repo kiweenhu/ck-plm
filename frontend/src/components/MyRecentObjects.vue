@@ -59,7 +59,7 @@ import { HistoryOutlined } from '@ant-design/icons-vue'
 import { getMyRecentObjects } from '@/api'
 
 /**
- * 「我最近创建/修改的对象」卡片 —— 个人中心用。
+ * 「我最近创建/修改的对象」卡片 —— 工作台用。
  *
  * <p>数据来自对象表自身的创建/修改人 + 时间戳（后端已按当前用户与租户过滤），
  * 是<b>最后状态口径</b>：它回答"这些对象最近一次是我动的"，不回答"历史上我改过它"。
@@ -74,7 +74,7 @@ const days = ref(5)
 const loading = ref(false)
 const objects = ref([])
 
-// 列宽按"个人中心左栏 3/5"配（相对时间换行显示，不挤占宽度），
+// 列宽按"工作台左栏 3/5"配（相对时间换行显示，不挤占宽度），
 // 时间列另起一行放"x 天前"
 const columns = [
   { title: '对象', key: 'object' },

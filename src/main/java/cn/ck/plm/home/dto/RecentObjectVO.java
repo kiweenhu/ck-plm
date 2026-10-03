@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -10,7 +10,7 @@ package cn.ck.plm.home.dto;
 import java.time.LocalDateTime;
 
 /**
- * 「我最近创建 / 修改过的对象」视图 —— 个人中心用。
+ * 「我最近创建 / 修改过的对象」视图 —— 工作台用。
  *
  * <pre>
  * 前端取值：o.oid / o.name / o.code / o.entityType / o.entityTypeName

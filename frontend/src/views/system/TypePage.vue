@@ -45,6 +45,11 @@
           <a-input v-model:value="treeSearch" placeholder="搜索类型..." allow-clear size="small">
             <template #prefix><SearchOutlined /></template>
           </a-input>
+          <!-- 视图切换固定在这里：放进下方滚动区的话，域一多就跟着滚出去了 -->
+          <a-radio-group v-model:value="bizView" size="small" button-style="solid" class="st-view-switch">
+            <a-radio-button value="type">按类型</a-radio-button>
+            <a-radio-button value="domain">按业务域</a-radio-button>
+          </a-radio-group>
         </div>
         <!--
           滚动容器必须是普通 div：a-spin 会额外渲染 .ant-spin-nested-loading / .ant-spin-container
@@ -52,40 +57,37 @@
         -->
         <div class="st-tree-spin">
           <a-spin :spinning="treeLoading">
-            <!-- 视图切换：按类型（树）／按业务域（域下的对象列表）。
-                 业务域只在这里成组呈现，不挂在类型名后面当标签。 -->
-            <a-radio-group v-model:value="bizView" size="small" button-style="solid" style="margin-bottom:8px">
-              <a-radio-button value="type">按类型</a-radio-button>
-              <a-radio-button value="domain">按业务域</a-radio-button>
-            </a-radio-group>
-
-            <div v-if="bizView === 'domain'" style="max-height:60vh;overflow:auto;padding-right:4px">
+            <!-- 业务域视图：每个域一组，组内是该域下的类型（域是独立实体，不占类型树第一层）。
+                 这里不再自带 max-height/overflow —— 滚动统一交给外层 .st-tree-spin 一层负责，
+                 否则会出现"滚动条里套滚动条"。 -->
+            <div v-if="bizView === 'domain'">
               <a-empty v-if="!businessDomains.length" description="暂无业务域" :image-style="{ height: '48px' }" />
               <div
                 v-for="d in businessDomains"
                 :key="d.oid"
                 style="margin-bottom:10px;border:1px solid #f0f0f0;border-radius:6px;overflow:hidden"
               >
-                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fafafa;flex-wrap:nowrap">
-                  <span style="font-weight:600;white-space:nowrap;flex:0 0 auto">{{ d.name }}</span>
-                  <code style="font-size:11px;color:#8c8c8c;white-space:nowrap;flex:0 0 auto">{{ d.code }}</code>
-                  <a-tag size="small" color="blue" style="flex:0 0 auto">{{ (typesByDomain[d.oid] || []).length }} 个对象</a-tag>
+                <div class="st-domain-head">
+                  <span class="st-domain-name">{{ d.name }}</span>
+                  <code class="st-domain-code">{{ d.code }}</code>
+                  <a-tag size="small" color="blue" class="st-flex-none">{{ (typesByDomain[d.oid] || []).length }} 个对象</a-tag>
                 </div>
-                <div v-if="!(typesByDomain[d.oid] || []).length" style="padding:8px 12px;color:#bfbfbf;font-size:12px">
+                <div v-if="!(typesByDomain[d.oid] || []).length" class="st-domain-empty">
                   该域下暂无类型
                 </div>
+                <!-- 名称优先：编码可被压缩/省略，名称保底可见（截断成"文…"就认不出是哪个类型） -->
                 <div
                   v-for="t in (typesByDomain[d.oid] || [])"
                   :key="t.oid"
-                  style="display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;border-top:1px solid #fafafa"
+                  class="st-domain-row"
                   :style="{ background: selectedKeys.includes(t.oid) ? '#e6f4ff' : '' }"
                   @click="onSelectTypeRow(t)"
                 >
-                  <component :is="getIconComponent(t.icon)" class="st-tree-icon" style="flex:0 0 auto" />
-                  <span style="flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.name }}</span>
-                  <code style="font-size:11px;color:#8c8c8c;white-space:nowrap;flex:0 0 auto">{{ t.code }}</code>
-                  <a-tag v-if="t.typeKind === 'OOTB'" color="purple" size="small" style="flex:0 0 auto">内置</a-tag>
-                  <a-tag v-else-if="t.source === 'USER'" color="green" size="small" style="flex:0 0 auto">自定义</a-tag>
+                  <component :is="getIconComponent(t.icon)" class="st-tree-icon st-flex-none" />
+                  <span class="st-domain-row-name">{{ t.name }}</span>
+                  <code class="st-domain-row-code">{{ t.code }}</code>
+                  <a-tag v-if="t.typeKind === 'OOTB'" color="purple" size="small" class="st-flex-none">内置</a-tag>
+                  <a-tag v-else-if="t.source === 'USER'" color="green" size="small" class="st-flex-none">自定义</a-tag>
                 </div>
               </div>
             </div>
@@ -987,10 +989,17 @@ const typesByDomain = computed(() => {
   return map
 })
 
-/** 域视图里点一行：与点树节点同效（选中 + 右侧看详情） */
+/**
+ * 域视图里点一行：与点树节点同效（选中 + 右侧看详情）。
+ *
+ * <p>早前这里只设了 selectedKeys/selectedNode，漏了 loadDetail —— 右侧 detail 一直是空的，
+ * 表现就是"点了没反应"（本方法必须与 onTreeSelect 保持一致）。
+ */
 function onSelectTypeRow(t) {
   selectedKeys.value = [t.oid]
   selectedNode.value = t
+  activeTab.value = 'basic'
+  loadDetail(t.oid)
 }
 
 // ============ 业务域（数据源） ============
@@ -1777,7 +1786,7 @@ onMounted(() => { loadTree() })
 
 /* 左侧树 */
 .st-tree-panel {
-  width: 240px;
+  width: 300px;   /* 240 → 300：域视图里要同时放下「完整名称 + 编码 + 计数标签」 */
   flex-shrink: 0;
   border: 1px solid #f0f0f0;
   border-radius: 6px;
@@ -1788,8 +1797,14 @@ onMounted(() => { loadTree() })
   min-height: 0;      /* 允许在 flex 行内收缩，避免被内容撑高 */
   max-height: 100%;   /* 永不超出 .st-body，确保内部滚动而非被裁切 */
 }
-.st-tree-search { padding: 8px; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
-/* 树区域独立滚动：搜索框固定，仅类型树滚动。
+.st-tree-search {
+  padding: 8px; border-bottom: 1px solid #f0f0f0; flex-shrink: 0;
+  /* 搜索框 + 视图切换固定，下方列表单独滚动 */
+  display: flex; flex-direction: column; gap: 8px;
+}
+.st-view-switch { display: flex; }
+.st-view-switch :deep(.ant-radio-button-wrapper) { flex: 1; text-align: center; padding-inline: 0; }
+/* 列表区域独立滚动（**唯一**的一层滚动容器）：搜索框/视图切换固定，仅列表滚动。
    min-height:0 允许该 flex 项收缩到 0，overflow 才会真正生效（否则内容会把它撑高→无滚动条）。 */
 .st-tree-spin {
   flex: 1 1 0%;
@@ -1802,6 +1817,28 @@ onMounted(() => { loadTree() })
 .st-tree-icon { font-size: 13px; color: #8c8c8c; flex-shrink: 0; }
 .st-tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-tree-tag { font-size: 10px; line-height: 16px; }
+
+/* ===== 业务域视图：名称优先，编码/标签让位（可省略） ===== */
+.st-flex-none { flex: 0 0 auto; }
+.st-domain-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #fafafa; }
+.st-domain-name { font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
+.st-domain-code {
+  font-size: 11px; color: #8c8c8c; white-space: nowrap;
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.st-domain-empty { padding: 8px 12px; color: #bfbfbf; font-size: 12px; }
+.st-domain-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+  cursor: pointer; border-top: 1px solid #fafafa;
+}
+.st-domain-row-name {
+  flex: 1 1 auto; min-width: 4.5em;   /* 名称保底宽度：不被编码、标签挤没 */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.st-domain-row-code {
+  font-size: 11px; color: #8c8c8c; white-space: nowrap;
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* 右侧内容 */
 .st-content {

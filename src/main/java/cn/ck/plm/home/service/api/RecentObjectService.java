@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -12,7 +12,7 @@ import cn.ck.plm.home.dto.RecentObjectVO;
 import java.util.List;
 
 /**
- * 「我最近创建/修改过的对象」服务契约 —— 个人中心用。
+ * 「我最近创建/修改过的对象」服务契约 —— 工作台用。
  */
 public interface RecentObjectService {
 

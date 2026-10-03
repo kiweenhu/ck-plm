@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  */
 package cn.ck.plm.base.scheduler;
@@ -16,7 +16,7 @@ import java.util.List;
  * 存储空间定时检查 —— 每 30 分钟检测一次，低于阈值时写入系统日志。
  *
  * <p>告警信息记录到 ERROR 级别日志，可接入 ELK/Prometheus 等监控系统。
- * 后续可扩展为入库通知表 ck_notification，由 sysadmin 在个人中心查看。
+ * 后续可扩展为入库通知表 ck_notification，由 sysadmin 在工作台查看。
  */
 @Component
 public class StorageAlertScheduler {

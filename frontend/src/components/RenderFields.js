@@ -500,6 +500,9 @@ const RenderFields = {
             disabled: isReadonly,
             placeholder: placeholder || '请选择构建容器',
             currentContainerOid: this.currentContainerOid,
+            // 容器类型是兄弟字段：取值不是资源库时（产品系列/型号/文件夹），
+            // 组件解析不出名称要拿它给可读兜底文案（避免把 containerOid 原样显示出来）
+            containerType: this.formData.containerType || null,
             'onUpdate:value': (val) => this.$emit('update', fieldName, val),
             // 选中资源库时同步 containerType，供 containerType 字段落库
             'onUpdate:containerType': (val) => this.$emit('update', 'containerType', val),

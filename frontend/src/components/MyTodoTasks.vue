@@ -58,7 +58,7 @@ import { ClockCircleOutlined } from '@ant-design/icons-vue'
 import { getMyTaskStats, getMyTodoTasks } from '@/api'
 
 /**
- * 「我的待办任务」卡片 —— 个人中心首屏用。
+ * 「我的待办任务」卡片 —— 工作台首屏用。
  *
  * <p>数据源与「任务中心 → 待办任务」是同一个接口（{@code /workflow/task/todo}），
  * 所以两处永远不会对不上；这里只取前 {@code limit} 条，"查看全部 / 去办理"都回到任务中心。
@@ -79,7 +79,7 @@ const stats = ref({ todoCount: 0, claimableCount: 0, overdueCount: 0, doneCount:
 /** 徽标用统计值；统计拿不到时退化为"本页条数"，总比不显示强 */
 const todoCount = computed(() => stats.value.todoCount ?? tasks.value.length)
 
-// 列宽按"个人中心左栏 3/5"配：时间列给到秒就太浪费宽度了
+// 列宽按"工作台左栏 3/5"配：时间列给到秒就太浪费宽度了
 const columns = [
   { title: '待办任务 / 所属流程', key: 'task' },
   { title: '到达时间', key: 'createTime', width: 150 },
@@ -99,7 +99,7 @@ async function load() {
       stats.value = { ...stats.value, ...statsRes.data }
     }
   } catch {
-    // 取不到就空列表：个人中心其余卡片不受影响（失败提示由响应拦截器统一给）
+    // 取不到就空列表：工作台其余卡片不受影响（失败提示由响应拦截器统一给）
     tasks.value = []
   } finally {
     loading.value = false

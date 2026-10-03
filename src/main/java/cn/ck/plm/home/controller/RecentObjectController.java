@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * 个人中心（工作台）REST API。
+ * 工作台（首页 /home）REST API。
  *
  * <pre>
  * GET /api/home/recent-objects?days=5&amp;limit=20   我最近创建/修改过的对象

@@ -7,7 +7,7 @@
         <span>{{ currentDate }}</span>
       </div>
 
-      <!-- 右侧速览：个人中心最常问的两个数（在等我的事 / 我锁着的对象） -->
+      <!-- 右侧速览：工作台最常问的两个数（在等我的事 / 我锁着的对象） -->
       <div class="welcome-stats">
         <div class="welcome-stat" title="去任务中心办理" @click="goTaskCenter">
           <span class="welcome-stat-value welcome-stat-value-todo">{{ todoCount }}</span>
@@ -271,7 +271,7 @@ async function loadMyCheckouts() {
 
 onMounted(async () => {
   await fetchFromServer()
-  recordAccess({ name: '个人中心', type: '系统', path: '/home' })
+  recordAccess({ name: '工作台', type: '系统', path: '/home' })
   loadMyCheckouts()
   loadStats()
 })
