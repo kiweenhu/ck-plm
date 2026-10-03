@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  */
 
@@ -51,9 +51,15 @@ public interface VersionRuleMapper {
     int count();
 
     /**
-     * 自增序号并返回新值
+     * 序号 +1（返回影响行数；要拿新值请再调 {@link #selectSequenceValue(String)}）。
+     *
+     * <p>不要写成 {@code UPDATE … RETURNING sequence_value}：它走的是 executeUpdate，
+     * MyBatis 拿不到 RETURNING 的值，返回的实际是「影响行数」—— 版本生成曾因此恒停在第 1 个字母。
      */
-    Long incrementAndGetSequence(@Param("code") String code);
+    int incrementSequence(@Param("code") String code);
+
+    /** 读取当前序号（与 incrementSequence 在同一事务内调用即安全：UPDATE 已持有行锁） */
+    Long selectSequenceValue(@Param("code") String code);
 
     /**
      * 检查 Code 是否存在

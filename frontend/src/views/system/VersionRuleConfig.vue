@@ -118,7 +118,7 @@
         <a-form-item label="规则编码" required>
           <a-input
             v-model:value="modal.form.code"
-            placeholder="如 LETTER_8, DATE_SEQ"
+            placeholder="如 LETTER_26"
             :disabled="modal.isEdit"
             size="large"
           />
@@ -133,7 +133,7 @@
         <a-form-item label="规则定义" required>
           <a-input
             v-model:value="modal.form.ruleDefinition"
-            placeholder="如 (A,B,C,D,E,F,G,H) 或 (PREFIX:DOC)-(SEQ:4)"
+            placeholder="如 (A,B,C,D,E,F,G,H) 或 (A-Z)"
             size="large"
           />
           <div class="vr-form-hint">

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  */
 
@@ -85,8 +85,12 @@ public interface PostgreSqlVersionRuleMapper extends VersionRuleMapper {
 
     @Override
     @Update("UPDATE " + TABLE + " SET sequence_value = sequence_value + 1, " +
-            "updated_at = CURRENT_TIMESTAMP WHERE code = #{code} RETURNING sequence_value")
-    Long incrementAndGetSequence(@Param("code") String code);
+            "updated_at = CURRENT_TIMESTAMP WHERE code = #{code}")
+    int incrementSequence(@Param("code") String code);
+
+    @Override
+    @Select("SELECT sequence_value FROM " + TABLE + " WHERE code = #{code}")
+    Long selectSequenceValue(@Param("code") String code);
 
     @Override
     @Select("SELECT COUNT(*) FROM " + TABLE + " WHERE code = #{code}")

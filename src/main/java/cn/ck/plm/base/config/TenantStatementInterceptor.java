@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -123,6 +123,20 @@ public class TenantStatementInterceptor implements Interceptor {
     );
     private static final Pattern WHERE_PATTERN = Pattern.compile(
             "\\bWHERE\\b", Pattern.CASE_INSENSITIVE
+    );
+    /**
+     * 租户条件要插在「这些子句」之前 —— 否则条件会落到子句后面变成语法错误。
+     *
+     * <p>{@code RETURNING} 必须在内：PostgreSQL 的 {@code UPDATE … WHERE … RETURNING col}
+     * 里 RETURNING 是收尾子句，早前清单漏了它，于是拼出
+     * {@code … WHERE code = ? RETURNING sequence_value AND tenant_oid = '…'} ——
+     * "AND 的参数必需是类型 boolean，而不是类型 bigint"（版本规则自增序号那条语句踩过）。
+     *
+     * <p>用词边界匹配，避免列名/字面量里出现 limit、union 等词时被误当成子句起点。
+     */
+    private static final Pattern CLAUSE_BOUNDARY = Pattern.compile(
+            "\\b(RETURNING|ORDER\\s+BY|GROUP\\s+BY|LIMIT|OFFSET|FOR\\s+UPDATE|UNION|HAVING)\\b",
+            Pattern.CASE_INSENSITIVE
     );
 
     @Override
@@ -272,26 +286,16 @@ public class TenantStatementInterceptor implements Interceptor {
     }
 
     private String rewriteWhere(String sql, String tenantCondition) {
-        String[] keywords = {"ORDER BY", "GROUP BY", "LIMIT", "OFFSET", "FOR UPDATE", "UNION", "HAVING"};
-        if (WHERE_PATTERN.matcher(sql).find()) {
-            int insertPos = sql.length();
-            String upperSql = sql.toUpperCase();
-            for (String kw : keywords) {
-                int pos = upperSql.indexOf(kw.toUpperCase());
-                if (pos > 0 && pos < insertPos) insertPos = pos;
-            }
-            return sql.substring(0, insertPos).trim() + " AND " + tenantCondition
-                    + (insertPos < sql.length() ? " " + sql.substring(insertPos).trim() : "");
-        } else {
-            int insertPos = sql.length();
-            String upperSql = sql.toUpperCase();
-            for (String kw : keywords) {
-                int pos = upperSql.indexOf(kw.toUpperCase());
-                if (pos > 0 && pos < insertPos) insertPos = pos;
-            }
-            return sql.substring(0, insertPos).trim() + " WHERE " + tenantCondition
-                    + (insertPos < sql.length() ? " " + sql.substring(insertPos).trim() : "");
-        }
+        int insertPos = clauseStart(sql);
+        return sql.substring(0, insertPos).trim()
+                + (WHERE_PATTERN.matcher(sql).find() ? " AND " : " WHERE ") + tenantCondition
+                + (insertPos < sql.length() ? " " + sql.substring(insertPos).trim() : "");
+    }
+
+    /** 收尾子句（RETURNING / ORDER BY / GROUP BY / LIMIT …）的起点；没有则返回 SQL 末尾 */
+    private int clauseStart(String sql) {
+        Matcher m = CLAUSE_BOUNDARY.matcher(sql);
+        return m.find() ? m.start() : sql.length();
     }
 
     private String truncate(String s, int maxLen) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  */
 
@@ -19,7 +19,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.annotation.PostConstruct;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -45,109 +44,10 @@ public class VersionRuleServiceImpl implements VersionRuleService {
     @Autowired
     private TypeVersionRuleLinkService typeVersionRuleLinkService;
 
-    /**
-     * 应用启动时自动初始化默认规则样例
-     */
-    @PostConstruct
-    public void initDefaultRules() {
-        // 检查是否已有规则
-        if (mapper.count() > 0) {
-            return;
-        }
-
-        // 初始化默认规则样例
-        List<VersionRule> defaultRules = getDefaultRules();
-        for (VersionRule rule : defaultRules) {
-            mapper.insert(rule);
-        }
-    }
-
-    /**
-     * 获取默认规则样例
-     */
-    private List<VersionRule> getDefaultRules() {
-        VersionRule rule1 = new VersionRule();
-        rule1.setOid(UUID.randomUUID().toString());
-        rule1.setName("8位字母序列");
-        rule1.setCode("LETTER_8");
-        rule1.setRuleDefinition("(A,B,C,D,E,F,G,H)");
-        rule1.setDescription("8位大写字母序列，从 A 到 H");
-        rule1.setApplicableType("GENERAL");
-        rule1.setSequenceValue(0L);
-        rule1.setEnabled(true);
-
-        VersionRule rule2 = new VersionRule();
-        rule2.setOid(UUID.randomUUID().toString());
-        rule2.setName("日期-序号");
-        rule2.setCode("DATE_SEQ");
-        rule2.setRuleDefinition("(YYYYMMDD)-(SEQ:6)");
-        rule2.setDescription("日期加6位序号，如 20260101-000001");
-        rule2.setApplicableType("GENERAL");
-        rule2.setSequenceValue(0L);
-        rule2.setEnabled(true);
-
-        VersionRule rule3 = new VersionRule();
-        rule3.setOid(UUID.randomUUID().toString());
-        rule3.setName("前缀-序号");
-        rule3.setCode("PREFIX_SEQ");
-        rule3.setRuleDefinition("(PREFIX:DOC)-(SEQ:4)");
-        rule3.setDescription("固定前缀加4位序号，如 DOC-0001");
-        rule3.setApplicableType("CK_DOCUMENT");
-        rule3.setSequenceValue(0L);
-        rule3.setEnabled(true);
-
-        VersionRule rule4 = new VersionRule();
-        rule4.setOid(UUID.randomUUID().toString());
-        rule4.setName("产品型号编码");
-        rule4.setCode("PRODUCT_MODEL");
-        rule4.setRuleDefinition("(PREFIX:PM)-(YYYY)-(SEQ:3)");
-        rule4.setDescription("产品型号编码，格式：PM-2026-001");
-        rule4.setApplicableType("CK_PRODUCT_MODEL");
-        rule4.setSequenceValue(0L);
-        rule4.setEnabled(true);
-
-        VersionRule rule5 = new VersionRule();
-        rule5.setOid(UUID.randomUUID().toString());
-        rule5.setName("文档编号");
-        rule5.setCode("DOC_NUMBER");
-        rule5.setRuleDefinition("(PREFIX:DOC)-(YYYYMM)-(SEQ:4)");
-        rule5.setDescription("文档编号，格式：DOC-202601-0001");
-        rule5.setApplicableType("CK_DOCUMENT");
-        rule5.setSequenceValue(0L);
-        rule5.setEnabled(true);
-
-        VersionRule rule6 = new VersionRule();
-        rule6.setOid(UUID.randomUUID().toString());
-        rule6.setName("产品系列编码");
-        rule6.setCode("PRODUCT_LINE");
-        rule6.setRuleDefinition("(PREFIX:PL)-(SEQ:3)");
-        rule6.setDescription("产品系列编码，格式：PL-001");
-        rule6.setApplicableType("CK_PRODUCT_LINE");
-        rule6.setSequenceValue(0L);
-        rule6.setEnabled(true);
-
-        VersionRule rule7 = new VersionRule();
-        rule7.setOid(UUID.randomUUID().toString());
-        rule7.setName("零件编号");
-        rule7.setCode("PART_NUMBER");
-        rule7.setRuleDefinition("(PREFIX:PART)-(A,B,C)-(SEQ:4)");
-        rule7.setDescription("零件编号，格式：PART-A-0001");
-        rule7.setApplicableType("CK_PART");
-        rule7.setSequenceValue(0L);
-        rule7.setEnabled(true);
-
-        VersionRule rule8 = new VersionRule();
-        rule8.setOid(UUID.randomUUID().toString());
-        rule8.setName("变更单编号");
-        rule8.setCode("CR_NUMBER");
-        rule8.setRuleDefinition("(PREFIX:CR)-(YYYYMMDD)-(SEQ:3)");
-        rule8.setDescription("变更单编号，格式：CR-20260101-001");
-        rule8.setApplicableType("CK_CHANGE_REQUEST");
-        rule8.setSequenceValue(0L);
-        rule8.setEnabled(true);
-
-        return Arrays.asList(rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8);
-    }
+    // 默认版本规则的「种子」不在这里 —— 已挪到 cn.ck.plm.base.config.VersionRuleInitializer（@Order(1)）：
+    //   · 初始化器有明确的启动顺序（@Order），而 service 的 @PostConstruct 没有，容易在"租户上下文还没准备好"
+    //     的时候写库（历史上就是这么把 8 条规则写进默认租户的）；
+    //   · 种子与业务实现分离，service 只管规则的增删改查与版本推演。
 
     @Override
     public List<VersionRule> getAllRules() {
@@ -222,8 +122,14 @@ public class VersionRuleServiceImpl implements VersionRuleService {
             throw new IllegalStateException("版本规则已禁用: " + code);
         }
 
-        // 自增序号
-        Long newSeq = mapper.incrementAndGetSequence(code);
+        // 自增序号：先 UPDATE 再读回（本方法 @Transactional，UPDATE 已持行锁 → 并发安全）。
+        // 别用 "UPDATE … RETURNING"：MyBatis 走 executeUpdate 拿不到返回值，只会得到影响行数 1，
+        // 于是序号恒为 1、生成结果永远是第一个字母。
+        mapper.incrementSequence(code);
+        Long newSeq = mapper.selectSequenceValue(code);
+        if (newSeq == null) {
+            throw new IllegalStateException("版本规则序号读取失败: " + code);
+        }
 
         // 根据规则定义生成编码
         return generateByRule(rule.getRuleDefinition(), newSeq);
@@ -379,10 +285,25 @@ public class VersionRuleServiceImpl implements VersionRuleService {
             return segment.substring(7);
         }
 
-        // 字母序列 (A,B,C,D,...)
+        // 字母序列 (A,B,C,D,...)：直接返回样例（作固定前缀用）
         if (segment.matches("[A-Z](,[A-Z])*") || segment.matches("[a-z](,[a-z])*")) {
             // 直接返回样例
             return segment.replace(",", "");
+        }
+
+        // 字母范围 (A-Z)：大版本序列的简写 —— 序号从 1 起，取第 N 个字母（seq=1 → A）。
+        // 早前这里没有这个分支，落到末尾"未知格式直接返回"，于是生成结果就是字面量 "A-Z"
+        // （版本规则页点"生成"会拿到它），而且序号已经被白烧掉一个。
+        if (segment.matches("[A-Z]-[A-Z]")) {
+            char start = segment.charAt(0);
+            char end = segment.charAt(2);
+            long idx = (sequence == null ? 1L : sequence) - 1;
+            if (idx < 0) idx = 0;
+            if (idx > end - start) {
+                throw new IllegalStateException("版本序列已到末尾（" + start + "~" + end
+                        + "），请调整版本规则或手动指定大版本");
+            }
+            return String.valueOf((char) (start + idx));
         }
 
         // 数字序列 (0-9)
