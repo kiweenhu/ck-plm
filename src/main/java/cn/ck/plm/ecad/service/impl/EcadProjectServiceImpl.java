@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -27,7 +27,7 @@ import java.util.UUID;
  * 能力宿主 {@code ECAD_PROJECT}（电子设计项目，{@code ck_ecad_project}）的策略实现。
  *
  * <p><b>为何是本类而非 {@code EcadProjectService}</b>：该宿主目前没有对外域服务
- * （建表见 {@code EcadSchemaInitializer#createProjectTable}，此前只有实体 + Mapper），
+ * （建表见 {@code src/main/resources/schema.sql}，此前只有实体 + Mapper），
  * 因此能力直接落在本实现类上 —— 与「能力实现在宿主自己的 Service 实现类」的约定一致，
  * 只是此宿主的 Service 尚未细分出独立接口。
  *

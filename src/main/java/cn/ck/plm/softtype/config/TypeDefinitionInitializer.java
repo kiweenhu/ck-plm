@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -10,9 +10,6 @@ package cn.ck.plm.softtype.config;
 import cn.ck.plm.document.entity.Document;
 import cn.ck.plm.document.entity.EngineeringDocument;
 import cn.ck.plm.base.entity.*;
-import cn.ck.plm.base.entity.Number;
-import cn.ck.plm.base.mapper.NumberMapper;
-import cn.ck.plm.base.mapper.NumberSegmentMapper;
 import cn.ck.plm.base.service.api.LifecycleTemplateService;
 import cn.ck.plm.base.util.TenantContext;
 import cn.ck.plm.part.entity.Part;
@@ -33,6 +30,10 @@ import java.util.*;
  * 类型定义（{@code ck_type_definition}）的种子注册与数据维护：启动时幂等地注册
  * OOTB 根类型与各宿主下的子类型（SOFT_TYPE），并绑定默认的编码规则、版本规则、生命周期模板。
  *
+ * <p><b>本类不预置编码规则本身</b>：6 条默认编码规则（{@code ck_number} + 编码段）由
+ * {@link NumberRuleInitializer}（{@code @Order(1)}）先行播种 —— 本类只负责把类型<b>绑</b>到规则上
+ * （{@code ck_type_number_rule_link}）。原先两者混在一起，改编号段配置得动类型初始化器，已拆开。
+ *
  * <h3>两个正交维度（本类全部逻辑的口径）</h3>
  * <ul>
  *   <li><b>类型继承</b> —— {@code parent_oid}：只回答"父类型是谁"，
@@ -51,13 +52,14 @@ import java.util.*;
  *   <li>种子数据：所有 map 与其"一行一条"的填充器 —— <b>新增类型只改这一节</b>；</li>
  *   <li>类型注册：ensure*（幂等插入 + 规则绑定）；</li>
  *   <li>存量数据迁移与修正：面向老库的纠偏（幂等，可反复执行）；</li>
- *   <li>平台基础规则：默认编码规则、生命周期模板；</li>
+ *   <li>平台基础规则：生命周期模板（默认编码规则见 {@link NumberRuleInitializer}）；</li>
  *   <li>绑定工具：类型 → 编码规则 / 版本规则 / 生命周期模板。</li>
  * </ol>
  *
  * <h3>执行顺序</h3>
  * <ul>
  *   <li>{@link BusinessDomainInitializer}（{@code @Order(0)}）先备好业务域；</li>
+ *   <li>{@link VersionRuleInitializer} / {@link NumberRuleInitializer}（{@code @Order(1)}）备好规则；</li>
  *   <li>本类（{@code @Order(2)}）注册类型定义并绑定规则/模板；</li>
  *   <li>{@link AttributeInitializer}（{@code @Order(3)}）扫描实体字段注册属性定义；</li>
  *   <li>{@link PageLayoutInitializer}（{@code @Order(4)}）创建默认页面布局。</li>
@@ -77,8 +79,6 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
     private final TypeNumberRuleLinkMapper numberRuleLinkMapper;
     private final TypeVersionRuleLinkMapper versionRuleLinkMapper;
     private final TypeLifecycleTemplateLinkMapper lifecycleTemplateLinkMapper;
-    private final NumberMapper numberMapper;
-    private final NumberSegmentMapper numberSegmentMapper;
     private final LifecycleTemplateService lifecycleTemplateService;
     /** 业务域读侧（域归属的唯一权威来源，见 {@link #migrateTypesToDomains}） */
     private final BusinessDomainMapper businessDomainMapper;
@@ -87,16 +87,12 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
                                      TypeNumberRuleLinkMapper numberRuleLinkMapper,
                                      TypeVersionRuleLinkMapper versionRuleLinkMapper,
                                      TypeLifecycleTemplateLinkMapper lifecycleTemplateLinkMapper,
-                                     NumberMapper numberMapper,
-                                     NumberSegmentMapper numberSegmentMapper,
                                      LifecycleTemplateService lifecycleTemplateService,
                                      BusinessDomainMapper businessDomainMapper) {
         this.mapper = mapper;
         this.numberRuleLinkMapper = numberRuleLinkMapper;
         this.versionRuleLinkMapper = versionRuleLinkMapper;
         this.lifecycleTemplateLinkMapper = lifecycleTemplateLinkMapper;
-        this.numberMapper = numberMapper;
-        this.numberSegmentMapper = numberSegmentMapper;
         this.lifecycleTemplateService = lifecycleTemplateService;
         this.businessDomainMapper = businessDomainMapper;
     }
@@ -105,7 +101,7 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
      * 启动入口：四个阶段，全部幂等，可重复执行。
      *
      * <pre>
-     * 阶段 1  平台基础数据   —— 编码规则 / 生命周期模板（注册类型时要引用）
+     * 阶段 1  平台基础数据   —— 生命周期模板（注册类型时要引用）；编码规则见 {@link NumberRuleInitializer}
      * 阶段 2  OOTB 根类型    —— 产品系列 / 产品型号 / 文档 / 工程数据 / 部件 / 功能架构
      * 阶段 3  子类型注册     —— 各宿主与域下的 SOFT_TYPE（顺序有依赖，见下）
      * 阶段 4  迁移与修正     —— 面向老库的纠偏（新库执行等于空转）
@@ -113,12 +109,12 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
      */
     @Override
     public void run(String... args) {
-        log.info("开始初始化 OOTB 类型定义（含编码规则、版本规则、生命周期模板绑定）...");
+        log.info("开始初始化 OOTB 类型定义（含版本规则、生命周期模板与编码规则绑定）...");
 
         // ── 阶段 1/4：平台基础数据 ──
         addRootTypeCodeColumnIfAbsent();
-        ensureDefaultNumberRules();
         ensureDefaultLifecycleTemplates();
+        // 注：默认编码规则（6 条 + 编码段）已移到 NumberRuleInitializer（@Order(1)，先于本类执行）
 
         // ── 阶段 2/4：OOTB 根类型 ──
         registerOotbRootTypes();
@@ -137,7 +133,6 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
         migrateStdGenPartsUnderStructural();  // 标准件 / 通用件的所属类型 → 结构件
         repairSoftTypeNumberRules();          // SOFT_TYPE 的编码规则绑定 → 与其能力宿主一致
         normalizeTypeKindCase();              // type_kind 大小写归一（'ootb' → 'OOTB'）
-        fixFunctionalNumberRuleCode();        // 编码规则 code 拼写 FUNCATIONAL-NUM → FUNCTIONAL-NUM
 
         log.info("类型定义初始化流程结束");
     }
@@ -258,24 +253,24 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
     static {
         entity(ProductLine.class,  "PRODUCT_LINE", "产品系列", "ApartmentOutlined",
                 "产品系列管理，关联产品、团队与缩略图", 5,
-                "PRODUCT_LINE", "LETTER_8", "STANDARD");
+                "PRODUCT_LINE", "LETTER_26", "STANDARD");
         entity(ProductModel.class, "PRODUCT_MODEL", "产品型号", "TagOutlined",
                 "产品型号管理，隶属于产品系列，拥有独立团队和研发阶段", 6,
-                "PRODUCT_MODEL", "LETTER_8", "STANDARD");
+                "PRODUCT_MODEL", "LETTER_26", "STANDARD");
         entity(Document.class,     "DOCUMENT", "文档", "FileTextOutlined",
                 "文档复合对象（主数据+子版本），支持版本控制、文件存储与阶段关联", 10,
-                "DOC_NUMBER", "LETTER_8", "STANDARD");
+                "DOC_NUMBER", "LETTER_26", "STANDARD");
         entity(EngineeringDocument.class, "ENG_DOCUMENT", "工程数据", "FileImageOutlined",
                 "工程数据（参照 Windchill EPMDocument）：3D 数模 / 2D 工程图 / 材料规格说明等工程对象的统称，"
                         + "含 CAD 主文件、制图属性（图幅/比例/图号）与零部件描述关系，"
                         + "并可向电子领域扩展（符号、封装等 EDA 设计数据）", 11,
-                "DOC_NUMBER", "LETTER_8", "STANDARD");
+                "DOC_NUMBER", "LETTER_26", "STANDARD");
         entity(Part.class,         "PART", "部件", "ToolOutlined",
                 "部件复合对象（主数据+子版本），支持版本控制、分类关联与单位管理", 12,
-                "PART_NUMBER", "LETTER_8", "STANDARD");
+                "PART_NUMBER", "LETTER_26", "STANDARD");
         entity(FunctionalEntity.class, "FUNCTIONAL", "功能架构(构型)", "ClusterOutlined",
                 "装备级功能系统（军工）/ 车型功能域（汽车），继承 Part 复合实体结构", 14,
-                "FUNCTIONAL-NUM", "LETTER_8", "STANDARD");
+                "FUNCTIONAL-NUM", "LETTER_26", "STANDARD");
     }
 
     private static void entity(Class<? extends BaseEntity> entityClass, String code, String displayName,
@@ -531,7 +526,7 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
 
         // 编码规则按「能力宿主 rootTypeCode」判定（父类型可能是域下类型，其 code 不携带宿主信息）
         bindNumberRule(td, resolveHostNumberRule(rootTypeCode));
-        bindVersionRule(td, "LETTER_8");
+        bindVersionRule(td, "LETTER_26");
         bindLifecycleTemplate(td, "STANDARD");
     }
 
@@ -807,161 +802,9 @@ public class TypeDefinitionInitializer implements CommandLineRunner {
         }
     }
 
-    /**
-     * 修正编码规则 code 拼写：{@code FUNCATIONAL-NUM} → {@code FUNCTIONAL-NUM}（幂等）。
-     *
-     * <p>该规则为历史遗留的手工数据，拼写有误且未在代码中声明（现已登记为 FUNCTIONAL 的默认规则）。
-     * 顺序很关键：
-     * <ol>
-     *   <li>{@link #ensureDefaultNumberRules()} 先执行、会创建正确的 {@code FUNCTIONAL-NUM}，
-     *       因此<b>不能无条件改名</b>（目标已存在时改名会撞唯一键）；</li>
-     *   <li>仅当「正式规则不存在、遗留规则存在」时才改名（可保留遗留规则的段配置与流水号计数）；</li>
-     *   <li>无论如何都把类型绑定指向正式规则；</li>
-     *   <li>最后清理遗留孤儿规则（正式规则已存在且遗留规则已无任何绑定时）。</li>
-     * </ol>
-     * 每步独立 try-catch，缺数据时静默跳过。
-     */
-    private void fixFunctionalNumberRuleCode() {
-        final String legacyCode = "FUNCATIONAL-NUM";
-        final String properCode = "FUNCTIONAL-NUM";
-
-        // 1) 仅当正式规则缺失时才改名（保留遗留规则的段与计数）
-        try {
-            if (numberMapper.selectByCode(properCode) == null && numberMapper.selectByCode(legacyCode) != null) {
-                if (numberMapper.renameCode(legacyCode, properCode) > 0) {
-                    log.info("编码规则 code 已修正: {} → {}", legacyCode, properCode);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("编码规则 code 修正失败 {} → {}: {}", legacyCode, properCode, e.getMessage());
-        }
-
-        // 2) 类型绑定统一指向正式规则
-        try {
-            int relinked = numberRuleLinkMapper.updateNumberRuleCode(legacyCode, properCode);
-            if (relinked > 0) {
-                log.info("编码规则绑定已同步: {} → {}（{} 个类型）", legacyCode, properCode, relinked);
-            }
-        } catch (Exception e) {
-            log.warn("编码规则绑定同步失败 {} → {}: {}", legacyCode, properCode, e.getMessage());
-        }
-
-        // 3) 清理遗留孤儿规则（正式规则已存在、且遗留规则无绑定时才删，避免误删在用规则）
-        try {
-            if (numberMapper.selectByCode(legacyCode) != null
-                    && numberMapper.selectByCode(properCode) != null
-                    && numberRuleLinkMapper.selectByNumberRuleCode(legacyCode).isEmpty()) {
-                numberSegmentMapper.deleteByRuleCode(legacyCode);
-                int deleted = numberMapper.deleteByCode(legacyCode);
-                if (deleted > 0) {
-                    log.info("已清理遗留编码规则: {}（已由 {} 取代）", legacyCode, properCode);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("遗留编码规则清理失败 {}: {}", legacyCode, e.getMessage());
-        }
-    }
-
     // ========================================================================================
-    // 五、平台基础规则（默认编码规则 / 生命周期模板）
+    // 五、平台基础规则（生命周期模板）
     // ========================================================================================
-
-    /** 确保默认编码规则存在（幂等），规则名与段配置见下 */
-    private void ensureDefaultNumberRules() {
-        Map<String, String> rules = new LinkedHashMap<>();
-        rules.put("PRODUCT_LINE", "产品系列编码");
-        rules.put("PRODUCT_MODEL", "产品型号编码");
-        rules.put("DOC_NUMBER", "文档编号");
-        rules.put("PART_NUMBER", "部件编号");
-        rules.put("FUNCTIONAL-NUM", "功能架构编码规则");
-        rules.put("ECAD_PROJECT-NUM", "电子设计项目编码");
-
-        for (Map.Entry<String, String> entry : rules.entrySet()) {
-            String ruleCode = entry.getKey();
-            String ruleName = entry.getValue();
-            try {
-                if (numberMapper.existsByCode(ruleCode) > 0) {
-                    log.debug("  编码规则 {} 已存在，跳过", ruleCode);
-                    continue;
-                }
-                Number number = new Number(ruleCode, ruleName);
-                number.setOid(UUID.randomUUID().toString());
-                number.setEnabled(true);
-                number.setDescription(ruleName + "（系统预置）");
-                number.setTenantOid(TenantContext.PLATFORM_TENANT_OID);
-                numberMapper.insert(number);
-
-                for (NumberSegment seg : buildDefaultNumberSegments(ruleCode)) {
-                    seg.setOid(UUID.randomUUID().toString());
-                    seg.setRuleCode(ruleCode);
-                    numberSegmentMapper.insert(seg);
-                }
-                log.info("  √ 编码规则已创建: {} ({})", ruleCode, ruleName);
-            } catch (Exception e) {
-                log.error("  ✗ 创建编码规则 {} 失败: {}", ruleCode, e.getMessage(), e);
-            }
-        }
-    }
-
-    /** 各默认编码规则的段配置（编号示例见各项注释） */
-    private List<NumberSegment> buildDefaultNumberSegments(String ruleCode) {
-        List<NumberSegment> segments = new ArrayList<>();
-        switch (ruleCode) {
-            case "PRODUCT_LINE":
-                // PL-001, PL-002...
-                segments.add(new NumberSegment("CONST", "PL", 1));
-                segments.add(new NumberSegment("SEPARATOR", "-", 2));
-                segments.add(new NumberSegment("SERIAL", 3, 1, 3));
-                break;
-            case "PRODUCT_MODEL":
-                // PM-2026-001
-                segments.add(new NumberSegment("CONST", "PM", 1));
-                segments.add(new NumberSegment("SEPARATOR", "-", 2));
-                segments.add(new NumberSegment("YEAR", "yyyy", null, 3));
-                segments.add(new NumberSegment("SEPARATOR", "-", 4));
-                segments.add(new NumberSegment("SERIAL", 3, 1, 5));
-                break;
-            case "DOC_NUMBER":
-                // DOC-202601-0001
-                segments.add(new NumberSegment("CONST", "DOC", 1));
-                segments.add(new NumberSegment("SEPARATOR", "-", 2));
-                segments.add(new NumberSegment("YEAR", "yyyy", null, 3));
-                segments.add(new NumberSegment("MONTH", "MM", null, 4));
-                segments.add(new NumberSegment("SEPARATOR", "-", 5));
-                segments.add(new NumberSegment("SERIAL", 4, 1, 6));
-                break;
-            case "PART_NUMBER":
-                // PART-202601-0001
-                segments.add(new NumberSegment("CONST", "PART", 1));
-                segments.add(new NumberSegment("SEPARATOR", "-", 2));
-                segments.add(new NumberSegment("YEAR", "yyyy", null, 3));
-                segments.add(new NumberSegment("MONTH", "MM", null, 4));
-                segments.add(new NumberSegment("SEPARATOR", "-", 5));
-                segments.add(new NumberSegment("SERIAL", 4, 1, 6));
-                break;
-            case "FUNCTIONAL-NUM":
-                // FUNC-20260101-00000001
-                segments.add(new NumberSegment("CONST", "FUNC", 1));
-                segments.add(new NumberSegment("SEPARATOR", "-", 2));
-                segments.add(new NumberSegment("YEAR", "yyyy", null, 3));
-                segments.add(new NumberSegment("MONTH", "MM", null, 4));
-                segments.add(new NumberSegment("DAY", "dd", null, 5));
-                segments.add(new NumberSegment("SERIAL", 8, 1, 6));
-                break;
-            case "ECAD_PROJECT-NUM":
-                // ECAD-202601-0001
-                segments.add(new NumberSegment("CONST", "ECAD", 1));
-                segments.add(new NumberSegment("SEPARATOR", "-", 2));
-                segments.add(new NumberSegment("YEAR", "yyyy", null, 3));
-                segments.add(new NumberSegment("MONTH", "MM", null, 4));
-                segments.add(new NumberSegment("SEPARATOR", "-", 5));
-                segments.add(new NumberSegment("SERIAL", 4, 1, 6));
-                break;
-            default:
-                break;
-        }
-        return segments;
-    }
 
     /** 确保默认生命周期模板（STANDARD / SIMPLE）存在（幂等） */
     private void ensureDefaultLifecycleTemplates() {

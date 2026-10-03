@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -15,7 +15,7 @@ import java.util.List;
  * 电子设计项目（{@code ck_ecad_project}）数据访问接口。
  *
  * <p>{@code ECAD_PROJECT} 是拥有独立表的 OOTB 对象类型（rootTypeCode 为自身），
- * 建表见 {@code EcadSchemaInitializer#createProjectTable}。
+ * 建表见 {@code src/main/resources/schema.sql}（原先由代码里的初始化器建，已退场）。
  */
 public interface EcadProjectMapper {
 

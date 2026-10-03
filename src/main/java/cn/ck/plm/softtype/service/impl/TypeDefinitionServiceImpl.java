@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -326,7 +326,7 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
      *
      * <p><b>先信 {@code root_type_code}，再退化为沿父链上溯。</b>
      * 原因：类型树里 {@code parent_oid} 表达的是<b>分类归属</b>（域锚点 oid 相当于分类根 ——
-     * 见 {@code EcadDomain} 与 {@code EcadSchemaInitializer}：域成员表已删，域归属就由它表达），
+     * 见 {@code BusinessDomainInitializer}：域已拆为独立实体 {@code ck_business_domain}，域归属由它表达），
      * 而域锚点自身 {@code rootTypeCode=null} 且不是 OOTB，沿它一路上溯<b>到不了能力宿主</b>。
      * 于是"在域下（或某个 SOFT_TYPE 下）建类型"会误报
      * 「在域锚点（DOMAIN）下创建子类型必须指定 rootTypeCode（能力宿主，如 PART / DOCUMENT）」——

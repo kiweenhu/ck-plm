@@ -1720,6 +1720,10 @@ CREATE TABLE IF NOT EXISTS ck_user_activity (
     updater        VARCHAR(64),
     updated_at     TIMESTAMP
 );
+
+-- 最近访问 / 最近操作：WHERE user_oid = ? AND activity_type ... ORDER BY created_at DESC
+-- （原先只写在 src/main/resources/sql/ck_user_activity.sql 里，随该脚本归档进本文件）
+CREATE INDEX IF NOT EXISTS idx_activity_user_type ON ck_user_activity(user_oid, activity_type, created_at DESC);
   
 CREATE TABLE IF NOT EXISTS ck_file_storage_config (
     oid              VARCHAR(64)  PRIMARY KEY,

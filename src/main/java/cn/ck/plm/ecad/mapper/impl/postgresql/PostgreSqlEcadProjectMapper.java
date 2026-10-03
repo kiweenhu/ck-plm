@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * {@link EcadProjectMapper} 的 PostgreSQL 实现（MyBatis 注解模式）。
  *
- * <p>表 {@code ck_ecad_project} 由 {@code EcadSchemaInitializer#createProjectTable} 建表。
+ * <p>表 {@code ck_ecad_project} 由 {@code src/main/resources/schema.sql} 建（代码里的初始化器已退场）。
  */
 @Mapper
 @ConditionalOnProperty(name = "plm.database.type", havingValue = "postgresql", matchIfMissing = true)

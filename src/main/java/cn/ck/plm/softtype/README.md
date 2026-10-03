@@ -17,6 +17,7 @@
 应用启动时自动执行初始化器，按顺序完成：
 ```
 @Order(0) BusinessDomainInitializer  → 业务域种子（域表 + 数据自愈）
+@Order(1) VersionRuleInitializer     → 平台预置版本规则（大版本字母序列，写平台租户）
 @Order(2) TypeDefinitionInitializer  → 注册类型定义
 @Order(3) AttributeInitializer  → 扫描字段并注册属性
 @Order(4) PageLayoutInitializer  → 创建默认页面布局
