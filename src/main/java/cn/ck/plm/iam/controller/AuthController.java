@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -244,6 +244,43 @@ public class AuthController {
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
         }
+    }
+
+    /**
+     * 退出其他设备：保留当前会话，其余 token 全部失效。
+     *
+     * <p>密码疑似泄露、或在别人电脑上登录过之后的处置手段 —— 自己这台机器不掉线。
+     */
+    @PostMapping("/logout-others")
+    public ApiResponse<Map<String, Integer>> logoutOthers(@RequestHeader("Authorization") String authHeader,
+                                                         HttpServletRequest httpRequest) {
+        User current = resolveCurrentUser(authHeader);
+        if (current == null) {
+            return ApiResponse.fail(401, "未登录或 token 已失效");
+        }
+        int removed = tokenStore.removeOthers(current.getUsername(), authHeader.substring(7).trim());
+
+        // 与注销同一套审计口径：操作日志里能回溯"谁在什么时候把其他设备踢下线了"。
+        // 注：ck_user_activity.user_oid 这一列现存数据放的是「用户名」（见 /logout 的写法），
+        //     这里必须跟着来，否则「最近操作」按当前登录人查会漏掉本条。
+        try {
+            String currentUser = UserContext.get();
+            UserActivity log = new UserActivity();
+            log.setOid(UUID.randomUUID().toString());
+            log.setUserOid(currentUser != null ? currentUser : current.getUsername());
+            log.setActivityType("LOGOUT");
+            log.setActionDesc("退出其他设备");
+            log.setTargetName(currentUser != null ? currentUser : current.getUsername());
+            log.setTargetType("系统");
+            log.setResult("SUCCESS");
+            log.setOperatorIp(getClientIp(httpRequest));
+            log.setUserAgent(httpRequest.getHeader("User-Agent"));
+            log.setCreator(current.getUsername());
+            log.setUpdater(current.getUsername());
+            activityMapper.insert(log);
+        } catch (Exception ignored) { }
+
+        return ApiResponse.ok(Map.of("removed", removed));
     }
 
     /**

@@ -23,10 +23,10 @@
         class="sider-menu"
         @click="handleMenuClick"
       >
-        <!-- 个人中心 -->
+        <!-- 工作台（首页 /home） -->
         <a-menu-item key="/home">
           <template #icon><home-outlined /></template>
-          <span>个人中心</span>
+          <span>工作台</span>
         </a-menu-item>
 
         <!-- 企业资源 -->
@@ -320,7 +320,7 @@ watch(() => route.path, (path) => {
 
 // ---- 面包屑 ----
 const breadcrumbMap = {
-  '/home': '个人中心',
+  '/home': '工作台',
   '/product/:productId': '系列/型号',
   '/resource': '企业资源',
   '/change': '变更控制',
@@ -523,9 +523,10 @@ async function handleUserMenu({ key }) {
     message.success('已退出登录')
     router.replace('/login')
   } else if (key === 'profile') {
-    router.push('/profile')
+    // 个人信息 → 资料页签；个人设置 → 安全设置页签（同一个页面，两个入口各到一处）
+    router.push({ path: '/profile', query: { tab: 'profile' } })
   } else if (key === 'settings') {
-    message.info('个人设置功能开发中')
+    router.push({ path: '/profile', query: { tab: 'security' } })
   }
 }
 </script>

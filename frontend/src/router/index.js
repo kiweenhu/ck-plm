@@ -21,7 +21,7 @@ const routes = [
         path: 'home',
         name: 'Home',
         component: () => import('@/views/HomePage.vue'),
-        meta: { title: '个人中心' }
+        meta: { title: '工作台' }
       },
       // 产品系列
       {

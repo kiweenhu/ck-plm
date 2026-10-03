@@ -278,6 +278,16 @@ export function changePassword(oldPassword, newPassword) {
   return request.put('/auth/password', { oldPassword, newPassword })
 }
 
+/** 退出其他设备：保留当前会话，其余会话立即失效（返回 { removed: 数量 }） */
+export function logoutOtherDevices() {
+  return request.post('/auth/logout-others')
+}
+
+/** 查询某用户的角色明细（含中文名，个人设置里展示角色用） */
+export function getUserRoles(oid) {
+  return request.get(`/users/${oid}/roles`)
+}
+
 // ==================== 类型定义 API（v2.0 统一） ====================
 
 /** 获取类型树 */
@@ -1883,7 +1893,7 @@ export function getProcessInstanceDetail(id) {
 }
 
 /**
- * 我的待办任务（任务中心「待办任务」页签 + 个人中心待办卡片共用）。
+ * 我的待办任务（任务中心「待办任务」页签 + 工作台待办卡片共用）。
  *
  * @param {object} params { page, size }
  * @returns {Promise<{code, data: Array}>} 每项含 id / name / processDefinitionName /
@@ -1974,7 +1984,7 @@ export function getRunningEntityOids(typeCode, entityOids) {
 }
 
 /**
- * 我最近创建/修改过的业务对象（个人中心）。
+ * 我最近创建/修改过的业务对象（工作台）。
  *
  * @param {object} params { days = 5, limit = 20 }
  * @returns {Promise<{code, data: Array}>} 每项含 oid / name / code / entityType / entityTypeName /

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -31,6 +31,10 @@ public interface PostgreSqlTokenMapper extends TokenMapper {
     @Override
     @Delete("DELETE FROM ck_token WHERE username = #{username}")
     int deleteByUsername(@Param("username") String username);
+
+    @Override
+    @Delete("DELETE FROM ck_token WHERE username = #{username} AND token <> #{token}")
+    int deleteOtherTokens(@Param("username") String username, @Param("token") String token);
 
     @Override
     @Delete("DELETE FROM ck_token WHERE expire_at < NOW()")

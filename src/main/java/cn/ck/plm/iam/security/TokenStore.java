@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -89,5 +89,22 @@ public class TokenStore {
      */
     public void removeByUsername(String username) {
         tokenMapper.deleteByUsername(username);
+    }
+
+    /**
+     * 移除该用户除当前 token 之外的所有 token（「个人设置 → 退出其他设备」）。
+     *
+     * <p>用于密码疑似泄露/在别人电脑上登录过之后的处置：自己这台机器不受影响，
+     * 其它会话立即失效。
+     *
+     * @param username   用户名
+     * @param tokenValue 当前会话的 token（保留）
+     * @return 被移除的会话数
+     */
+    public int removeOthers(String username, String tokenValue) {
+        if (username == null) {
+            return 0;
+        }
+        return tokenMapper.deleteOtherTokens(username, tokenValue == null ? "" : tokenValue);
     }
 }

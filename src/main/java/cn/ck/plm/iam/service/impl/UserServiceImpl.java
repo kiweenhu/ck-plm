@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -114,11 +114,23 @@ public class UserServiceImpl implements UserService {
         return existing;
     }
 
+    /** 自助修改密码的最小长度（与前端个人设置页的校验一致） */
+    private static final int MIN_PASSWORD_LENGTH = 6;
+
     @Override
     @Transactional
     public void changePassword(String userOid, String oldPassword, String newPassword) {
         if (userOid == null || oldPassword == null || newPassword == null) {
             throw new IllegalArgumentException("参数不能为空");
+        }
+        // 之前只校验了旧密码，新密码长度/是否与旧密码相同都没人管 ——
+        // 走接口可以设成 1 位、甚至"改"成原密码（前端拦得住，但接口是公开契约）
+        String trimmed = newPassword.trim();
+        if (trimmed.length() < MIN_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException("新密码长度不能少于 " + MIN_PASSWORD_LENGTH + " 位");
+        }
+        if (trimmed.equals(oldPassword)) {
+            throw new IllegalArgumentException("新密码不能与当前密码相同");
         }
         User user = userMapper.selectByOid(userOid);
         if (user == null) {
@@ -127,7 +139,7 @@ public class UserServiceImpl implements UserService {
         if (!PasswordEncoder.matches(oldPassword, user.getPassword())) {
             throw new IllegalArgumentException("旧密码不正确");
         }
-        user.setPassword(PasswordEncoder.encode(newPassword));
+        user.setPassword(PasswordEncoder.encode(trimmed));
         userMapper.updatePassword(user);
     }
 
