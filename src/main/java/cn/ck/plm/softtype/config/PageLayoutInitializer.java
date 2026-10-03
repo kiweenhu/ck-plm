@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 深圳乘恺科技有限公司
+ * Copyright (c) 2026~2028 深圳乘恺科技有限公司
  * All rights reserved.
  *
  * @author Kiween.Hu; Roney.Liu
@@ -132,7 +132,38 @@ public class PageLayoutInitializer implements CommandLineRunner {
                 existing++;
             }
 
-            // ==== Part 子类型继承 PART 当前定义的布局 ====
+            // ==== PART: list / create / update / detail ====
+            // PART 是「零部件家族」的模板根：子类型（结构件 / 标准件 / 通用件 / 电子元器件 / PCBA /
+            // 电气件 / 软件）自己没有属性定义（属性由能力宿主 PART 解析而来），前端 DynamicForm 的
+            // fallbackEntityCode 也指向它 —— PART 没有布局，这些表单就全是空的。
+            if (ensureLayout("PART", "list", "零部件列表", buildPartListLayout())) {
+                inserted++;
+            } else {
+                existing++;
+            }
+
+            // ==== PART: create ====
+            if (ensureLayout("PART", "create", "新建零部件", buildPartCreateLayout())) {
+                inserted++;
+            } else {
+                existing++;
+            }
+
+            // ==== PART: update ====
+            if (ensureLayout("PART", "update", "编辑零部件", buildPartUpdateLayout())) {
+                inserted++;
+            } else {
+                existing++;
+            }
+
+            // ==== PART: detail ====
+            if (ensureLayout("PART", "detail", "零部件详情", buildPartDetailLayout())) {
+                inserted++;
+            } else {
+                existing++;
+            }
+
+            // ==== Part 子类型继承 PART 刚刚确定的布局 ====
             clonePartLayoutToSoftTypes();
 
         } catch (Exception e) {
@@ -203,8 +234,19 @@ public class PageLayoutInitializer implements CommandLineRunner {
     }
 
     /**
-     * 将 PART 当前定义的布局复制到其 SOFT_TYPE 子类型（电子元器件、结构件、电气件、软件）。
-     * <p>子类型继承 PART 的 create/update 等布局定义，减少实施工作量。幂等：已存在的布局跳过。
+     * 将 PART 的布局复制到其子类型（结构件 / 标准件 / 通用件 / 电子元器件 / PCBA / 电气件 / 软件）。
+     *
+     * <p>子类型没有自己的属性定义（属性由能力宿主 PART 解析而来），复制一份让每种类型在
+     * 页面设计器里都有可直接改的布局，省去逐类型手建的工作量。
+     *
+     * <p>目标类型按「能力宿主 = PART」推导（root_type_code），因此新增的 Part 子类型
+     * 会自动纳入，无需再改这里的清单。
+     *
+     * <p>不含 FUNCTIONAL：它有自己的一套属性（无 unit / source 等物料字段），
+     * 复制 PART 布局会得到字段对不上的表单，应由它自己的布局模板提供。
+     *
+     * <p>幂等口径与 {@link #ensureLayout} 一致：entity_code + operation_code 已存在即跳过 ——
+     * 历史上类型定义整批重建过（oid 变更），按 oid 判断会误判为"不存在"而插入重复布局。
      */
     private void clonePartLayoutToSoftTypes() {
         try {
@@ -217,11 +259,11 @@ public class PageLayoutInitializer implements CommandLineRunner {
                 return;
             }
 
-            // 2. 查询 Part 的 SOFT_TYPE 子类型
+            // 2. 查询 Part 的子类型（能力宿主 = PART）
             List<Map<String, Object>> softTypes = jdbcTemplate.queryForList(
                     "SELECT oid, code FROM ck_type_definition " +
-                    "WHERE code IN ('ELECTRONIC','STRUCTURAL','ELECTRICAL','SOFTWARE','PCBA','FUNCTIONAL') " +
-                    "AND tenant_oid = ? ORDER BY sort_order",
+                    "WHERE root_type_code = 'PART' AND code <> 'PART' AND tenant_oid = ? " +
+                    "ORDER BY sort_order",
                     TenantContext.PLATFORM_TENANT_OID);
 
             int copied = 0, skipped = 0;
@@ -233,10 +275,10 @@ public class PageLayoutInitializer implements CommandLineRunner {
                     String opName = (String) partLayout.get("operation_name");
                     String layoutJson = (String) partLayout.get("layout_json");
 
-                    // 幂等：已存在则跳过
+                    // 幂等：按 entity_code + operation_code 判断（类型 oid 变更过也不会重复插）
                     Integer count = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM ck_type_page_layout WHERE entity_oid = ? AND operation_code = ?",
-                            Integer.class, softTypeOid, opCode);
+                            "SELECT COUNT(*) FROM ck_type_page_layout WHERE entity_code = ? AND operation_code = ?",
+                            Integer.class, softTypeCode, opCode);
                     if (count != null && count > 0) {
                         skipped++;
                         continue;
@@ -1026,5 +1068,114 @@ public class PageLayoutInitializer implements CommandLineRunner {
                 "]" +
             "}" +
         "}";
+    }
+
+    // ==================== PART 布局 JSON 模板 ====================
+    // PART 是零部件家族的模板根（子类型按 root_type_code=PART 解析属性），字段取自 PART 的
+    // 属性定义：name / number / typeDefinitionCode / clsOid / containerOid / folderOid / stageOid /
+    // unit / source / displayVersion / revision / iteration / status / description。
+    // 控件 id 见前端 widgets/catalog.js（number-preview、version-display、unit-select、
+    // source-select、classification-bound-select、resource-container-select、folder-select、stage-select）。
+
+    private String buildPartListLayout() {
+        return """
+                {
+                  "search": {
+                    "enabled": true,
+                    "fields": [
+                      { "fieldName": "name", "label": "名称", "uiComponent": "input", "placeholder": "搜索名称" },
+                      { "fieldName": "number", "label": "编号", "uiComponent": "input", "placeholder": "搜索编号" },
+                      { "fieldName": "typeDefinitionCode", "label": "类型", "uiComponent": "input", "placeholder": "搜索类型编码" },
+                      { "fieldName": "displayVersion", "label": "版本", "uiComponent": "input", "placeholder": "搜索版本" }
+                    ]
+                  },
+                  "table": {
+                    "enabled": true,
+                    "toolbarEnabled": true,
+                    "toolbar": ["create", "export"],
+                    "hasEdit": true,
+                    "hasDelete": true,
+                    "columns": [
+                      { "fieldName": "name", "label": "名称", "width": 200, "sortable": false },
+                      { "fieldName": "number", "label": "编号", "width": 150, "sortable": false },
+                      { "fieldName": "typeDefinitionCode", "label": "类型", "width": 120, "sortable": false },
+                      { "fieldName": "status", "label": "生命周期状态", "width": 130, "sortable": false },
+                      { "fieldName": "revision", "label": "大版本", "width": 80, "sortable": false },
+                      { "fieldName": "iteration", "label": "小版本", "width": 80, "sortable": false },
+                      { "fieldName": "unit", "label": "单位", "width": 80, "sortable": false },
+                      { "fieldName": "source", "label": "来源", "width": 90, "sortable": false },
+                      { "fieldName": "action", "label": "操作", "width": 150, "sortable": false, "fixed": "right" }
+                    ]
+                  },
+                  "form": { "enabled": true, "name": "编辑表单", "fields": [] }
+                }
+                """;
+    }
+
+    private String buildPartCreateLayout() {
+        return """
+                {
+                  "form": {
+                    "fields": [
+                      { "id": "fld-number", "fieldName": "number", "label": "编号", "uiComponent": "number-preview", "readonly": true, "placeholder": "系统根据编码规则自动生成" },
+                      { "id": "fld-name", "fieldName": "name", "label": "名称", "uiComponent": "input", "required": true, "placeholder": "请输入零部件名称" },
+                      { "id": "fld-version", "fieldName": "displayVersion", "label": "版本", "uiComponent": "version-display", "readonly": true, "placeholder": "由系统生成" },
+                      { "id": "fld-cls", "fieldName": "clsOid", "label": "分类", "uiComponent": "classification-bound-select", "placeholder": "请选择分类" },
+                      { "id": "fld-container", "fieldName": "containerOid", "label": "所属容器", "uiComponent": "resource-container-select", "placeholder": "请选择所属库或产品" },
+                      { "id": "fld-folder", "fieldName": "folderOid", "label": "所属文件夹", "uiComponent": "folder-select", "placeholder": "请选择所属文件夹" },
+                      { "id": "fld-stage", "fieldName": "stageOid", "label": "研发阶段", "uiComponent": "stage-select", "required": false, "placeholder": "请选择研发阶段" },
+                      { "id": "fld-unit", "fieldName": "unit", "label": "单位", "uiComponent": "unit-select", "placeholder": "请选择单位" },
+                      { "id": "fld-source", "fieldName": "source", "label": "来源", "uiComponent": "source-select", "placeholder": "请选择来源" },
+                      { "id": "fld-desc", "fieldName": "description", "label": "描述", "uiComponent": "textarea", "rows": 3, "placeholder": "请输入描述（可选）" }
+                    ]
+                  }
+                }
+                """;
+    }
+
+    private String buildPartUpdateLayout() {
+        return """
+                {
+                  "form": {
+                    "fields": [
+                      { "id": "fld-number", "fieldName": "number", "label": "编号", "uiComponent": "input", "readonly": true, "placeholder": "编码不可修改" },
+                      { "id": "fld-name", "fieldName": "name", "label": "名称", "uiComponent": "input", "required": true, "placeholder": "请输入零部件名称" },
+                      { "id": "fld-type", "fieldName": "typeDefinitionCode", "label": "类型", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-version", "fieldName": "displayVersion", "label": "版本", "uiComponent": "version-display", "readonly": true },
+                      { "id": "fld-cls", "fieldName": "clsOid", "label": "分类", "uiComponent": "classification-bound-select", "placeholder": "请选择分类" },
+                      { "id": "fld-container", "fieldName": "containerOid", "label": "所属容器", "uiComponent": "resource-container-select", "placeholder": "请选择所属库或产品" },
+                      { "id": "fld-folder", "fieldName": "folderOid", "label": "所属文件夹", "uiComponent": "folder-select", "placeholder": "请选择所属文件夹" },
+                      { "id": "fld-stage", "fieldName": "stageOid", "label": "研发阶段", "uiComponent": "stage-select", "required": false, "placeholder": "请选择研发阶段" },
+                      { "id": "fld-unit", "fieldName": "unit", "label": "单位", "uiComponent": "unit-select", "placeholder": "请选择单位" },
+                      { "id": "fld-source", "fieldName": "source", "label": "来源", "uiComponent": "source-select", "placeholder": "请选择来源" },
+                      { "id": "fld-desc", "fieldName": "description", "label": "描述", "uiComponent": "textarea", "rows": 3, "placeholder": "请输入描述（可选）" }
+                    ]
+                  }
+                }
+                """;
+    }
+
+    private String buildPartDetailLayout() {
+        return """
+                {
+                  "form": {
+                    "readonly": true,
+                    "fields": [
+                      { "id": "fld-number", "fieldName": "number", "label": "编号", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-name", "fieldName": "name", "label": "名称", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-type", "fieldName": "typeDefinitionCode", "label": "类型", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-status", "fieldName": "status", "label": "生命周期状态", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-version", "fieldName": "displayVersion", "label": "版本", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-cls", "fieldName": "clsOid", "label": "分类", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-folder", "fieldName": "folderOid", "label": "所属文件夹", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-stage", "fieldName": "stageOid", "label": "研发阶段", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-unit", "fieldName": "unit", "label": "单位", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-source", "fieldName": "source", "label": "来源", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-creator", "fieldName": "creator", "label": "创建者", "uiComponent": "input", "readonly": true },
+                      { "id": "fld-desc", "fieldName": "description", "label": "描述", "uiComponent": "textarea", "rows": 3, "readonly": true }
+                    ]
+                  }
+                }
+                """;
     }
 }
