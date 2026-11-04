@@ -175,21 +175,6 @@
             <a-button size="small" type="dashed" block @click="addKv(field)">添加参数</a-button>
           </div>
 
-          <!-- 「设置审批人」任务表单预览（结构由流程定义派生，非手工维护） -->
-          <div v-else-if="field.control === 'assignee-setup-preview'" class="setup-preview">
-            <a-button size="small" @click="showSetupPreview = true">
-              预览任务表单（{{ setupSlotCount }} 项）
-            </a-button>
-            <a-modal
-              v-model:open="showSetupPreview"
-              title="设置审批人 · 任务表单预览"
-              :footer="null"
-              width="640px"
-            >
-              <SetAssigneeTaskForm :dsl="context.dsl" :setter-node-id="target.id" preview />
-            </a-modal>
-          </div>
-
           <!-- 可选子对象启用开关 -->
           <a-switch
             v-else-if="field.control === 'object-toggle'"
@@ -249,8 +234,6 @@ import {
   loadAutomationServices,
   mergeServiceOptions,
 } from './options'
-import { buildAssigneeSetupModel } from '../task/assignee-setup'
-import SetAssigneeTaskForm from '../task/SetAssigneeTaskForm.vue'
 
 /**
  * 后端已注册的服务（函数）清单。
@@ -310,17 +293,6 @@ function edgeKindOptionsForField(field) {
   }
   return edgeKindOptionsWithCurrent(props.context.dsl, props.target)
 }
-
-/**
- * 「设置审批人」任务表单预览开关。
- *
- * <p>预览用的就是运行期那个组件、同一份派生逻辑（不是另画一个"示意图"），
- * 因此不可能出现「预览与运行不一致」。槽位数只为按钮文案，真实结构由组件内部派生。
- */
-const showSetupPreview = ref(false)
-const setupSlotCount = computed(
-  () => buildAssigneeSetupModel(props.context.dsl, props.target.id).slots.length,
-)
 
 /** 异步选项缓存（按来源 id） */
 const dynamicOptions = ref({})

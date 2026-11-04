@@ -130,7 +130,10 @@ export function compileToBpmnXml(dsl: FlowDsl, options: CompileOptions = {}): Co
     '             typeLanguage="http://www.w3.org/2001/XMLSchema"',
     '             expressionLanguage="http://www.w3.org/1999/XPath"',
     `             targetNamespace="${escAttr(targetNamespace)}">`,
-    `  <process id="${escAttr(dsl.meta.key)}" name="${escAttr(dsl.meta.name)}" isExecutable="true">`,
+    // 流程变量在 BPMN 里没有标准位置，用扩展属性带一份声明 —— 否则导入即丢
+    //（任务页"显示哪些变量、默认值是什么"全靠它）
+    `  <process id="${escAttr(dsl.meta.key)}" name="${escAttr(dsl.meta.name)}" isExecutable="true"` +
+      `${dsl.variables?.length ? ` ${ctxJson(CKPLM_ATTR.VARIABLES, dsl.variables)}` : ''}>`,
     dsl.meta.description ? `    <documentation>${esc(dsl.meta.description)}</documentation>` : '',
     ...body.map((line) => indent(line, 4)),
     '  </process>',
@@ -246,7 +249,7 @@ function emitEndCallbacks(node: EndNode, ctx: Ctx): string {
  * <p>因此本层只负责一件事：把「本活动的人员变量」绑定好，并提示运行期契约。
  */
 function emitSetAssignee(node: SetAssigneeNode, ctx: Ctx): string {
-  const attrs: string[] = [...baseAttrsArr(node)]
+  const attrs: string[] = [...baseAttrsArr(node, ctx)]
   const standard = standardAssigneeAttrs(node.assignee, ctx, node.name)
   if (standard) {
     attrs.push(attrsToXml(standard))
@@ -283,7 +286,7 @@ function emitApproval(node: ApprovalNode | CountersignNode, ctx: Ctx): string {
   // 会签审批没有 approvalMode（类型本身就是会签），在此换算为契约里的模式编码
   const approvalMode: ApprovalMode =
     node.type === NodeType.COUNTERSIGN_APPROVAL ? ApprovalMode.COUNTERSIGN : node.approvalMode
-  const attrs: string[] = [...baseAttrsArr(node)]
+  const attrs: string[] = [...baseAttrsArr(node, ctx)]
   // 被「设置审批人」覆盖 → 人员由发起人在运行期指定，节点自身的策略退为"候选范围"，
   // 因此不再输出静态的候选组 / 指派（否则两者并存，任务会既属于某人又对某组可见）
   const usesSetup = ctx.setupControlled.has(node.id)
@@ -344,7 +347,7 @@ function emitApproval(node: ApprovalNode | CountersignNode, ctx: Ctx): string {
 }
 
 function emitTask(node: TaskNode, ctx: Ctx): string {
-  const attrs: string[] = [...baseAttrsArr(node)]
+  const attrs: string[] = [...baseAttrsArr(node, ctx)]
   const controlled = ctx.setupControlled.has(node.id)
   const standard = standardAssigneeAttrs(node.assignee, ctx, node.name)
   if (standard && !controlled) {
@@ -364,9 +367,14 @@ function emitTask(node: TaskNode, ctx: Ctx): string {
     attrs.push(`${flowableAttr('formKey')}="${escAttr(node.formRef)}"`)
     attrs.push(ctxAttr(CKPLM_ATTR.FORM_REF, node.formRef))
   }
-  if (node.deliverables?.length) {
-    attrs.push(ctxJson(CKPLM_ATTR.DELIVERABLES, node.deliverables))
-    ctx.warnings.push(`办理节点「${node.name}」的交付物需运行期校验（本层只输出声明）`)
+  if (node.needDeliverables) {
+    attrs.push(ctxJson(CKPLM_ATTR.NEED_DELIVERABLES, true))
+  }
+  if (node.deliverableObjectTypes?.length) {
+    attrs.push(ctxJson(CKPLM_ATTR.DELIVERABLE_OBJECT_TYPES, node.deliverableObjectTypes))
+    ctx.warnings.push(
+      `办理节点「${node.name}」的交付件需运行期按业务对象类型校验（本层只输出声明）`,
+    )
   }
   if (node.deadline) {
     attrs.push(ctxJson(CKPLM_ATTR.DEADLINE, node.deadline))
@@ -379,7 +387,7 @@ function emitTask(node: TaskNode, ctx: Ctx): string {
 }
 
 function emitService(node: ServiceNode, ctx: Ctx): string {
-  const attrs: string[] = [...baseAttrsArr(node)]
+  const attrs: string[] = [...baseAttrsArr(node, ctx)]
   const fields: string[] = []
   if (node.serviceRef) {
     // 白名单服务统一走「一个委托 Bean + flowable:field 传参」：
@@ -418,7 +426,7 @@ function delegateField(name: string, value: string): string {
 }
 
 function emitNotify(node: NotifyNode, ctx: Ctx): string {
-  const attrs: string[] = [...baseAttrsArr(node)]
+  const attrs: string[] = [...baseAttrsArr(node, ctx)]
   attrs.push(`${flowableAttr('delegateExpression')}="\${${NOTIFY_DELEGATE}}"`)
   if (node.templateCode) {
     attrs.push(ctxAttr(CKPLM_ATTR.TEMPLATE_CODE, node.templateCode))
@@ -432,16 +440,74 @@ function emitNotify(node: NotifyNode, ctx: Ctx): string {
 }
 
 function emitSubProcess(node: SubProcessNode, ctx: Ctx): string {
-  const attrs: string[] = [...baseAttrsArr(node)]
+  const attrs: string[] = [...baseAttrsArr(node, ctx)]
   attrs.push(`calledElement="${escAttr(node.processKey)}"`)
   if (node.variableMap && Object.keys(node.variableMap).length > 0) {
     attrs.push(ctxJson(CKPLM_ATTR.VARIABLE_MAP, node.variableMap))
   }
-  return `<callActivity ${attrs.join(' ').trim()}/>`
+
+  const mi = node.multiInstance
+
+  /*
+   * 变量映射要落成 flowable:in —— 只写 ckplm 声明的话，子流程实例启动时拿不到
+   * 任何父流程数据（引擎不会自动继承），${task.owner} 这类表达式在子流程里全是空。
+   * 多实例时 source 里引用元素变量（如 ${task.owner}），每个实例取到自己那份。
+   */
+  const inElements = node.variableMap
+    ? Object.entries(node.variableMap)
+        .map(([target, rawSource]) => {
+          const source = (rawSource || '').trim()
+          // source 是**变量名**，sourceExpression 才是表达式。把 ${...} 写进 source
+          // 会被当成"名为 ${...} 的变量"去找，取不到就静默传 null ——
+          // 表现为子流程的办理人/入参全是空，而且不报错（真实引擎测出来的）。
+          const isExpression = source.startsWith('${') && source.endsWith('}')
+          const kind = isExpression ? 'sourceExpression' : 'source'
+          return `<${FLOWABLE_PREFIX}:in ${kind}="${escAttr(source)}" target="${escAttr(target)}"/>`
+        })
+        .join('')
+    : ''
+
+  if (!mi) {
+    if (!inElements) {
+      return `<callActivity ${attrs.join(' ').trim()}/>`
+    }
+    return (
+      `<callActivity ${attrs.join(' ').trim()}>` +
+      `<extensionElements>${inElements}</extensionElements>` +
+      `</callActivity>`
+    )
+  }
+
+  /*
+   * 1:M 子流程：父流程里放一个清单变量，这里按清单逐个拉起**独立**的流程实例
+   * （各自的 businessKey、办理人、生命周期）。并行多实例的引擎语义就是
+   * "全部实例结束后才继续往下走"，父单关闭等子单全关这条规则因此天然成立。
+   */
+  attrs.push(ctxJson(CKPLM_ATTR.SUB_PROCESS_MULTI_INSTANCE, mi))
+  const elementVariable = mi.elementVariable || 'item'
+  if (mi.businessKey) {
+    // 每个子实例必须有自己的业务 key，否则子流程分不清自己在办哪张单
+    attrs.push(`${flowableAttr('businessKey')}="${escAttr(`\${${elementVariable}.${mi.businessKey}}`)}"`)
+  } else {
+    ctx.warnings.push(
+      `子流程节点「${node.name}」开启了多实例但没配业务 key：` +
+        '所有子实例会沿用父流程的 businessKey，子流程里查不到各自对应的业务单据',
+    )
+  }
+  const miAttrs =
+    `isSequential="${mi.sequential ? 'true' : 'false'}"` +
+    ` ${flowableAttr('collection')}="${escAttr(`\${${mi.collection}}`)}"` +
+    ` ${flowableAttr('elementVariable')}="${escAttr(elementVariable)}"`
+  return (
+    `<callActivity ${attrs.join(' ').trim()}>` +
+    (inElements ? `<extensionElements>${inElements}</extensionElements>` : '') +
+    `<multiInstanceLoopCharacteristics ${miAttrs}/>` +
+    `</callActivity>`
+  )
 }
 
 function emitTimer(node: TimerNode, ctx: Ctx): string {
-  const attrs: string[] = [...baseAttrsArr(node)]
+  const attrs: string[] = [...baseAttrsArr(node, ctx)]
   attrs.push(ctxJson(CKPLM_ATTR.TIMER_MODE, node.mode))
   let definition = ''
   if (node.mode === TimerMode.DURATION) {
@@ -519,20 +585,20 @@ function passRuleToUel(rule: PassRule, nodeName: string, ctx: Ctx): string {
             `弃权语义需运行期监听器配合（本层按 IGNORE 语义编译，另以 ckplm:passRule 声明完整意图）`,
         )
       }
-      // 用乘 100 比较避免浮点表示误差
-      return `\${nrOfCompletedInstances * 100 >= nrOfInstances * ${percent}}`
+      // 用乘 100 比较避免浮点表示误差；`|| ckplmVetoed` 是"提前收口"（见 RUNTIME_VETO_VARIABLE）
+      return `\${nrOfCompletedInstances * 100 >= nrOfInstances * ${percent} || ${RUNTIME_VETO_VARIABLE}}`
     }
     case PassRuleMode.COUNT: {
       const count = rule.count ?? 1
-      return `\${nrOfCompletedInstances >= ${count}}`
+      return `\${nrOfCompletedInstances >= ${count} || ${RUNTIME_VETO_VARIABLE}}`
     }
     case PassRuleMode.VETO:
       ctx.warnings.push(
-        `会签节点「${nodeName}」使用「一票否决」：该语义无法用 completionCondition 表达` +
-          `（完成条件只在实例完成时求值），需运行期任务监听器置 ${RUNTIME_VETO_VARIABLE} 后中断。` +
-          '本层只输出 ckplm:passRule 声明，不生成 completionCondition。',
+        `会签节点「${nodeName}」使用「一票否决」：完成条件写成"全部办完 或 本轮已不可能通过"` +
+          `（\${nrOfCompletedInstances >= nrOfInstances 或 ${RUNTIME_VETO_VARIABLE}}），` +
+          '运行期投出驳回后置标记提前结束、取消剩余任务；结论仍由运行期按本轮所有票汇总判定。',
       )
-      return ''
+      return `\${nrOfCompletedInstances >= nrOfInstances || ${RUNTIME_VETO_VARIABLE}}`
     default:
       return ''
   }
@@ -569,10 +635,18 @@ function emitEdge(edge: FlowEdge, ctx: Ctx): string {
   if (!fromGateway && edge.kind === EdgeKind.DEFAULT) {
     ctx.warnings.push(`连线「${edge.name ?? edge.id}」被标记为默认分支，但源节点不是分支节点，将按普通流转处理`)
   }
+  if (edge.condition && !edge.route) {
+    // 结构化条件另存一份 JSON：只写 conditionExpression 的话，"字段选择器"导入后会退化成
+    // 一段用户看不懂的 UEL（见 namespaces.ts 的 CONDITION 说明）
+    attrs.push(ctxJson(CKPLM_ATTR.CONDITION, edge.condition))
+  }
   if (edge.terminateSiblings) {
+    // 连线上的这份是"给人看 + 前端往返"的副本；运行期判定读的是源节点上的 ckplm:terminateOn
+    // （sequenceFlow 上的自定义属性不保证保留，见 namespaces.ts 的 TERMINATE_ON 说明）
+    attrs.push(ctxAttr(CKPLM_ATTR.TERMINATE_SIBLINGS, 'true'))
     ctx.warnings.push(
-      `连线「${edge.name ?? edge.id}」配置了「分支终止语义」：` +
-        'Flowable 无原生对应，需运行期终止其余并行分支（本层只输出声明）',
+      `连线「${edge.name ?? edge.id}」配置了「终止同层分支」：源节点办完后运行期会收口同层其它分支` +
+        '（需要并行 / 包容汇聚点；找不到汇聚点时跳过并记 WARN）',
     )
   }
   const child = condition
@@ -726,10 +800,20 @@ function standardAssigneeAttrs(
     }
     case AssigneeStrategy.INITIATOR:
       return { [flowableAttr('assignee')]: `\${${RUNTIME_VARIABLES.INITIATOR}}` }
-    case AssigneeStrategy.DEPT_LEADER:
-      return { [flowableAttr('assignee')]: `\${${RUNTIME_VARIABLES.DEPT_LEADER}}` }
     case AssigneeStrategy.INITIATOR_LEADER:
-      return { [flowableAttr('assignee')]: `\${${RUNTIME_VARIABLES.INITIATOR_LEADER}}` }
+    case AssigneeStrategy.DEPT_LEADER:
+      // 「发起人上级 / 部门主管」由<b>运行期</b>解析，这里只留声明：ckplm:assignee 的 strategy
+      //（部门主管还带 deptFieldKey）就是那个声明，见 emitApproval 里的 ctxJson(CKPLM_ATTR.ASSIGNEE)。
+      // 不写 ${ckplmInitiatorLeader} / ${ckplmDeptLeader}：变量式只能"发起时快照"，
+      // 主管换人/调部门都不生效；声明式在任务创建那一步按当时的数据解析，且存量部署不用重装。
+      if (spec.strategy === AssigneeStrategy.DEPT_LEADER && !spec.deptFieldKey) {
+        // 校验层会拦（hasAssignee 要求 deptFieldKey），这里再提示一次 —— 导入来的 BPMN 不过校验
+        ctx.warnings.push(
+          `节点「${nodeName}」的审批人策略是「部门主管」但没配「部门字段」：` +
+            '运行期读不到部门，该任务将无人办理',
+        )
+      }
+      return null
     case AssigneeStrategy.VARIABLE:
       if (!spec.variableName) {
         ctx.warnings.push(`节点「${nodeName}」审批人策略为「流程变量」但未指定变量名`)
@@ -830,19 +914,44 @@ function emitDiagram(dsl: FlowDsl): string {
 // ==================== 工具 ====================
 
 function baseAttrs(node: FlowNode, ctx: Ctx): string {
-  return baseAttrsArr(node).join(' ')
+  return baseAttrsArr(node, ctx).join(' ')
 }
 
-function baseAttrsArr(node: FlowNode): string[] {
+/**
+ * @param ctx 传了才写「终止同层分支」的汇总属性 —— 元素级发射器都有 ctx，
+ *           补这个参数是为了让运行期有一个<b>读得到</b>的判据（连线属性不保证保留）。
+ */
+function baseAttrsArr(node: FlowNode, ctx?: Ctx): string[] {
   // ckplm:nodeType 是往返无损的必要标记：BPMN 里 APPROVAL 与 TASK 都是 userTask，
   // 仅靠标准元素无法还原 DSL 节点类型。
   // 必须用 ctxAttr（字面量）而非 ctxJson：JSON.stringify('START') 会带上引号，
   // 反序列化后得到 "START"（含引号）就再也匹配不上任何类型了。
-  return [
+  const attrs = [
     `id="${escAttr(node.id)}"`,
     `name="${escAttr(node.name)}"`,
     ctxAttr(CKPLM_ATTR.NODE_TYPE, node.type),
   ]
+  const terminateOn = terminateOnAttr(node.id, ctx)
+  if (terminateOn) {
+    attrs.push(terminateOn)
+  }
+  return attrs
+}
+
+/**
+ * 本节点哪些出边带「终止同层分支」—— 汇总成逗号分隔的连线 id。
+ *
+ * <p>运行期拿任务节点就能读出这份清单，再按 BPMN 模型取每条边的 {@code targetRef}
+ * 判断"这次走的是哪条收口边"；不必依赖 sequenceFlow 上的自定义属性（不一定保留）。
+ */
+function terminateOnAttr(nodeId: string, ctx?: Ctx): string {
+  if (!ctx) {
+    return ''
+  }
+  const flowIds = ctx.dsl.edges
+    .filter((edge) => edge.source === nodeId && edge.terminateSiblings)
+    .map((edge) => edge.id)
+  return flowIds.length > 0 ? ctxAttr(CKPLM_ATTR.TERMINATE_ON, flowIds.join(',')) : ''
 }
 
 function ctxAttr(name: string, value: unknown): string {

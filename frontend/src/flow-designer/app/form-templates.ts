@@ -67,3 +67,28 @@ export async function loadFormTemplates(): Promise<void> {
     registerTaskFormTemplates([])
   }
 }
+
+let ensurePending: Promise<void> | null = null
+
+/**
+ * 幂等的「确保模板清单已注入」—— 设计器与**办理页**共用。
+ *
+ * <p>为什么办理页也要：卡片标题与「当前任务 · 表单」都走 {@code taskFormLabel(code)}
+ * （见 components/task/taskForms/index.js），而它读的是本模块注入的注册表 ——
+ * 只注入一次、且只在设计器里注入的话，来自行业包的自定义表单
+ * （如「元器件认证申请」）在办理页会显示成兜底文案「审批处理」。
+ * 所以由页面按需触发，且只拉一次（并发调用共享同一个 Promise）。
+ */
+export function ensureFormTemplates(options: { force?: boolean } = {}): Promise<void> {
+  // force：进设计器时重拉一次。业务配置里刚建/刚启用的表单，必须能立刻在「节点表单」里选到 ——
+  // 只认第一次的缓存会让用户以为"这张表单没注册"（2026-10-29 实际踩过：新增行业表单后下拉里没有，
+  // 只能靠整页刷新才出现）。
+  if (options.force) {
+    ensurePending = loadFormTemplates()
+    return ensurePending
+  }
+  if (!ensurePending) {
+    ensurePending = loadFormTemplates()
+  }
+  return ensurePending
+}

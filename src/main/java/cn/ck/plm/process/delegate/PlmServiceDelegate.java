@@ -130,7 +130,7 @@ public class PlmServiceDelegate implements JavaDelegate {
      * 读节点的 {@code flowable:field}（编译层把服务 id 与各参数都放在这里）。
      *
      * <p>值可能是 {@code <flowable:string>} 也可能是表达式，这里统一按字符串取 ——
-     * 编译层写的是<b>字面量</b>（如 {@code state=IN_WORK}），所以参数里写的 {@code ${变量名}}
+     * 编译层写的是<b>字面量</b>（如 {@code state=WORKING}），所以参数里写的 {@code ${变量名}}
      * 不会被引擎求值，必须由 {@link #resolveVariables} 在运行期解析。
      */
     private Map<String, String> readFields(DelegateExecution execution) {

@@ -29,6 +29,7 @@
     <!-- DataTable -->
     <DataTable
       ref="dataTableRef"
+      scroll-x="max-content"
       :columns="columns"
       :data-source="users"
       :loading="loading"

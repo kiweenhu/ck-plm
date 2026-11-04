@@ -16,9 +16,10 @@
  * </ol>
  *
  * <p><b>只登记"确实有人写"的变量</b>。`bpmn-compiler/namespaces.ts` 的 `RUNTIME_VARIABLES`
- * 里还声明了几个运行期契约（`ckplmDeptLeader` / `ckplmInitiatorLeader` / `ckplmApprovers` /
- * `ckplmApprover` / `ckplmVetoed`），但后端目前没有任何组件写入它们 ——
- * 登记进来只会让人配出一个永远取不到值的流程，所以刻意不收（等运行期实现补齐再登记）。
+ * 里还留着几个变量名（`ckplmDeptLeader` / `ckplmInitiatorLeader` / `ckplmApprovers` /
+ * `ckplmApprover`），但后端不写它们：「发起人上级」「部门主管」都改为由 `ckplm:assignee`
+ * 的声明在运行期解析（不经过变量），另外两个仅用于导入旧产物 ——
+ * 登记进来只会让人配出一个永远取不到值的流程，所以刻意不收（等真有变量写入再登记）。
  */
 import { ValueType } from './constants'
 
@@ -120,7 +121,9 @@ export const BUILTIN_VARIABLES: BuiltinVariable[] = [
     display: 'approved',
     type: ValueType.BOOLEAN,
     timing: BuiltinVariableTiming.COMPLETE,
-    help: '本次办理结论：同意为 true、驳回为 false。条件分支写 ${approved} / ${!approved} 即走审批通过 / 驳回两条路。',
+    help:
+      '办理结论：同意为 true、驳回为 false。条件分支写 ${approved} / ${!approved} 即走审批通过 / 驳回两条路。' +
+      '会签节点取的是「本轮汇总结论」（按节点的通过规则判定，任一人驳回即不通过），不是最后一票。',
   },
   {
     name: 'lastAction',

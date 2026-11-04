@@ -55,6 +55,12 @@ public class DocumentVO {
     private String statusCode;
     /** 生命周期状态显示名 */
     private String statusName;
+    /**
+     * 当前状态下是否允许修订 —— 由对象固化的生命周期模板里该状态的 revisable 决定。
+     *
+     * <p>界面据此决定「修订」菜单是否出现；模板/状态未知时为 true（配置缺失不阻断）。
+     */
+    private Boolean revisable = true;
 
     // ===== 文件信息 =====
     private String ckfileOid;
@@ -142,6 +148,9 @@ public class DocumentVO {
 
     public String getStatusName() { return statusName; }
     public void setStatusName(String statusName) { this.statusName = statusName; }
+
+    public Boolean getRevisable() { return revisable; }
+    public void setRevisable(Boolean revisable) { this.revisable = revisable; }
 
     public String getCkfileOid() { return ckfileOid; }
     public void setCkfileOid(String ckfileOid) { this.ckfileOid = ckfileOid; }

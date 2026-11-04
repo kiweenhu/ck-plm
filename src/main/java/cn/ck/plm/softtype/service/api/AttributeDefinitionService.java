@@ -20,7 +20,14 @@ import java.util.List;
  */
 public interface AttributeDefinitionService {
 
-    /** 获取某实体的所有属性定义（含系统 + IBA），仅从 ck_attribute_definition 表查询 */
+    /**
+     * 获取某实体的属性定义，仅从 ck_attribute_definition 表查询。
+     *
+     * <p><b>注意：不是"全部"</b> —— 底层 SQL 带 {@code AND editable = true}，只返回**可编辑**的属性
+     * （供界面表单/详情使用）。系统只读字段（number / masterOid / revision / checkedOut /
+     * createdAt / creator …）**不会出现**在这个结果里。做"包声明与实体对齐"这类需要全量字段的
+     * 判断时，不要用本方法 —— 会误判成"实体没给这些字段"（AttributeInstaller 首版就踩了这个坑）。
+     */
     List<AttributeDefinition> findByEntityName(String entityName);
 
     /**

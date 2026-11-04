@@ -11,6 +11,7 @@ import { h } from 'vue'
 import { Input, Select, DatePicker, InputNumber, Switch, TreeSelect, Button, Table } from 'ant-design-vue'
 import { UploadOutlined, TableOutlined } from '@ant-design/icons-vue'
 import { CAD_TOOL_OPTIONS } from './cadTools'
+import { normalizeWidgetType } from './catalog'
 
 /**
  * 渲染单个控件的预览外观
@@ -25,7 +26,7 @@ import { CAD_TOOL_OPTIONS } from './cadTools'
 export function renderWidgetPreview(type, mode = 'design', options = {}) {
   const isPreview = mode === 'preview'
 
-  switch (type) {
+  switch (normalizeWidgetType(type)) {
     case 'textarea':
       if (isPreview) {
         return h('div', {
@@ -339,11 +340,60 @@ export function renderWidgetPreview(type, mode = 'design', options = {}) {
         options: CAD_TOOL_OPTIONS.ECAD
       })
 
+    // ===== 变更单据业务控件：选项运行期按关键字拉取，设计态只画外观 =====
+    case 'change-user-selector':
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        placeholder: options.placeholder || '默认为当前用户',
+        showSearch: true,
+        optionFilterProp: 'label',
+        allowClear: true,
+        options: options.userOptions || []
+      })
+
+    case 'change-issue-selector':
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        mode: 'multiple',
+        placeholder: options.placeholder || '可选：输入编号或标题搜索',
+        showSearch: true,
+        allowClear: true,
+        options: []
+      })
+
+    case 'change-affected-object-selector':
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        mode: 'multiple',
+        placeholder: options.placeholder || '可选：输入编号或名称搜索零件 / 文档',
+        showSearch: true,
+        allowClear: true,
+        options: []
+      })
+
+    case 'change-request-selector':
+      return h(Select, {
+        size: 'small',
+        style: 'width:100%',
+        disabled: !isPreview,
+        placeholder: options.placeholder || '可选 —— 变更通告允许独立存在',
+        showSearch: true,
+        optionFilterProp: 'label',
+        allowClear: true,
+        options: []
+      })
+
     default:
       return h(Input, {
         size: 'small',
         disabled: !isPreview,
-        placeholder: ''
+        placeholder: options.placeholder || ''
       })
   }
 }

@@ -1,11 +1,11 @@
 <template>
   <div class="st-page">
     <a-tabs v-model:activeKey="activeTab" class="st-tabs">
-      <a-tab-pane key="stage" tab="研发阶段模板">
+      <a-tab-pane key="stage" tab="研发阶段">
         <div class="st-header">
           <div class="st-header-left">
-            <h3 class="st-title">研发阶段模板</h3>
-            <span class="st-subtitle">定义研发阶段模板，创建产品线/型号时从此模板生成阶段实例。平台提供多套行业模板（传统产品研发 / IPD / 军工 / 汽车）可供租户克隆。</span>
+            <h3 class="st-title">研发阶段</h3>
+            <span class="st-subtitle">定义研发阶段，创建产品线/型号时按此生成阶段实例；阶段随企业所选方法论（传统产品研发 / IPD / 军工 / 汽车）落地，可在此调整。</span>
           </div>
         </div>
 
@@ -16,7 +16,7 @@
             <span class="st-stat-label">阶段总数</span>
           </div>
           <div v-if="!isPlatformAdmin && !hasAnyTemplate" class="st-stat-hint">
-            暂无研发阶段模板，请点击「克隆平台模板」快速初始化
+            暂无研发阶段：装行业包会自动带入
           </div>
         </div>
 
@@ -28,25 +28,14 @@
             search-placeholder="搜索阶段编码 / 名称..."
             :search-fields="['code', 'name', 'industry']"
             :enable-resize="true"
+            scroll-x="max-content"
             :show-column-toggle="true"
-            :max-height="420"
+            stretch
             row-key="oid"
             size="middle"
           >
             <template #toolbar>
               <a-space>
-                <!-- 克隆是"业务租户把平台模板复制到本租户"的动作：平台管理员本身就在平台租户下，
-                     没有可克隆的来源（克隆会自我复制），故与「克隆平台布局」同口径 —— 平台管理员不显示 -->
-                <a-button
-                  v-if="!isPlatformAdmin"
-                  type="primary"
-                  size="small"
-                  @click="openCloneModal"
-                  :loading="loadingPlatform"
-                >
-                  <template #icon><CloudDownloadOutlined /></template>
-                  克隆平台模板
-                </a-button>
                 <a-button type="primary" size="small" @click="openCreate">
                   <template #icon><PlusOutlined /></template>
                   新增阶段
@@ -88,7 +77,7 @@
               <template v-else-if="column.key === 'action'">
                 <a-space size="small">
                   <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
-                  <a-popconfirm title="确定删除该阶段模板？" @confirm="handleDelete(record)">
+                  <a-popconfirm title="确定删除该阶段？" @confirm="handleDelete(record)">
                     <a-button type="link" size="small" danger>删除</a-button>
                   </a-popconfirm>
                 </a-space>
@@ -100,7 +89,7 @@
         <!-- 新增/编辑弹窗 -->
         <a-modal
           v-model:open="modal.visible"
-          :title="modal.isEdit ? '编辑阶段模板' : '新增阶段模板'"
+          :title="modal.isEdit ? '编辑阶段' : '新增阶段'"
           @ok="handleSave"
           :confirm-loading="modal.saving"
           width="560px"
@@ -154,42 +143,41 @@
           </a-form>
         </a-modal>
 
-        <!-- 克隆平台模板弹窗 -->
-        <a-modal
-          v-model:open="cloneModal.visible"
-          title="克隆平台阶段模板"
-          ok-text="关闭"
-          cancel-text="取消"
-          :footer="null"
-          width="560px"
-        >
-          <a-alert
-            type="info"
-            show-icon
-            message="平台提供以下行业模板，选择一套克隆到本租户即可在此基础上调整。"
-            style="margin-bottom:12px"
-          />
-          <div v-loading="loadingPlatform">
-            <div v-if="platformIndustries.length === 0" style="color:#999;text-align:center;padding:24px">
-              暂无可用的平台行业模板
-            </div>
-            <a-row v-else :gutter="[12,12]">
-              <a-col v-for="ind in platformIndustries" :key="ind.code" :span="12">
-                <a-card size="small" hoverable class="st-industry-card">
-                  <div class="st-industry-header">
-                    <a-tag :color="industryColor(ind.code)" size="large">{{ industryLabel(ind.code) }}</a-tag>
-                    <span class="st-industry-count">{{ ind.count }} 个阶段</span>
-                  </div>
-                  <div class="st-industry-desc">{{ industryDesc(ind.code) }}</div>
-                  <a-button type="primary" block size="small" :loading="cloningIndustry === ind.code" @click="handleCloneIndustry(ind.code)">
-                    <template #icon><CopyOutlined /></template>
-                    克隆{{ industryLabel(ind.code) }}模板
-                  </a-button>
-                </a-card>
-              </a-col>
-            </a-row>
-          </div>
-        </a-modal>
+      </a-tab-pane>
+
+      <!-- 交付件模板：与阶段模板同属"方法论内容"，装包带入企业一份、企业可裁剪 -->
+      <a-tab-pane key="deliverable" tab="交付件">
+        <DeliverableTemplateConfig />
+      </a-tab-pane>
+
+      <!-- 阶段门模板：门的（编码, 阶段）与交付件的（门, 阶段）一一对应，可交叉校验 -->
+      <a-tab-pane key="gate" tab="阶段门">
+        <GateTemplateConfig />
+      </a-tab-pane>
+
+      <!-- 评审模板：每份评审挂在某道门上；交付件的"评审通过"完成条件引用这里的编码 -->
+      <a-tab-pane key="review" tab="评审">
+        <ReviewTemplateConfig />
+      </a-tab-pane>
+
+      <!-- 检查规则：声明式 JSON（时机 + 对象 + 条件 + 严重度），运行期按这些声明做检查 -->
+      <a-tab-pane key="rule" tab="检查规则">
+        <RuleTemplateConfig />
+      </a-tab-pane>
+
+      <!-- 问题类型：问题被结构化的地基（闭环率 / 超期问题数等指标都按这里的编码统计） -->
+      <a-tab-pane key="issuetype" tab="问题类型">
+        <IssueTypeTemplateConfig />
+      </a-tab-pane>
+
+      <!-- 指标：计算口径 + 数据就绪度（A/B/C；C 级第一版显示「暂未评估」，禁止编造数值） -->
+      <a-tab-pane key="metric" tab="指标">
+        <MetricTemplateConfig />
+      </a-tab-pane>
+
+      <!-- 驾驶舱：布局定义（3 个视角 + 分组件；主视角 = 产品经理/研发的日常工作面） -->
+      <a-tab-pane key="dashboard" tab="驾驶舱">
+        <DashboardTemplateConfig />
       </a-tab-pane>
     </a-tabs>
   </div>
@@ -197,13 +185,29 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { message, Modal } from 'ant-design-vue'
-import { PlusOutlined, RocketOutlined, CopyOutlined, CloudDownloadOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import { PlusOutlined, RocketOutlined } from '@ant-design/icons-vue'
 import DataTable from '@/components/DataTable.vue'
+import DeliverableTemplateConfig from '@/views/system/DeliverableTemplateConfig.vue'
+import GateTemplateConfig from '@/views/system/GateTemplateConfig.vue'
+import ReviewTemplateConfig from '@/views/system/ReviewTemplateConfig.vue'
+import RuleTemplateConfig from '@/views/system/RuleTemplateConfig.vue'
+import IssueTypeTemplateConfig from '@/views/system/IssueTypeTemplateConfig.vue'
+import MetricTemplateConfig from '@/views/system/MetricTemplateConfig.vue'
+import DashboardTemplateConfig from '@/views/system/DashboardTemplateConfig.vue'
 import { useUserStore } from '@/stores/user'
+import { useCapabilities } from '@/composables/useCapabilities'
+
+// 功能架构（FUNCTIONAL）随 military-gjb / automotive-apqp 两个行业包而来（platform-base 已不含它）。
+// "管理对象"下拉据此过滤；标签映射仍保留全量（见下方 MANAGED_OBJECT_LABEL），
+// 否则历史阶段模板里已配的 FUNCTIONAL 会显示成裸 code。
+// 账本由 MainLayout 统一加载，这里只读。
+const { has } = useCapabilities()
 import {
-  listStageTemplates, createStageTemplate, updateStageTemplate, deleteStageTemplate,
-  listPlatformIndustries, listPlatformTemplates, cloneStageTemplatesFromPlatform
+  listStageTemplates,
+  createStageTemplate,
+  updateStageTemplate,
+  deleteStageTemplate
 } from '@/api'
 
 const activeTab = ref('stage')
@@ -222,12 +226,22 @@ const INDUSTRY_OPTIONS = [
   { value: 'AUTOMOTIVE', label: '汽车', desc: 'APQP 流程：概念设计→开发验证→生产准备→量产→上市' },
 ]
 const INDUSTRY_COLOR = { TRADITIONAL: 'blue', IPD: 'purple', MILITARY: 'red', AUTOMOTIVE: 'green' }
-const MANAGED_OBJECT_OPTIONS = [
-  { value: 'FUNCTIONAL', label: '功能 (Functional)' },
-  { value: 'PART',       label: '零组件 (Part)' },
-  { value: 'DOCUMENT',   label: '文档 (Document)' },
-]
-const MANAGED_OBJECT_LABEL = Object.fromEntries(MANAGED_OBJECT_OPTIONS.map(o => [o.value, o.label]))
+// 标签映射：**全量**（含 FUNCTIONAL）—— 历史阶段模板里已配 FUNCTIONAL 的行仍要显示中文名。
+const MANAGED_OBJECT_LABEL = {
+  FUNCTIONAL: '功能 (Functional)',
+  PART:       '零组件 (Part)',
+  DOCUMENT:   '文档 (Document)',
+}
+// 下拉可选项：按能力账本过滤 —— FUNCTIONAL 随 military-gjb / automotive-apqp 两个行业包而来
+// （platform-base 已不含它），没装包的企业不给这个选项。标签映射仍取全量，见上。
+// 2026-11-03：零件不再作为阶段的管理对象 —— 零组件统一在「物料清单」页签创建与维护，
+// 阶段下的资料区只放文档 / 功能架构。已配了 PART 的历史模板仍按标签显示（见上），只是不能再选。
+const MANAGED_OBJECT_OPTIONS = computed(() => [
+  ...(has('FUNCTIONAL_ARCHITECTURE')
+    ? [{ value: 'FUNCTIONAL', label: MANAGED_OBJECT_LABEL.FUNCTIONAL }]
+    : []),
+  { value: 'DOCUMENT', label: MANAGED_OBJECT_LABEL.DOCUMENT },
+])
 
 function industryLabel(code) { return (INDUSTRY_OPTIONS.find(o => o.value === code) || {}).label || code || '通用' }
 function industryColor(code) { return INDUSTRY_COLOR[code] || 'default' }
@@ -350,72 +364,40 @@ async function handleDelete(record) {
   } catch { message.error('删除失败') }
 }
 
-// ========== 克隆平台模板 ==========
-const cloneModal = reactive({ visible: false })
-const platformIndustries = ref([])
-const loadingPlatform = ref(false)
-const cloningIndustry = ref('')
-
-async function loadPlatformIndustries() {
-  loadingPlatform.value = true
-  try {
-    const indRes = await listPlatformIndustries()
-    const industries = (indRes.code === 200 && indRes.data) ? indRes.data : []
-    // 统计每个行业的阶段数
-    const counts = {}
-    for (const code of industries) {
-      const listRes = await listPlatformTemplates(code)
-      counts[code] = (listRes.code === 200 && Array.isArray(listRes.data)) ? listRes.data.length : 0
-    }
-    platformIndustries.value = industries.map(code => ({ code, count: counts[code] || 0 }))
-  } catch { message.error('加载平台模板失败') }
-  finally { loadingPlatform.value = false }
-}
-
-async function openCloneModal() {
-  cloneModal.visible = true
-  await loadPlatformIndustries()
-}
-
-async function handleCloneIndustry(industry) {
-  Modal.confirm({
-    title: `确认克隆${industryLabel(industry)}模板？`,
-    content: `将把平台 ${industryLabel(industry)} 模板（约 ${platformIndustries.value.find(i => i.code === industry)?.count || 0} 个阶段）克隆到本租户。已存在的同编码阶段会自动跳过。`,
-    okText: '确认克隆',
-    cancelText: '取消',
-    onOk: async () => {
-      cloningIndustry.value = industry
-      try {
-        const res = await cloneStageTemplatesFromPlatform(industry)
-        if (res.code === 200) {
-          const n = res.data || 0
-          if (n > 0) message.success(`已克隆 ${n} 个${industryLabel(industry)}阶段模板`)
-          else message.info(`${industryLabel(industry)}模板已全部存在，无需重复克隆`)
-          await loadTemplates()
-        } else {
-          message.error(res.message || '克隆失败')
-        }
-      } catch { message.error('克隆失败') }
-      finally { cloningIndustry.value = '' }
-    }
-  })
-}
 
 onMounted(loadTemplates)
 </script>
 
 <style scoped>
-.st-page { padding: 0; }
-.st-header { padding: 16px 0; border-bottom: 1px solid #f0f0f0; margin-bottom: 12px; }
+/* 撑满型页面（同 LifecycleConfig 口径）：页签内容区给出确定高度，
+   让各 Tab 里的 DataTable 能用 stretch 模式 —— 表体内部滚动、
+   横向滚动条固定在视口底部，不必拉到页面最底才能横向滚动。 */
+.st-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+.st-header { padding: 16px 0; border-bottom: 1px solid #f0f0f0; margin-bottom: 12px; flex-shrink: 0; }
 .st-title { margin: 0 0 4px 0; font-size: 18px; font-weight: 600; }
 .st-subtitle { font-size: 13px; color: #8c8c8c; }
-.st-stats-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; padding: 8px 16px; background: #fafafa; border-radius: 6px; }
+.st-stats-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; padding: 8px 16px; background: #fafafa; border-radius: 6px; flex-shrink: 0; }
 .st-stat-item { display: flex; align-items: center; gap: 6px; }
 .st-stat-icon { font-size: 16px; color: #1677ff; }
 .st-stat-value { font-size: 18px; font-weight: 600; }
 .st-stat-label { font-size: 12px; color: #8c8c8c; }
 .st-stat-hint { font-size: 12px; color: #fa8c16; }
-.st-table-wrap { margin-top: 0; }
+/* 表格区域：flex 容器 + 保底高度（同 LifecycleConfig）——
+   stretch 表体自滚、分页器固定；矮窗口下由 .bc-content 的外层滚动条兜底。 */
+.st-table-wrap {
+  margin-top: 0;
+  flex: 1;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .st-color-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 .st-folders-preview { color: #666; font-size: 12px; cursor: pointer; }
 .st-industry-card { border: 1px solid #f0f0f0; transition: all 0.2s; }
@@ -423,6 +405,32 @@ onMounted(loadTemplates)
 .st-industry-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .st-industry-count { font-size: 12px; color: #8c8c8c; }
 .st-industry-desc { font-size: 12px; color: #595959; min-height: 40px; margin-bottom: 12px; line-height: 1.5; }
+
+/* 页签撑满链（同 LifecycleConfig 的 .lc-tabs）：content-holder / content / tabpane
+   逐层放行高度，各 Tab 的根组件才能拿到确定高度启用内部滚动。
+   content-holder 用 overflow:visible —— 矮视口下有 min-height 保底的表格区
+   溢出时交给 .bc-content 的外层滚动条，避免下半截被裁掉。 */
+.st-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.st-tabs :deep(.ant-tabs-content-holder) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+.st-tabs :deep(.ant-tabs-content) {
+  flex: 1;
+  min-height: 0;
+}
+.st-tabs :deep(.ant-tabs-tabpane) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 
 /* 复用 Part 编辑窗口的紧凑样式 */
 .part-create-modal :deep(.ant-modal-header) {

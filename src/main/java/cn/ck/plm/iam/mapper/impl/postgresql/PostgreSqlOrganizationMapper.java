@@ -22,15 +22,15 @@ import java.util.List;
 public interface PostgreSqlOrganizationMapper extends OrganizationMapper {
 
     @Override
-    @Insert("INSERT INTO ck_organization (oid, code, name, parent_oid, description, enabled, " +
+    @Insert("INSERT INTO ck_organization (oid, code, name, parent_oid, leader_oid, description, enabled, " +
             " creator, created_at, updater, updated_at) " +
-            "VALUES (#{oid}, #{code}, #{name}, #{parentOid}, #{description}, #{enabled}, " +
+            "VALUES (#{oid}, #{code}, #{name}, #{parentOid}, #{leaderOid}, #{description}, #{enabled}, " +
             "#{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(Organization org);
 
     @Override
     @Update("UPDATE ck_organization SET name = #{name}, parent_oid = #{parentOid}, " +
-            "description = #{description}, enabled = #{enabled}, " +
+            "leader_oid = #{leaderOid}, description = #{description}, enabled = #{enabled}, " +
             "updater = #{updater}, updated_at = #{updatedAt} WHERE oid = #{oid}")
     int update(Organization org);
 
@@ -40,7 +40,7 @@ public interface PostgreSqlOrganizationMapper extends OrganizationMapper {
 
     // ==================== 查询映射定义 ====================
 
-    @Select("SELECT oid, code, name, parent_oid, description, enabled, " +
+    @Select("SELECT oid, code, name, parent_oid, leader_oid, description, enabled, " +
             " creator, created_at, updater, updated_at " +
             "FROM ck_organization WHERE oid = #{oid}")
     @Results(id = "orgResult", value = {
@@ -48,6 +48,7 @@ public interface PostgreSqlOrganizationMapper extends OrganizationMapper {
             @Result(property = "code",        column = "code"),
             @Result(property = "name",        column = "name"),
             @Result(property = "parentOid",   column = "parent_oid"),
+            @Result(property = "leaderOid",   column = "leader_oid"),
             @Result(property = "description", column = "description"),
             @Result(property = "enabled",     column = "enabled"),
             @Result(property = "creator",     column = "creator"),
@@ -58,35 +59,35 @@ public interface PostgreSqlOrganizationMapper extends OrganizationMapper {
     @Override
     Organization selectByOid(@Param("oid") String oid);
 
-    @Select("SELECT oid, code, name, parent_oid, description, enabled, " +
+    @Select("SELECT oid, code, name, parent_oid, leader_oid, description, enabled, " +
             " creator, created_at, updater, updated_at " +
             "FROM ck_organization WHERE code = #{code}")
     @ResultMap("orgResult")
     @Override
     Organization selectByCode(@Param("code") String code);
 
-    @Select("SELECT oid, code, name, parent_oid, description, enabled, " +
+    @Select("SELECT oid, code, name, parent_oid, leader_oid, description, enabled, " +
             " creator, created_at, updater, updated_at " +
             "FROM ck_organization ORDER BY code ASC")
     @ResultMap("orgResult")
     @Override
     List<Organization> selectAll();
 
-    @Select("SELECT oid, code, name, parent_oid, description, enabled, " +
+    @Select("SELECT oid, code, name, parent_oid, leader_oid, description, enabled, " +
             " creator, created_at, updater, updated_at " +
             "FROM ck_organization WHERE parent_oid = #{parentOid} ORDER BY code ASC")
     @ResultMap("orgResult")
     @Override
     List<Organization> selectByParentOid(@Param("parentOid") String parentOid);
 
-    @Select("SELECT oid, code, name, parent_oid, description, enabled, " +
+    @Select("SELECT oid, code, name, parent_oid, leader_oid, description, enabled, " +
             " creator, created_at, updater, updated_at " +
             "FROM ck_organization WHERE parent_oid IS NULL ORDER BY code ASC")
     @ResultMap("orgResult")
     @Override
     List<Organization> selectRoots();
 
-    @Select("SELECT oid, code, name, parent_oid, description, enabled, " +
+    @Select("SELECT oid, code, name, parent_oid, leader_oid, description, enabled, " +
             " creator, created_at, updater, updated_at " +
             "FROM ck_organization " +
             "WHERE LOWER(code) LIKE LOWER('%' || #{keyword} || '%') " +

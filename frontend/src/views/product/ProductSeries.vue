@@ -7,7 +7,8 @@
         <span class="ps-subtitle">管理产品线及其研发团队</span>
       </div>
       <div class="ps-header-right">
-        <a-button @click="openRecycleBin">
+        <!-- 回收站（含恢复）只对租户管理员开放：普通成员误删找管理员，不自己翻回收站 -->
+        <a-button v-if="isTenantAdmin" @click="openRecycleBin">
           <template #icon><DeleteOutlined /></template>
           回收站
         </a-button>
@@ -31,6 +32,7 @@
     <!-- 产品线表格 -->
     <div class="ps-table-wrapper">
       <DataTable
+        scroll-x="max-content"
         :columns="columns"
         :data-source="treeData"
         :loading="loading"
@@ -59,7 +61,7 @@
               <component :is="record.nodeType === 'PRODUCT_MODEL' ? TagOutlined : ApartmentOutlined"
                          :style="{ color: record.nodeType === 'PRODUCT_MODEL' ? '#52c41a' : '#1677ff' }" />
               <a-tag v-if="record.nodeType === 'PRODUCT_MODEL'" color="green" style="margin-right:4px">型号</a-tag>
-              <span class="ps-name" @dblclick="handleNameDblClick(record)" title="双击进入产品线管业">
+              <span class="ps-name" @dblclick="handleNameDblClick(record)" title="双击进入产品线管理">
                 {{ record.name }}
               </span>
             </a-space>
@@ -95,6 +97,20 @@
             <a-tag v-if="record.parentOid" color="default">{{ parentNameMap[record.parentOid] || '—' }}</a-tag>
             <span v-else class="ps-cell-text" style="color:#999">-</span>
           </template>
+          <!-- 上市时间：目标上市日期（IBA）。实际上市日看 LDCP 通过日，偏差在「经营战报」里 -->
+          <template v-else-if="column.key === 'targetLaunchDate'">
+            <span v-if="ibaFacts[record.oid]?.targetLaunchDate" class="ps-iba-text">
+              {{ ibaFacts[record.oid].targetLaunchDate }}
+            </span>
+            <span v-else class="ps-iba-empty">未设定</span>
+          </template>
+          <!-- 目标成本（IBA）：系列与型号各填各的，未填不拿父级顶替 -->
+          <template v-else-if="column.key === 'targetCost'">
+            <span v-if="ibaFacts[record.oid]?.targetCost != null" class="ps-iba-text">
+              {{ formatCost(ibaFacts[record.oid].targetCost) }}
+            </span>
+            <span v-else class="ps-iba-empty">未设定</span>
+          </template>
           <template v-else-if="column.key === 'thumbnail'">
             <div class="ps-thumbnail" v-if="record.thumbnail">
               <img :src="record.thumbnail" alt="缩略图" />
@@ -120,12 +136,13 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space size="small">
-              <!-- ProductLine 节点 -->
+              <!-- ProductLine 节点 —— 阶段/编辑/删除仅产品经理（或管理员）可见，型号入口保留（只看不改） -->
               <template v-if="record.nodeType !== 'PRODUCT_MODEL'">
                 <a-button type="link" size="small" @click="openModelDrawer(record)">型号</a-button>
-                <a-button type="link" size="small" @click="openStageDrawer(record)">阶段</a-button>
-                <a-button type="link" size="small" @click="openModal(record)">编辑</a-button>
+                <a-button v-if="canManage(record.oid)" type="link" size="small" @click="openStageDrawer(record)">阶段</a-button>
+                <a-button v-if="canManage(record.oid)" type="link" size="small" @click="openModal(record)">编辑</a-button>
                 <a-popconfirm
+                  v-if="canManage(record.oid)"
                   title="确定删除该产品线？将移入回收站，可随时恢复。"
                   @confirm="handleDelete(record)"
                 >
@@ -137,9 +154,10 @@
               </template>
               <!-- ProductModel 节点 -->
               <template v-else>
-                <a-button type="link" size="small" @click="openModelStageDrawer(record)">阶段</a-button>
-                <a-button type="link" size="small" @click="openModelEdit(record)">编辑</a-button>
+                <a-button v-if="canManage(record.oid)" type="link" size="small" @click="openModelStageDrawer(record)">阶段</a-button>
+                <a-button v-if="canManage(record.oid)" type="link" size="small" @click="openModelEdit(record)">编辑</a-button>
                 <a-popconfirm
+                  v-if="canManage(record.oid)"
                   title="确定删除该产品型号？将移入回收站，可随时恢复。"
                   @confirm="handleModelDelete(record)"
                 >
@@ -178,7 +196,6 @@
         v-model="modalFormData"
         :external-product-line-tree="editingFilteredProductLineTree"
       />
-
     </a-modal>
 
     <!-- 团队管理抽屉 -->
@@ -188,8 +205,8 @@
       :width="580"
       @close="teamDrawer.visible = false"
     >
-      <!-- 添加成员 -->
-      <div class="ps-add-member">
+      <!-- 添加成员 —— 仅产品经理（或管理员）可维护团队；其他人只读查看 -->
+      <div v-if="canManage(teamDrawer.lineOid)" class="ps-add-member">
         <a-space>
           <a-select
             v-model:value="teamDrawer.newUserId"
@@ -270,22 +287,24 @@
                 </template>
               </a-list-item-meta>
               <template #actions>
-                <a-popconfirm
-                  v-if="!item.inherited"
-                  title="确定将该成员移出团队？"
-                  @confirm="handleRemoveTeamMember(item)"
-                >
-                  <a-button type="link" size="small" danger>
-                    <template #icon><CloseOutlined /></template>
-                    移除
-                  </a-button>
-                </a-popconfirm>
-                <a-tooltip v-else title="继承成员不可在本级移除，请在父级产品线中管理">
-                  <a-button type="link" size="small" disabled>
-                    <template #icon><CloseOutlined /></template>
-                    移除
-                  </a-button>
-                </a-tooltip>
+                <template v-if="canManage(teamDrawer.lineOid)">
+                  <a-popconfirm
+                    v-if="!item.inherited"
+                    title="确定将该成员移出团队？"
+                    @confirm="handleRemoveTeamMember(item)"
+                  >
+                    <a-button type="link" size="small" danger>
+                      <template #icon><CloseOutlined /></template>
+                      移除
+                    </a-button>
+                  </a-popconfirm>
+                  <a-tooltip v-else title="继承成员不可在本级移除，请在父级产品线中管理">
+                    <a-button type="link" size="small" disabled>
+                      <template #icon><CloseOutlined /></template>
+                      移除
+                    </a-button>
+                  </a-tooltip>
+                </template>
               </template>
             </a-list-item>
           </template>
@@ -305,7 +324,7 @@
       </div>
       <div v-else-if="stageDrawer.stages.length === 0" style="text-align:center;padding:40px">
         <a-empty description="暂无研发阶段">
-          <a-button type="primary" :loading="stageDrawer.initializing" @click="handleInitStages">
+          <a-button v-if="canManage(stageDrawer.lineOid)" type="primary" :loading="stageDrawer.initializing" @click="handleInitStages">
             初始化默认阶段
           </a-button>
         </a-empty>
@@ -315,7 +334,7 @@
           <h4 class="ps-stage-title">
             <NodeIndexOutlined /> 研发阶段 ({{ stageDrawer.stages.length }})
           </h4>
-          <a-button size="small" type="dashed" :loading="stageDrawer.initializing" @click="handleInitStages">
+          <a-button v-if="canManage(stageDrawer.lineOid)" size="small" type="dashed" :loading="stageDrawer.initializing" @click="handleInitStages">
             重置为默认
           </a-button>
         </div>
@@ -338,28 +357,30 @@
                   <span style="color:#8c8c8c;font-size:12px">
                     图标: {{ item.icon || '-' }} | 颜色: {{ item.color || '-' }} | 排序: {{ item.sortOrder || '-' }}
                     <template v-if="parseManagedObjects(item.managedObjectTypes).length">
-                      | 管理: {{ parseManagedObjects(item.managedObjectTypes).map(t => managedObjectOptions.find(o => o.value === t)?.label || t).join('、') }}
+                      | 管理: {{ parseManagedObjects(item.managedObjectTypes).map(t => MANAGED_OBJECT_LABELS[t] || t).join('、') }}
                     </template>
                   </span>
                 </template>
               </a-list-item-meta>
               <template #actions>
-                <a-tooltip :title="item.showOnDashboard !== false ? '取消仪表盘显示' : '设为仪表盘显示'">
+                <template v-if="canManage(stageDrawer.lineOid)">
+                  <a-tooltip :title="item.showOnDashboard !== false ? '取消仪表盘显示' : '设为仪表盘显示'">
+                    <a-button
+                      type="link" size="small"
+                      @click="handleToggleStageShow('line', item)"
+                    >
+                      <template #icon>
+                        <EyeOutlined v-if="item.showOnDashboard !== false" />
+                        <EyeInvisibleOutlined v-else />
+                      </template>
+                    </a-button>
+                  </a-tooltip>
                   <a-button
+                    v-if="stageDrawer.editingCode !== item.code"
                     type="link" size="small"
-                    @click="handleToggleStageShow('line', item)"
-                  >
-                    <template #icon>
-                      <EyeOutlined v-if="item.showOnDashboard !== false" />
-                      <EyeInvisibleOutlined v-else />
-                    </template>
-                  </a-button>
-                </a-tooltip>
-                <a-button
-                  v-if="stageDrawer.editingCode !== item.code"
-                  type="link" size="small"
-                  @click="openStageEditModal(item)"
-                >编辑</a-button>
+                    @click="openStageEditModal(item)"
+                  >编辑</a-button>
+                </template>
               </template>
             </a-list-item>
           </template>
@@ -462,9 +483,10 @@
             <template #actions>
               <a-space size="small">
                 <a-button type="link" size="small" @click="openModelTeamDrawer(item)">团队</a-button>
-                <a-button type="link" size="small" @click="openModelStageDrawer(item)">阶段</a-button>
-                <a-button type="link" size="small" @click="openModelEdit(item)">编辑</a-button>
+                <a-button v-if="canManage(item.oid)" type="link" size="small" @click="openModelStageDrawer(item)">阶段</a-button>
+                <a-button v-if="canManage(item.oid)" type="link" size="small" @click="openModelEdit(item)">编辑</a-button>
                 <a-popconfirm
+                  v-if="canManage(item.oid)"
                   title="确定删除该产品型号？将移入回收站，可随时恢复。"
                   @confirm="handleModelDelete(item)"
                 >
@@ -508,7 +530,7 @@
       :width="580"
       @close="modelTeamDrawer.visible = false"
     >
-      <div class="ps-add-member">
+      <div v-if="canManage(modelTeamDrawer.modelOid)" class="ps-add-member">
         <a-space>
           <a-select
             v-model:value="modelTeamDrawer.newUserId"
@@ -572,21 +594,23 @@
                 </template>
               </a-list-item-meta>
               <template #actions>
-                <template v-if="item.inherited">
-                  <a-tooltip title="继承成员不可在本级移除，请在所属产品线中管理">
-                    <a-button type="link" size="small" disabled>
-                      <template #icon><CloseOutlined /></template>
-                      移除
-                    </a-button>
-                  </a-tooltip>
-                </template>
-                <template v-else>
-                  <a-popconfirm title="确定将该成员移出团队？" @confirm="handleRemoveModelTeamMember(item)">
-                    <a-button type="link" size="small" danger>
-                      <template #icon><CloseOutlined /></template>
-                      移除
-                    </a-button>
-                  </a-popconfirm>
+                <template v-if="canManage(modelTeamDrawer.modelOid)">
+                  <template v-if="item.inherited">
+                    <a-tooltip title="继承成员不可在本级移除，请在所属产品线中管理">
+                      <a-button type="link" size="small" disabled>
+                        <template #icon><CloseOutlined /></template>
+                        移除
+                      </a-button>
+                    </a-tooltip>
+                  </template>
+                  <template v-else>
+                    <a-popconfirm title="确定将该成员移出团队？" @confirm="handleRemoveModelTeamMember(item)">
+                      <a-button type="link" size="small" danger>
+                        <template #icon><CloseOutlined /></template>
+                        移除
+                      </a-button>
+                    </a-popconfirm>
+                  </template>
                 </template>
               </template>
             </a-list-item>
@@ -607,13 +631,13 @@
       </div>
       <div v-else-if="modelStageDrawer.stages.length === 0" style="text-align:center;padding:40px">
         <a-empty description="暂无研发阶段">
-          <a-button type="primary" :loading="modelStageDrawer.initializing" @click="handleModelInitStages">初始化默认阶段</a-button>
+          <a-button v-if="canManage(modelStageDrawer.modelOid)" type="primary" :loading="modelStageDrawer.initializing" @click="handleModelInitStages">初始化默认阶段</a-button>
         </a-empty>
       </div>
       <div v-else>
         <div class="ps-stage-header">
           <h4 class="ps-stage-title"><NodeIndexOutlined /> 研发阶段 ({{ modelStageDrawer.stages.length }})</h4>
-          <a-button size="small" type="dashed" :loading="modelStageDrawer.initializing" @click="handleModelInitStages">重置为默认</a-button>
+          <a-button v-if="canManage(modelStageDrawer.modelOid)" size="small" type="dashed" :loading="modelStageDrawer.initializing" @click="handleModelInitStages">重置为默认</a-button>
         </div>
         <a-list :data-source="modelStageDrawer.stages" size="small">
           <template #renderItem="{ item, index }">
@@ -634,28 +658,30 @@
                   <span style="color:#8c8c8c;font-size:12px">
                     图标: {{ item.icon || '-' }} | 颜色: {{ item.color || '-' }} | 排序: {{ item.sortOrder || '-' }}
                     <template v-if="parseManagedObjects(item.managedObjectTypes).length">
-                      | 管理: {{ parseManagedObjects(item.managedObjectTypes).map(t => managedObjectOptions.find(o => o.value === t)?.label || t).join('、') }}
+                      | 管理: {{ parseManagedObjects(item.managedObjectTypes).map(t => MANAGED_OBJECT_LABELS[t] || t).join('、') }}
                     </template>
                   </span>
                 </template>
               </a-list-item-meta>
               <template #actions>
-                <a-tooltip :title="item.showOnDashboard !== false ? '取消仪表盘显示' : '设为仪表盘显示'">
+                <template v-if="canManage(modelStageDrawer.modelOid)">
+                  <a-tooltip :title="item.showOnDashboard !== false ? '取消仪表盘显示' : '设为仪表盘显示'">
+                    <a-button
+                      type="link" size="small"
+                      @click="handleToggleStageShow('model', item)"
+                    >
+                      <template #icon>
+                        <EyeOutlined v-if="item.showOnDashboard !== false" />
+                        <EyeInvisibleOutlined v-else />
+                      </template>
+                    </a-button>
+                  </a-tooltip>
                   <a-button
+                    v-if="modelStageDrawer.editingCode !== item.code"
                     type="link" size="small"
-                    @click="handleToggleStageShow('model', item)"
-                  >
-                    <template #icon>
-                      <EyeOutlined v-if="item.showOnDashboard !== false" />
-                      <EyeInvisibleOutlined v-else />
-                    </template>
-                  </a-button>
-                </a-tooltip>
-                <a-button
-                  v-if="modelStageDrawer.editingCode !== item.code"
-                  type="link" size="small"
-                  @click="openModelStageEditModal(item)"
-                >编辑</a-button>
+                    @click="openModelStageEditModal(item)"
+                  >编辑</a-button>
+                </template>
               </template>
             </a-list-item>
           </template>
@@ -754,6 +780,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { useUserStore } from '@/stores/user'
 import {
   PlusOutlined, TeamOutlined, ClusterOutlined,
   DeleteOutlined, UserAddOutlined, CloseOutlined,
@@ -762,6 +789,55 @@ import {
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
+const userStore = useUserStore()
+
+/** 回收站入口仅租户管理员可见（TENANT_ADMIN/ADMIN，平台管理员自动放行）——口径同 MainLayout */
+const isTenantAdmin = computed(() => {
+  return userStore.roles && (
+    userStore.roles.includes('TENANT_ADMIN') || userStore.roles.includes('ADMIN') || userStore.roles.includes('PLATFORM_ADMIN')
+  )
+})
+
+// ==================== 维护权限（2026-10-17：阶段/团队/编辑/删除仅产品经理可用） ====================
+
+/** 各系列/型号 oid → 我能否维护（后端 canManageUnder 判定：团队角色=产品经理，管理员豁免） */
+const managePerms = reactive({})
+
+/**
+ * 我能否维护该系列/型号。真源在后端（写接口逐一校验），这里只管按钮显隐；
+ * 权限没加载到时按无权限处理（宁严勿松），管理员本地豁免与后端口径一致。
+ */
+function canManage(oid) {
+  if (!oid) return false
+  if (isTenantAdmin.value) return true
+  return !!managePerms[oid]
+}
+
+/** 批量拉取我的维护权限（series / 型号 oid 混传均可） */
+async function fetchManagePerms(oids) {
+  const list = (oids || []).filter(Boolean)
+  if (!list.length) return
+  try {
+    const res = await getMyManagePermissions(list)
+    if (res.code === 200 && res.data) {
+      Object.assign(managePerms, res.data)
+    }
+  } catch { /* 取不到 → 保持无权限 */ }
+}
+
+/** 从树里收集全部节点 oid（含型号节点）批量取权限，loadAllLines 后调用 */
+async function loadManagePerms() {
+  const oids = []
+  const walk = (nodes) => {
+    for (const n of nodes || []) {
+      if (n.oid) oids.push(n.oid)
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(treeData.value)
+  await fetchManagePerms(oids)
+}
+
 import {
   getProductLines, createProductLine, updateProductLine, deleteProductLine, listDeletedProductLines, restoreProductLine,
   getProductLineTree, getProductLineRoots, getProductLineStats,
@@ -771,18 +847,28 @@ import {
   getProductModels, createProductModel, updateProductModel, deleteProductModel, listDeletedProductModels, restoreProductModel,
   getProductModelTeam, getProductModelTeamMembers,
   addProductModelTeamMember, removeProductModelTeamMember,
+  getMyManagePermissions,
+  getTargetLaunchDate, getTargetCost,
 } from '@/api'
 import DataTable from '@/components/DataTable.vue'
 import DynamicForm from '@/components/DynamicForm.vue'
+import { useCapabilities } from '@/composables/useCapabilities'
+
+// 功能架构（FUNCTIONAL）不是平台自带对象：类型已归 military-gjb / automotive-apqp 两个行业包，
+// 能力码也由它们声明 —— 没装包的企业里根本没有这个类型。故"管理对象类型"选项按能力账本过滤，
+// 与资源库页签、系列/型号页面板同口径：能力没启用就不给这个选项（而不是让人配上一个空对象）。
+// 账本由 MainLayout 统一加载（见 MainLayout 顶层 loadCapabilities），这里只读。
+const { has } = useCapabilities()
 
 // ==================== 默认列表列（PageLayout 未配置时使用） ====================
 const DEFAULT_LIST_COLUMNS = [
-  { title: '编码', dataIndex: 'code', key: 'code', width: 130 },
+  { title: '代号', dataIndex: 'code', key: 'code', width: 130 },
   { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true, width: 160 },
   { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
-  { title: '子系列', key: 'childrenCount', width: 90, align: 'center' },
-  { title: '产品型号', key: 'modelCount', width: 90, align: 'center' },
-  { title: '父级', key: 'parent', width: 130 },
+  // 2026-11-03 用户要求：子系列 / 父级两列没有决策价值（层级看左边树就够了），
+  // 换成「上市时间」与「目标成本」—— 这两个才是经营上会被追问的数
+  { title: '上市时间', key: 'targetLaunchDate', width: 120 },
+  { title: '目标成本', key: 'targetCost', width: 140 },
   { title: '缩略图', key: 'thumbnail', width: 100 },
   { title: '团队', key: 'team', width: 90 },
   { title: '创建时间', key: 'createdAt', width: 170 },
@@ -800,6 +886,11 @@ const parentNameMap = reactive({}) // parentOid -> name 映射
 const teamMemberCounts = reactive({})
 const modelMemberCounts = reactive({})
 const statsMap = reactive({})   // { [oid]: { childrenCount, modelCount } }
+/**
+ * 上市时间 / 目标成本：两者都是 IBA（TARGET_LAUNCH_DATE / TARGET_COST），
+ * 列表接口不带 IBA 值，行内补拉一份。树形无分页、行数有限，并发拉不会明显拖慢首屏。
+ */
+const ibaFacts = reactive({})   // oid -> { targetLaunchDate, targetCost }
 
 /** 产品型号总数（从树形数据中筛选 nodeType === 'PRODUCT_MODEL' 的节点） */
 const allModelsCount = computed(() => {
@@ -982,11 +1073,23 @@ async function handleInitStages() {
   }
 }
 
-const managedObjectOptions = [
-  { value: 'FUNCTIONAL', label: '功能架构 (Functional)' },
-  { value: 'PART', label: '零组件 (Part)' },
-  { value: 'DOCUMENT', label: '文档 (Document)' },
-]
+// 标签字典：保留**全量**（含 FUNCTIONAL）—— 历史阶段模板里已配了 FUNCTIONAL 的行仍要显示中文名；
+// 若跟着开关一起过滤，列表会把它显示成裸 code（"管理: FUNCTIONAL"）。
+const MANAGED_OBJECT_LABELS = {
+  FUNCTIONAL: '功能架构 (Functional)',
+  PART: '零组件 (Part)',
+  DOCUMENT: '文档 (Document)',
+}
+
+// 下拉可选项：按能力账本过滤 —— FUNCTIONAL 随 military-gjb / automotive-apqp 而来，没装包就不给这个选项。
+// 2026-11-03：零件不再挂在阶段下（统一走「物料清单」页签），故不再提供 PART 选项；
+// 已配了 PART 的历史模板仍按标签显示（MANAGED_OBJECT_LABELS 保留全量）。
+const managedObjectOptions = computed(() => [
+  ...(has('FUNCTIONAL_ARCHITECTURE')
+    ? [{ value: 'FUNCTIONAL', label: MANAGED_OBJECT_LABELS.FUNCTIONAL }]
+    : []),
+  { value: 'DOCUMENT', label: MANAGED_OBJECT_LABELS.DOCUMENT },
+])
 
 /** 解析后端返回的 managedObjectTypes JSON 字符串为数组 */
 function parseManagedObjects(json) {
@@ -1074,6 +1177,7 @@ async function refreshModels() {
     const res = await getProductModels({ productLineOid: modelDrawer.lineOid })
     if (res.code === 200) {
       modelDrawer.models = res.data || []
+      await fetchManagePerms(modelDrawer.models.map(m => m.oid))
     }
     await loadAllLines()  // 刷新统计
   } catch { /* ignore */ }
@@ -1561,6 +1665,9 @@ async function loadAllLines() {
         statsMap[oid] = s
       })
     }
+    await loadManagePerms()
+    // 列上的上市时间 / 目标成本：等树就位后补拉（不阻塞首屏，失败就显示「未设定」）
+    loadIbaFacts(treeData.value)
   } catch {
     message.error('加载产品线列表失败')
   } finally {
@@ -1698,6 +1805,38 @@ function getStat(oid, field) {
 function formatTime(str) {
   if (!str) return '-'
   return str.replace('T', ' ').substring(0, 19)
+}
+
+/** 目标成本显示：未设定就写未设定，不拿 0 顶替（0 是个合法的目标，缺数不是） */
+function formatCost(value) {
+  if (value == null || value === '') return '未设定'
+  const num = Number(value)
+  if (!Number.isFinite(num)) return String(value)
+  return '¥ ' + num.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+
+/**
+ * 补拉列表要展示的两个 IBA：上市时间（TARGET_LAUNCH_DATE）与目标成本（TARGET_COST）。
+ *
+ * <p>逐行并发拉，不是逐行串行 —— 树展开后一次铺满，几十行也只是一次等待。
+ * 任一接口失败按「未设定」显示，不让一行的取数失败把整列变成空白。
+ */
+async function loadIbaFacts(nodes) {
+  const oids = []
+  const walk = (list) => {
+    for (const n of list || []) {
+      if (n.oid) oids.push(n.oid)
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(nodes)
+  await Promise.all(oids.map(async (oid) => {
+    const [dateRes, costRes] = await Promise.allSettled([getTargetLaunchDate(oid), getTargetCost(oid)])
+    ibaFacts[oid] = {
+      targetLaunchDate: dateRes.status === 'fulfilled' ? (dateRes.value?.data?.targetLaunchDate || null) : null,
+      targetCost: costRes.status === 'fulfilled' ? (costRes.value?.data?.targetCost ?? null) : null,
+    }
+  }))
 }
 
 // ==================== 回收站 ====================
@@ -1878,6 +2017,17 @@ async function loadListLayout() {
 
 .ps-cell-text {
   color: #595959;
+}
+
+/* 列表里的 IBA 值（上市时间 / 目标成本） */
+.ps-iba-text {
+  color: #1a1a2e;
+  font-variant-numeric: tabular-nums;
+}
+
+.ps-iba-empty {
+  color: #bfbfbf;
+  font-size: 12px;
 }
 
 .ps-thumbnail img {

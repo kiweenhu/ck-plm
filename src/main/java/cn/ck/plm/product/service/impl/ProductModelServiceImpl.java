@@ -21,10 +21,13 @@ import cn.ck.plm.product.mapper.TeamMapper;
 import cn.ck.plm.product.mapper.TeamMemberMapper;
 import cn.ck.plm.product.service.api.FolderService;
 import cn.ck.plm.product.service.api.ProductModelService;
+import cn.ck.plm.product.service.api.MethodologyInstanceService;
 import cn.ck.plm.product.service.api.StageService;
 import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
 import cn.ck.plm.softtype.entity.TypeDefinition;
+import cn.ck.plm.softtype.service.api.IBADataService;
 import cn.ck.plm.softtype.service.api.SoftTypeInstanceCapability;
+import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -56,6 +59,14 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
     private final FolderService folderService;
     private final StageService stageService;
     private final ObjectMapper objectMapper;
+    private final MethodologyInstanceService methodologyInstanceService;
+    /** 团队可见性过滤（2026-10-12）：不在系列/型号团队中的用户看不到对应记录 */
+    private final ProductTeamVisibility teamVisibility;
+    /** 建容器时顺带建同名 Part（BOM 父件） */
+    private final ContainerPartProvisioner containerPartProvisioner;
+    /** 型号上的 IBA（TARGET_LAUNCH_DATE / TARGET_COST …）：写要落 IBA，读要摊平回表单 */
+    private final IbaDataSupport ibaDataSupport;
+    private final IBADataService ibaDataService;
 
     public ProductModelServiceImpl(ProductModelMapper productModelMapper,
                                     ProductLineMapper productLineMapper,
@@ -64,7 +75,12 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
                                     UserMapper userMapper,
                                     FolderService folderService,
                                     StageService stageService,
-                                    ObjectMapper objectMapper) {
+                                    ObjectMapper objectMapper,
+                                    MethodologyInstanceService methodologyInstanceService,
+                                    ProductTeamVisibility teamVisibility,
+                                    ContainerPartProvisioner containerPartProvisioner,
+                                    IbaDataSupport ibaDataSupport,
+                                    IBADataService ibaDataService) {
         this.productModelMapper = productModelMapper;
         this.productLineMapper = productLineMapper;
         this.teamMapper = teamMapper;
@@ -73,6 +89,11 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
         this.folderService = folderService;
         this.stageService = stageService;
         this.objectMapper = objectMapper;
+        this.methodologyInstanceService = methodologyInstanceService;
+        this.teamVisibility = teamVisibility;
+        this.containerPartProvisioner = containerPartProvisioner;
+        this.ibaDataSupport = ibaDataSupport;
+        this.ibaDataService = ibaDataService;
     }
 
     // ==================== 能力宿主策略（SoftTypeInstanceCapability）====================
@@ -94,6 +115,8 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
     public SoftTypeInstanceResult createInstance(TypeDefinition type, Map<String, Object> payload) {
         ProductModel model = objectMapper.convertValue(payload, ProductModel.class);
         ProductModel created = create(model);
+        // 新建：全量保存 IBA（无旧数据，delete-all 无副作用）——与产品系列同一口径
+        ibaDataSupport.saveIbaValues(HOST, created.getOid(), payload);
 
         SoftTypeInstanceResult result = new SoftTypeInstanceResult();
         result.setOid(created.getOid());
@@ -105,14 +128,35 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
 
     @Override
     public Object getInstance(String oid, Map<String, Object> params) {
-        return findByOid(oid);
+        return withIba(findByOid(oid), oid);
     }
 
     @Override
     public Object updateInstance(String oid, Map<String, Object> body) {
         ProductModel model = objectMapper.convertValue(body, ProductModel.class);
         model.setOid(oid);
-        return update(model);
+        ProductModel updated = update(model);
+        // 合并保存 IBA（保留已持久化但本次未提交的字段）——型号原先漏了这一步，
+        // 布局里的 IBA 字段填了也进不了 ck_type_iba_data，指标永远读不到
+        ibaDataSupport.mergeIbaValues(HOST, oid, body);
+        // 返回实体（不摊平）：Controller 会强转成 ProductModel，Map 会 ClassCastException
+        return updated;
+    }
+
+    /**
+     * 详情读取时把 IBA 值摊平到返回的 JSON 上。
+     *
+     * <p>{@code ProductModel} 不是 {@code IBAExtensible}（没有 extAttrs 容器），没法靠
+     * {@code restore} 注入；不摊平的话编辑表单里 IBA 字段永远是空的，一保存还会把库里已有的值冲掉。
+     */
+    private Object withIba(ProductModel model, String oid) {
+        if (model == null) return null;
+        Map<String, Object> flat = objectMapper.convertValue(model,
+                new TypeReference<Map<String, Object>>() {
+                });
+        Map<String, Object> iba = ibaDataService.getValues(HOST, oid);
+        if (iba != null && !iba.isEmpty()) flat.putAll(iba);
+        return flat;
     }
 
     // ===== 产品型号 =====
@@ -148,6 +192,20 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
         team.setDescription(model.getName() + "研发团队");
         teamMapper.insert(team);
 
+        // 创建者自动成为「产品经理」—— 团队是刚建的、必无成员，故不必再用 existsByTeamAndUser 兜底。
+        // 口径说明：ck_team_member.user_id 存 username（与前端手动添加成员、
+        // buildMemberVOs 里的 userMapper.selectByUsername 一致）；role_name 是**自由文本**
+        // （"产品经理"不是 ck_role 的角色码 —— 那 16 个是系统权限角色，两套东西别混）。
+        // UserContext 用全限定名，免得为一行再动 import 块（本项目既有惯例，见 TypeDefinitionServiceImpl）。
+        String creator = cn.ck.plm.base.util.UserContext.get();
+        if (creator != null && !creator.trim().isEmpty()) {
+            TeamMember productManager = new TeamMember();
+            productManager.setTeamOid(team.getOid());
+            productManager.setUserId(creator.trim());
+            productManager.setRoleName("产品经理");
+            teamMemberMapper.insert(productManager);
+        }
+
         model.setTeamOid(team.getOid());
         if (model.getDeleteMark() == null) {
             model.setDeleteMark(false);
@@ -157,6 +215,10 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
         // 根据本租户的研发阶段模板初始化阶段到 ck_stage 表（先生成 stage OID）
         List<Stage> stages = stageService.initDefaultStages(model.getOid(), Stage.OWNER_TYPE_MODEL, null);
 
+        // 六类方法论实例（交付件 / 阶段门 / 评审 / 检查规则 / 指标 / 驾驶舱）：
+        // 与阶段同一口径 —— 从本租户模板「快照」而来、幂等（已有即跳过）。
+        methodologyInstanceService.initFor(model.getOid(), Stage.OWNER_TYPE_MODEL);
+
         // 根据阶段自带的 defaultFolders 创建各研发阶段的系统默认文件夹
         for (Stage stage : stages) {
             List<String> folderNames = parseDefaultFolders(stage.getDefaultFolders());
@@ -164,6 +226,11 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
                 folderService.initSystemFolders(model.getOid(), stage.getOid(), folderNames);
             }
         }
+
+        // 同名 Part：型号自己的 BOM 需要一个父件（不是复用父系列的那个 —— 型号的结构可能不同）
+        containerPartProvisioner.provision(model.getName(), model.getOid(),
+                ContainerPartProvisioner.CONTAINER_MODEL,
+                stages.isEmpty() ? null : stages.get(0).getOid(), creator);
 
         return model;
     }
@@ -245,12 +312,13 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
 
     @Override
     public List<ProductModel> findAll() {
-        return productModelMapper.selectAll();
+        // 团队可见性（2026-10-12）：不在型号团队、也不在父系列/祖先团队 → 不可见；管理员不过滤
+        return teamVisibility.filterModels(productModelMapper.selectAll());
     }
 
     @Override
     public List<ProductModel> findByProductLineOid(String productLineOid) {
-        return productModelMapper.selectByProductLineOid(productLineOid);
+        return teamVisibility.filterModels(productModelMapper.selectByProductLineOid(productLineOid));
     }
 
     @Override
@@ -258,7 +326,7 @@ public class ProductModelServiceImpl implements ProductModelService, SoftTypeIns
         if (keyword == null || keyword.trim().isEmpty()) {
             return findAll();
         }
-        return productModelMapper.search(keyword.trim());
+        return teamVisibility.filterModels(productModelMapper.search(keyword.trim()));
     }
 
     // ===== 团队管理 =====

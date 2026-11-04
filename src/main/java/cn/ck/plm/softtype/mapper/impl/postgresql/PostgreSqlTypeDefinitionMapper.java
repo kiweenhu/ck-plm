@@ -74,11 +74,16 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
     @Override
     TypeDefinition selectByOid(@Param("oid") String oid);
 
+    /**
+     * 按编码查询类型 —— <b>只在本租户内查</b>（2026-10-10 起由"平台共享 + 租户可覆写"改为按租户隔离）。
+     *
+     * <p>原先的 {@code tenant_oid IN (#{tenantOid}, #{platformOid})} + "本租户优先"排序，是"平台一份元数据 +
+     * 各租户可覆写一份"的实现。改为隔离后，每个租户随包各装一份类型，平台那份只是平台自己的。
+     * 参数 {@code platformOid} <b>已废弃</b>（保留仅为不改动 Mapper 接口与服务层调用签名），SQL 不再使用。
+     */
     @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
-            "FROM ck_type_definition WHERE code = #{code} " +
-            "AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END LIMIT 1")
+            "FROM ck_type_definition WHERE code = #{code} AND tenant_oid = #{tenantOid} LIMIT 1")
     @ResultMap("tdResult")
     @Override
     TypeDefinition selectByCode(@Param("code") String code,
@@ -86,65 +91,66 @@ public interface PostgreSqlTypeDefinitionMapper extends TypeDefinitionMapper {
                                 @Param("platformOid") String platformOid);
 
     /**
-     * 查询全部类型（平台 + 本租户），优先本租户
+     * 查询本租户全部类型（2026-10-10 起不再并入平台那份）
      */
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
+    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
-            "WHERE tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY code, CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END")
+            "WHERE tenant_oid = #{tenantOid} " +
+            "ORDER BY code")
     @ResultMap("tdResult")
     @Override
     List<TypeDefinition> selectAll(@Param("tenantOid") String tenantOid,
                                    @Param("platformOid") String platformOid);
 
     /**
-     * 查询已启用的类型（平台 + 本租户），优先本租户
+     * 查询本租户已启用的类型
      */
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
+    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
-            "WHERE enabled = true AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY code, CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END")
+            "WHERE enabled = true AND tenant_oid = #{tenantOid} " +
+            "ORDER BY code")
     @ResultMap("tdResult")
     @Override
     List<TypeDefinition> selectEnabled(@Param("tenantOid") String tenantOid,
                                         @Param("platformOid") String platformOid);
 
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
+    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
-            "WHERE UPPER(type_kind) = UPPER(#{typeKind}) AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY code, CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END")
+            "WHERE UPPER(type_kind) = UPPER(#{typeKind}) AND tenant_oid = #{tenantOid} " +
+            "ORDER BY code")
     @ResultMap("tdResult")
     @Override
     List<TypeDefinition> selectByTypeKind(@Param("typeKind") String typeKind,
                                            @Param("tenantOid") String tenantOid,
                                            @Param("platformOid") String platformOid);
 
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
+    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
-            "WHERE parent_oid = #{parentOid} AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY code, CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END")
+            "WHERE parent_oid = #{parentOid} AND tenant_oid = #{tenantOid} " +
+            "ORDER BY code")
     @ResultMap("tdResult")
     @Override
     List<TypeDefinition> selectByParentOid(@Param("parentOid") String parentOid,
                                             @Param("tenantOid") String tenantOid,
                                             @Param("platformOid") String platformOid);
 
-    @Select("SELECT DISTINCT ON (code) oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
+    @Select("SELECT oid, code, name, icon, source, type_kind, parent_oid, root_type_code, domain_oid, " +
             "description, sort_order, enabled, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_definition " +
-            "WHERE parent_oid IS NULL AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY code, CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END")
+            "WHERE parent_oid IS NULL AND tenant_oid = #{tenantOid} " +
+            "ORDER BY code")
     @ResultMap("tdResult")
     @Override
     List<TypeDefinition> selectRoots(@Param("tenantOid") String tenantOid,
                                       @Param("platformOid") String platformOid);
 
+    /** 编码查重 —— 只看本租户（隔离后各租户可有同名 code 的类型） */
     @Select("SELECT COUNT(*) FROM ck_type_definition WHERE code = #{code} " +
-            "AND tenant_oid IN (#{tenantOid}, #{platformOid})")
+            "AND tenant_oid = #{tenantOid}")
     @Override
     int existsByCode(@Param("code") String code,
                      @Param("tenantOid") String tenantOid,

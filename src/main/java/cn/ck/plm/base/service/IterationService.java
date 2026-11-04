@@ -35,7 +35,7 @@ import cn.ck.plm.base.entity.LifecycleTemplateDef;
  * // 检入
  * iterService.checkIn(iter);
  *
- * // 生命周期推进
+ * // 生命周期推进（内置 STANDARD：DRAFT → WORKING → PUBLISHED）
  * if (iterService.canPromote(iter, LifecycleTemplateDef.STANDARD)) {
  *     iterService.promoteLifecycle(iter, LifecycleTemplateDef.STANDARD);
  * }

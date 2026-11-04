@@ -7,6 +7,9 @@
 
 package cn.ck.plm.process.dto;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * 任务办理表单上下文 —— 「任务中心」的办理弹框据此渲染<b>该节点配的表单</b>，而不是写死的通用表单。
  *
@@ -44,6 +47,32 @@ public class ProcessTaskFormVO {
     /** 该版本的流程 DSL（JSON 字符串）；解析不到为 null */
     private String dslJson;
 
+    /**
+     * 本实例关联的**业务对象** oid（来自 {@code ck_process_entity_set}；无关联为 null）。
+     *
+     * <p>用途：表单要按业务对象现算数据 —— 如「阶段门决策申请单」的"未关闭阻断问题数"
+     * 自动带出（{@code /api/issues/gate-check?ownerOid=}）。与 {@code entityRefsOf} 同一口径：
+     * 只给"引用 + 类型"，不回查业务表（实体名是锦上添花，查不到不该让办理失败）。
+     */
+    private String businessOid;
+
+    /** 业务对象的类型编码（如 {@code PRODUCT_LINE} / {@code PRODUCT_MODEL}） */
+    private String businessTypeCode;
+
+    /**
+     * 本实例的**用户表单变量**（流程变量剔除平台内部项，如 {@code businessObjectSet} /
+     * {@code initiator} / {@code approved}）。
+     *
+     * <p>用途：**同模板的办理节点回填发起时填过的内容**。发起节点与办理节点配同一张表单时
+     * （如技术评审流程的「开始：评审申请」与「材料准备与确认」都是 {@code technical-review-apply}），
+     * 办理页原先呈现一张空表 —— 申请信息明明已经躺在流程变量里，用户却被要求重填一遍
+     * （2026-10-26 用户反馈「发起时已经填过了，没有带过来」）。
+     *
+     * <p>服务端不解释变量语义：表单自己按 {@code ckplm*} 前缀认自己的字段
+     * （变量名由表单的 {@code collect()} 定义）。空表 = 该实例还没有表单变量（老实例 / 纯审批流程）。
+     */
+    private Map<String, Object> variables = new LinkedHashMap<>();
+
     // ==================== Getter / Setter ====================
 
     public String getFormKey() { return formKey; }
@@ -63,4 +92,13 @@ public class ProcessTaskFormVO {
 
     public String getDslJson() { return dslJson; }
     public void setDslJson(String dslJson) { this.dslJson = dslJson; }
+
+    public String getBusinessOid() { return businessOid; }
+    public void setBusinessOid(String businessOid) { this.businessOid = businessOid; }
+
+    public String getBusinessTypeCode() { return businessTypeCode; }
+    public void setBusinessTypeCode(String businessTypeCode) { this.businessTypeCode = businessTypeCode; }
+
+    public Map<String, Object> getVariables() { return variables; }
+    public void setVariables(Map<String, Object> variables) { this.variables = variables; }
 }

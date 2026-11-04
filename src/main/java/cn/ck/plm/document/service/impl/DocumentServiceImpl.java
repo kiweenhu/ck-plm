@@ -15,8 +15,10 @@ import cn.ck.plm.softtype.service.api.SoftTypeInstanceCapability;
 import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import cn.ck.plm.base.entity.MasterEntity;
 import cn.ck.plm.base.entity.IterationEntity;
+import cn.ck.plm.base.entity.LifecycleStatus;
 import cn.ck.plm.base.service.api.NumberService;
 import cn.ck.plm.base.service.api.VersionRuleService;
+import cn.ck.plm.base.service.impl.RevisionRuleGuard;
 import cn.ck.plm.base.service.api.LifecycleStatusService;
 import cn.ck.plm.base.service.api.LifecycleTemplateService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -29,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,6 +52,7 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
     private final TypeDefinitionMapper typeDefinitionMapper;
     private final NumberService numberService;
     private final VersionRuleService versionRuleService;
+    private final RevisionRuleGuard revisionRuleGuard;
     private final LifecycleTemplateService lifecycleTemplateService;
     /** 状态 code → 显示名（列表/详情都要给"人看得懂"的那个字，见 LifecycleStatusService#displayName） */
     private final LifecycleStatusService lifecycleStatusService;
@@ -62,6 +66,7 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
                                 TypeDefinitionMapper typeDefinitionMapper,
                                 NumberService numberService,
                                 VersionRuleService versionRuleService,
+                                RevisionRuleGuard revisionRuleGuard,
                                 LifecycleTemplateService lifecycleTemplateService,
                                 LifecycleStatusService lifecycleStatusService,
                                 IbaDataSupport ibaDataSupport,
@@ -73,6 +78,7 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
         this.typeDefinitionMapper = typeDefinitionMapper;
         this.numberService = numberService;
         this.versionRuleService = versionRuleService;
+        this.revisionRuleGuard = revisionRuleGuard;
         this.lifecycleTemplateService = lifecycleTemplateService;
         this.lifecycleStatusService = lifecycleStatusService;
         this.ibaDataSupport = ibaDataSupport;
@@ -137,6 +143,20 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
             result.put("revision", latest.getRevision());
             result.put("iteration", latest.getIteration());
             result.put("displayVersion", latest.getDisplayVersion());
+            // 检出与主文件是迭代级字段，主档上没有：任务中心「查看详情」直接复用文档详情抽屉，
+            // 缺了它们抽屉会把"已检出 + 有主文件"显示成"已检入 + 暂无主文件"
+            result.put("checkedOut", latest.isCheckedOut());
+            result.put("checkedOutBy", latest.getCheckedOutBy());
+            result.put("checkedOutComment", latest.getCheckedOutComment());
+            result.put("ckfileOid", latest.getCkfileOid());
+            // 状态必须一并返回：Part / EngDoc 的 getInstance 都给了，文档缺这两键 →
+            // 「设置生命周期状态」弹窗读到 null，把有状态的对象显示成"（无状态）"，
+            // 候选的可达性也跟着按"无状态"算错
+            if (latest.getStatus() != null) {
+                result.put("statusCode", latest.getStatus().getCode());
+                result.put("statusName", lifecycleStatusService.displayName(
+                        latest.getLifecycleTemplateIterationOid(), latest.getStatus().getCode()));
+            }
         }
         // 附加最新迭代的分类 IBA 属性值（平铺到顶层，与原生端点一致）
         if (doc.getClsOid() != null && latest != null) {
@@ -325,12 +345,17 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
 
     @Override
     @Transactional
-    public void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode) {
+    public void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode,
+                                          String migrateToTemplateIterationOid) {
         Document document = documentMapper.selectByOid(oid);
         if (document == null) {
             throw new IllegalArgumentException("文档不存在: " + oid);
         }
         DocumentIteration iter = resolveVersion(oid, entityVersion);
+        // 同一个事务里先迁模板再设状态：中间失败一起回滚，不会出现"迁了模板、状态没设上"
+        if (migrateToTemplateIterationOid != null && !migrateToTemplateIterationOid.trim().isEmpty()) {
+            lifecycleTemplateService.rebindLifecycle(iter, migrateToTemplateIterationOid);
+        }
         lifecycleTemplateService.moveToState(iter, targetStateCode);
         iter.setUpdatedAt(LocalDateTime.now());
         iterationMapper.update(iter);
@@ -341,18 +366,27 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
 
     @Override
     @Transactional
-    public void resetLifecycleStateInstance(String oid, String entityVersion) {
+    public void resetLifecycleStateInstance(String oid, String entityVersion,
+                                            String migrateToTemplateIterationOid) {
         Document document = documentMapper.selectByOid(oid);
         if (document == null) {
             throw new IllegalArgumentException("文档不存在: " + oid);
         }
         DocumentIteration iter = resolveVersion(oid, entityVersion);
+        if (migrateToTemplateIterationOid != null && !migrateToTemplateIterationOid.trim().isEmpty()) {
+            lifecycleTemplateService.rebindLifecycle(iter, migrateToTemplateIterationOid);
+        }
         lifecycleTemplateService.moveToInitialState(iter);
         iter.setUpdatedAt(LocalDateTime.now());
         iterationMapper.update(iter);
         log.info("退回初始状态: documentOid={}, version={}.{}, status={}", oid,
                 iter.getRevision(), iter.getIteration(),
                 iter.getStatus() != null ? iter.getStatus().getCode() : null);
+    }
+
+    @Override
+    public String lifecycleTemplateIterationOfInstance(String oid, String entityVersion) {
+        return resolveVersion(oid, entityVersion).getLifecycleTemplateIterationOid();
     }
 
     /**
@@ -395,6 +429,16 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
         if (currentIter == null) {
             throw new IllegalArgumentException("文档没有可用版本: " + oid);
         }
+        // 检出中的工作副本不能作为修订基线（同部件：避免复制未定稿内容并留下孤版本）
+        if (currentIter.isCheckedOut()) {
+            throw new IllegalStateException(
+                    "文档已被 " + currentIter.getCheckedOutBy() + " 检出，请先检入或取消检出后再修订");
+        }
+        // 版本规则用尽时不再回退字符顺延：通知租户管理员改规则，并阻止修订
+        revisionRuleGuard.ensureRevisionAllowed(document.getTypeDefinitionCode(), currentIter.getRevision(),
+                document.getNumber(), document.getName());
+        // 当前生命周期状态是否允许修订（模板状态上的 revisable，配置缺失不阻断）
+        lifecycleTemplateService.ensureRevisable(currentIter);
 
         // 1. 原最新版本 latest → false
         currentIter.setLatest(false);
@@ -411,8 +455,16 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
         copy.setCreatedAt(LocalDateTime.now());
         copy.setUpdatedAt(LocalDateTime.now());
         copy.setCreator(currentIter.getCreator());
-        copy.setStatus(currentIter.getStatus());
         copy.setLifecycleTemplateIterationOid(currentIter.getLifecycleTemplateIterationOid());
+        // 修订出的新大版本要重新初始化生命周期：回到该对象固化模板的初始状态，不继承旧版本的状态。
+        // 未绑定模板（历史数据）时保持原状态，避免把"本来就没有生命周期"的对象改坏
+        LifecycleStatus initialStatus = lifecycleTemplateService.initialStatus(
+                currentIter.getLifecycleTemplateIterationOid());
+        copy.setStatus(initialStatus != null ? initialStatus : currentIter.getStatus());
+        if (initialStatus == null && currentIter.getLifecycleTemplateIterationOid() != null) {
+            log.warn("修订未能解析模板初始状态，沿用原状态: docOid={}, templateIteration={}",
+                    oid, currentIter.getLifecycleTemplateIterationOid());
+        }
 
         String versionRuleCode = versionRuleService.resolveVersionRuleCode(document.getTypeDefinitionCode());
         String nextRevision = null;
@@ -459,6 +511,8 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
     public List<DocumentVO> findVOsByFolder(String folderOid) {
         List<Document> docs = documentMapper.selectByFolderOid(folderOid);
         List<DocumentVO> vos = new ArrayList<>();
+        // 同一文件夹的文档通常共用模板：按模板子版本缓存"状态 → 可修订"，避免逐行查状态表
+        Map<String, Map<String, Boolean>> revisableCache = new HashMap<>();
         for (Document doc : docs) {
             DocumentVO vo = new DocumentVO();
             vo.setOid(doc.getOid());
@@ -497,6 +551,11 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
                     // 旁边的 code 只是标识，界面显示要用显示名（草稿/已发布）
                     vo.setStatusName(lifecycleStatusService.displayName(
                             latestIter.getLifecycleTemplateIterationOid(), latestIter.getStatus().getCode()));
+                    // 行内「修订」是否出现，由该状态在模板里的 revisable 决定（未知按允许）
+                    Map<String, Boolean> flags = revisableCache.computeIfAbsent(
+                            latestIter.getLifecycleTemplateIterationOid(),
+                            lifecycleTemplateService::revisableFlags);
+                    vo.setRevisable(flags.getOrDefault(latestIter.getStatus().getCode(), true));
                 }
             }
             vos.add(vo);

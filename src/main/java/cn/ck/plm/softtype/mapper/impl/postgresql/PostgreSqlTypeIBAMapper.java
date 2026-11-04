@@ -134,7 +134,7 @@ public interface PostgreSqlTypeIBAMapper extends TypeIBAMapper {
             "FROM ck_type_iba ti " +
             "INNER JOIN ck_iba i ON ti.iba_oid = i.oid " +
             "INNER JOIN ck_type_definition td2 ON ti.type_oid = td2.oid " +
-            "LEFT JOIN ck_attribute_definition ad ON ad.entity_name = td2.code AND ad.iba_oid = ti.iba_oid AND ad.source = 'IBA' " +
+            "LEFT JOIN ck_attribute_definition ad ON ad.entity_name = td2.code AND ad.iba_oid = ti.iba_oid AND ad.source = 'IBA' AND ad.tenant_oid = ti.tenant_oid " +
             "WHERE ti.type_oid IN (SELECT oid FROM type_chain WHERE oid != #{typeOid}) " +
             "ORDER BY ti.sort_order ASC, i.sort_order ASC")
     @Results(id = "inheritedResult", value = {
@@ -183,7 +183,7 @@ public interface PostgreSqlTypeIBAMapper extends TypeIBAMapper {
             "FROM ck_type_iba ti " +
             "INNER JOIN ck_iba i ON ti.iba_oid = i.oid " +
             "INNER JOIN ck_type_definition td2 ON ti.type_oid = td2.oid " +
-            "LEFT JOIN ck_attribute_definition ad ON ad.entity_name = td2.code AND ad.iba_oid = ti.iba_oid AND ad.source = 'IBA' " +
+            "LEFT JOIN ck_attribute_definition ad ON ad.entity_name = td2.code AND ad.iba_oid = ti.iba_oid AND ad.source = 'IBA' AND ad.tenant_oid = ti.tenant_oid " +
             "WHERE ti.type_oid IN (SELECT oid FROM type_chain WHERE oid != #{ownerOid}) " +
             "ORDER BY ti.sort_order ASC, i.sort_order ASC")
     @ResultMap("inheritedResult")

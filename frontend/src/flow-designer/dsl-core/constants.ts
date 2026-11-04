@@ -38,7 +38,12 @@ export const NodeType = {
   /**
    * 设置审批人：由发起人（流程 owner）执行，一次性指定后续人工活动的人员。
    *
-   * <p>业务上**固定是流程启动后的第一个节点**。它自己不产生审批结论，只产生
+   * <p>业务上**通常就是流程启动后的第一个节点**（不是硬约束，2026-10-13 按用户口径修正）：
+   * 它只管**下游**的人员；若它之前还有活动，那些活动必须自己声明清楚由谁办
+   * （例如"由发起人办理"），否则承办人会落空 —— 该情形由校验拦下
+   * （{@link IssueCode.SETUP_NOT_FIRST}，ERROR）。
+   *
+   * <p>它自己不产生审批结论，只产生
    * <b>人员指派</b>：下游的审批 / 会签 / 办理活动（见 {@link SETUP_COVERED_TYPES}）
    * 一律由它指定，无需各自声明。
    */
@@ -96,14 +101,14 @@ export const ASSIGNEE_NODE_TYPES: NodeType[] = [
  * 「设置审批人」活动会覆盖的人工活动类型。
  *
  * <p><b>按类型自动覆盖，不需要活动自己声明</b>：设置活动的职责就是"指定后面所有人工活动
- * 的审批人 / 会签人 / 办理人"，这三类活动**天然需要人去办**，因此一律纳入它的任务表单。
+ * 的审批人 / 会签人 / 办理人"，这三类活动**天然需要人去办**，因此一律纳入它的节点表单。
  * 早先的版本要求下游活动声明一个 `SETUP` 策略才纳入 —— 结果是"流程里明明有审批节点、
  * 表单却一项都没有"，还会给出一条莫名其妙的"下游没有需要指定人员的活动"。
  *
  * <p>通知（{@link NodeType.NOTIFY}）不在此列：它的接收人由自身的接收人配置表达，
  * 不属于"审批 / 办理"这类必须由发起人指派的角色岗位。
  *
- * <p>本常量是"哪些活动会被设置活动覆盖"的**唯一事实源**，校验、任务表单、编译三处共用。
+ * <p>本常量是"哪些活动会被设置活动覆盖"的**唯一事实源**，校验、节点表单、编译三处共用。
  */
 export const SETUP_COVERED_TYPES: NodeType[] = [
   NodeType.APPROVAL,
@@ -143,6 +148,19 @@ export const ASSIGNEE_STRATEGY_LABEL: Record<AssigneeStrategy, string> = {
   VARIABLE: '流程变量',
   EXPRESSION: '表达式（高级）',
 }
+
+/**
+ * 运行期<b>尚未实现</b>的审批人策略 —— 目前为空。
+ *
+ * <p>两个"由组织解析"的策略都已落地：`INITIATOR_LEADER`（发起人 → 所属组织 → 主管）与
+ * `DEPT_LEADER`（业务对象上的部门字段 → 组织 → 主管），都由编译层的 `ckplm:assignee` 声明 +
+ * 运行期解析实现（`ProcessServiceImpl#resolveDeclaredAssignee`）。
+ *
+ * <p><b>这份清单是留给下一个策略的护栏</b>：新增了策略但运行期没跟上时，把 code 加进来即可，
+ * 三处（校验拦截 / 编译不输出会炸的 assignee / 面板标注"运行期未实现"）都会自动生效 ——
+ * 别让用户配出一个"能存能部署、走到那一步就卡死"的流程。
+ */
+export const UNSUPPORTED_ASSIGNEE_STRATEGIES: AssigneeStrategy[] = []
 
 /** 需要 userOids 的策略 */
 export const NEEDS_USERS: AssigneeStrategy[] = [AssigneeStrategy.USER]
@@ -487,7 +505,13 @@ export const IssueCode = {
   DEFAULT_BRANCH_UNEXPECTED: 'DEFAULT_BRANCH_UNEXPECTED',
   /** 流程里有审批/会签/办理活动，却没有「设置审批人」活动 —— 那些人不会被发起人指派 */
   SETUP_MISSING: 'SETUP_MISSING',
-  /** 「设置审批人」不是流程的第一步（它之前的人工活动不会被它覆盖） */
+  /**
+   * 「设置审批人」**之前**有不由发起人办理的人力活动。
+   *
+   * <p>它之前执行的活动人员不会被它指派 —— 若这些活动全是"由发起人办理"（承办人明确），
+   * 不构成问题（2026-10-13 用户口径：原先"必须直接跟在开始之后"的结论并不必然成立）；
+   * 只要有一个活动的责任人不是发起人，其承办人就会落空，故报 ERROR 拦保存。
+   */
   SETUP_NOT_FIRST: 'SETUP_NOT_FIRST',
   /**
    * 两个「设置审批人」活动覆盖到同一个活动。
@@ -513,6 +537,8 @@ export const IssueCode = {
   REJECT_NO_PREVIOUS_NODE: 'REJECT_NO_PREVIOUS_NODE',
   SERVICE_NOT_SET: 'SERVICE_NOT_SET',
   SUB_PROCESS_NO_KEY: 'SUB_PROCESS_NO_KEY',
+  /** 子流程多实例的集合变量缺失，或写成了 ${} 表达式（只认变量名） */
+  SUB_PROCESS_MULTI_INSTANCE_INVALID: 'SUB_PROCESS_MULTI_INSTANCE_INVALID',
   TIMER_NOT_SET: 'TIMER_NOT_SET',
   DEADLINE_REASSIGN_NO_TARGET: 'DEADLINE_REASSIGN_NO_TARGET',
   NOTIFY_NO_RECIPIENT: 'NOTIFY_NO_RECIPIENT',
@@ -540,9 +566,25 @@ export const IssueCode = {
   EDGE_ROUTE_UNSPECIFIED: 'EDGE_ROUTE_UNSPECIFIED',
   /** 路由只对审批/会签有意义（其它节点没有"结论"可分） */
   EDGE_ROUTE_NOT_APPLICABLE: 'EDGE_ROUTE_NOT_APPLICABLE',
+  /**
+   * 「终止同层分支」勾在了不产生并行分支的连线上。
+   *
+   * <p>它表达的是"这一支先到，收掉同层其它还在走的支路" —— 没有并行结构就没有可收的分支。
+   * 属"配了没效果"（WARNING）：流程照常走通，只是那个开关什么都不做。
+   */
+  TERMINATE_OUTSIDE_BRANCH: 'TERMINATE_OUTSIDE_BRANCH',
   DUPLICATE_NODE_ID: 'DUPLICATE_NODE_ID',
   EDGE_ENDPOINT_MISSING: 'EDGE_ENDPOINT_MISSING',
   UNSUPPORTED_ELEMENT: 'UNSUPPORTED_ELEMENT',
+  /**
+   * 审批人策略在运行期没有实现。
+   *
+   * <p>若放行，编译产物会引用一个永远没人写入的变量，任务创建时表达式解析直接抛异常 ——
+   * 流程卡住且上一步的办理被回滚。这类"配了但一定炸"的选项只能在保存前挡掉。
+   * 当前清单为空（两个"由组织解析"的策略都已落地），此码留给下一个运行期没跟上的策略，
+   * 见 {@link UNSUPPORTED_ASSIGNEE_STRATEGIES}。
+   */
+  ASSIGNEE_STRATEGY_UNSUPPORTED: 'ASSIGNEE_STRATEGY_UNSUPPORTED',
 } as const
 export type IssueCode = (typeof IssueCode)[keyof typeof IssueCode]
 
@@ -639,6 +681,15 @@ export interface ServiceParamDescriptor {
  * 以及面板里"目标状态"下拉的可见性判断。写三遍字面量迟早会有一处漏改。
  */
 export const SERVICE_SET_STATE = 'object.setLifecycleState'
+
+/**
+ * 「设置变更单据状态」服务 id。
+ *
+ * <p>变更请求 / 变更通告这类业务单据不在 {@code ck_softtype_instance} 里，生命周期状态服务
+ * 够不到它们的 {@code status}；审批流程要推进单据状态，就得走这个服务
+ * （后端 {@code ChangeRequestStatusHandler}，按流程 businessKey 定位单据）。
+ */
+export const SERVICE_SET_CHANGE_STATUS = 'change.setRequestStatus'
 
 /**
  * 「系统集成」服务 id（旧称「发布到目标系统」）。
@@ -820,6 +871,25 @@ export const BUILTIN_SERVICES: ServiceDescriptor[] = [
         control: 'password',
         help: 'Basic 口令、Bearer Token 或 API Key 的取值。保存在流程定义里（当前为明文），'
           + '请勿使用个人口令；后续版本会改为「目标系统注册表 + 加密存储」',
+      },
+    ],
+  },
+  {
+    // 变更请求 / 变更通告的主表是独立表（ck_change_request / ck_change_notice），
+    // 不是软类型实例 —— object.setLifecycleState 够不着它们的 status 列，只能另起一个服务。
+    // 单据 oid 由流程 businessKey 定位（发起时传入），见 ChangeRequestStatusHandler。
+    id: SERVICE_SET_CHANGE_STATUS,
+    label: '设置变更单据状态',
+    params: [
+      {
+        name: 'status',
+        label: '目标状态',
+        type: ValueType.STRING,
+        required: true,
+        control: 'text',
+        help: '填状态 code。变更请求：ANALYZING 影响分析中 / REVIEWING 评审中 / ACCEPTED 已受理 / '
+          + 'REJECTED 已否决；变更通告：APPROVING 审批中 / APPROVED 已批准 / REJECTED 已驳回。'
+          + '只允许这几个 —— 退回草稿、关闭、取消是人的决定，不让流程节点写',
       },
     ],
   },

@@ -26,15 +26,17 @@ import cn.ck.plm.base.entity.TenantEntity;
  *
  * <p><b>为什么要有这张表</b>：早先"有哪些表单"只存在于前端代码里的
  * {@code dsl-core/forms.ts} 注册表 —— 企业想加一张自己的审批表单，没有任何地方可以配，
- * 只能改代码。表落库后，内置模板由启动初始化器自动登记，自定义模板在「业务配置 → 流程表单」里维护。
+ * 只能改代码。表落库后，内置表单随 {@code platform-base} 包的 {@code forms.json} 播种，
+ * 自定义模板在「业务配置 → 流程表单」里维护。
  *
  * <h3>租户与内置</h3>
  * <ul>
- *   <li>{@link #builtin} 为真的模板是<b>系统内置</b>：随应用启动自动登记，不允许删除，
+ *   <li>{@link #builtin} 为真的模板是<b>系统内置</b>：不允许删除，
  *       code / nodeTypes / component 三个"契约字段"也不允许改（它们决定运行期怎么渲染）。</li>
- *   <li>内置模板归属平台租户（见 {@code ProcessFormTemplateInitializer}），
- *       表在 {@code TenantStatementInterceptor} 里是 PLATFORM_SHARED ——
- *       所有租户查询时都能看到平台内置 + 自己租户的自定义模板。</li>
+ *   <li><b>本表按租户隔离</b>（2026-10-10 起）：每个租户各有自己的一份模板 ——
+ *       内置三张（设置流程参与者 / 审批意见 / 会签）随 {@code platform-base} 包装入本租户，
+ *       自定义模板由「业务配置 → 流程表单」维护。租户可**停用**自己那张内置表单（不影响别家），
+ *       但不可删除、契约字段不可改。</li>
  * </ul>
  */
 public class ProcessFormTemplate extends BaseEntity implements TenantEntity {

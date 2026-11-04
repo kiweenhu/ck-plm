@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 生命周期模板管理控制器 —— 定义状态流转规则。
@@ -95,6 +96,41 @@ public class LifecycleTemplateController {
         } catch (IllegalArgumentException e) {
             log.warn("更新生命周期模板失败: {}", e.getMessage());
             return ApiResponse.fail(400, e.getMessage());
+        }
+    }
+
+    /**
+     * 设置某状态是否允许修订 —— 由租户管理员在「业务配置 → 生命周期」按状态决定。
+     *
+     * <pre>
+     * PUT /api/lifecycle-templates/DOC_REVIEW/states/PUBLISHED/revisable
+     * { "revisable": false }
+     * </pre>
+     *
+     * <p>这是权限开关而不是结构变更：不产生新的模板子版本，改动写到该模板全部子版本，
+     * 在途对象（固化了旧子版本）也立即按新规则判定。执行侧见
+     * {@code LifecycleTemplateService#ensureRevisable}。
+     */
+    @PutMapping("/{code}/states/{statusCode}/revisable")
+    public ApiResponse<Void> setStateRevisable(@PathVariable String code,
+                                               @PathVariable String statusCode,
+                                               @RequestBody(required = false) Map<String, Object> body) {
+        Object value = body != null ? body.get("revisable") : null;
+        if (!(value instanceof Boolean)) {
+            return ApiResponse.fail(400, "revisable 必须为布尔值");
+        }
+        try {
+            templateService.setStateRevisable(code, statusCode, (Boolean) value);
+            return ApiResponse.ok();
+        } catch (IllegalArgumentException e) {
+            log.warn("设置状态可修订失败: {}", e.getMessage());
+            return ApiResponse.fail(400, e.getMessage());
+        } catch (IllegalStateException e) {
+            log.warn("设置状态可修订被拒: {}", e.getMessage());
+            return ApiResponse.fail(409, e.getMessage());
+        } catch (Exception e) {
+            log.warn("设置状态可修订异常: template={}, status={}, error={}", code, statusCode, e.getMessage());
+            return ApiResponse.fail(500, "设置状态可修订失败: " + e.getMessage());
         }
     }
 

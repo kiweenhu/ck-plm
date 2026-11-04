@@ -197,15 +197,28 @@ public class SoftTypeInstanceController {
      *     states:[{code, name, reachable, reason}], reason }
      * </pre>
      *
-     * <p>依据是<b>该类型绑定的生命周期模板</b>：状态清单、初始状态、以及"从当前状态一步能迁到谁"。
-     * 界面据此把迁不过去的选项禁用并说明原因，而不是让用户点了才知道。
+     * <p>候选项<b>一律按业务配置的模板</b>给：设置状态会在同一次操作里把历史对象切到新模板，
+     * 候选必须与新模板同源。对象仍绑着旧模板 / 旧子版本 / 未绑定时，响应里分别带
+     * {@code templateChanged} / {@code templateBindRequired} 与切换后的状态映射，
+     * 界面据此提示"本次会先切换模板"，不再让用户选"保留旧模板"。
      */
     @GetMapping("/{oid}/lifecycle-states")
     public ApiResponse<LifecycleStateOptionsVO> lifecycleStates(@PathVariable String oid,
                                                                @RequestParam String typeDefinitionCode) {
         try {
+            String boundIterationOid;
+            try {
+                boundIterationOid = softTypeInstanceService.lifecycleTemplateIteration(
+                        typeDefinitionCode, oid, null);
+            } catch (RuntimeException e) {
+                // 读不到绑定信息不阻断弹窗：按"没绑模板"处理，退回业务配置的模板
+                log.warn("读取对象绑定的生命周期模板失败，按未绑定处理: oid={}, type={}, error={}",
+                        oid, typeDefinitionCode, e.getMessage());
+                boundIterationOid = null;
+            }
             LifecycleStateOptionsVO options = typeLifecycleStateService.options(
-                    typeDefinitionCode, currentStatusCode(typeDefinitionCode, oid));
+                    typeDefinitionCode, currentStatusCode(typeDefinitionCode, oid),
+                    boundIterationOid);
             // 对象正在流程中 → 不允许手工改状态（与服务端执行时的判定同一处，见 runtimeBlockedReason）
             String blocked = runtimeBlockedReason(oid, typeDefinitionCode);
             if (blocked != null) {
@@ -225,7 +238,7 @@ public class SoftTypeInstanceController {
      * <pre>
      * POST /api/softtype-instances/{oid}/lifecycle-state
      * { "typeDefinitionCode": "ELECTRONIC", "mode": "INITIAL" }                       // 退回模板初始状态
-     * { "typeDefinitionCode": "ELECTRONIC", "mode": "SPECIFIED", "targetStateCode": "IN_WORK" }
+     * { "typeDefinitionCode": "ELECTRONIC", "mode": "SPECIFIED", "targetStateCode": "WORKING" }
      * </pre>
      *
      * <p>两种模式都按模板执行：指定状态要求当前状态能<b>一步</b>迁到目标；退回初始状态则
@@ -234,6 +247,10 @@ public class SoftTypeInstanceController {
      * <p><b>对象正在流程中时一律拒绝</b>（409）：流程里的「设置状态」服务节点会在该到的时候改它，
      * 手工插一脚会让"流程走到哪一步"与"对象是什么状态"对不上。界面已按同一条件禁用，
      * 这里再挡一道 —— 绕过界面直接调接口同样改不了。
+     *
+     * <p><b>对象绑定的模板不是业务配置的那一版时（旧模板 / 旧子版本 / 未绑定），会先切到业务配置的
+     * 模板</b>（状态按 code 保留，保留不了就落到新模板初始状态），再设置目标状态 —— 同一个事务。
+     * {@code migrateTemplate=true} 仍可用，语义与自动切换一致。
      */
     @PostMapping("/{oid}/lifecycle-state")
     public ApiResponse<Void> setLifecycleState(@PathVariable String oid,
@@ -245,18 +262,62 @@ public class SoftTypeInstanceController {
         if (!initial && targetStateCode == null) {
             return ApiResponse.fail(400, "请选择要设置的目标状态");
         }
+        boolean migrate = Boolean.TRUE.equals(body.get("migrateTemplate"))
+                || "MIGRATE".equalsIgnoreCase(str(body, "templateChoice"));
+        String migrateTo = null;
+        if (migrate) {
+            migrateTo = typeLifecycleStateService.configuredTemplateIteration(typeDefinitionCode);
+            if (migrateTo == null) {
+                return ApiResponse.fail(400, "类型「" + typeDefinitionCode
+                        + "」在业务配置里没有绑定生命周期模板，无法迁移");
+            }
+        }
+        if (migrateTo == null) {
+            // 手工设置状态一律落在业务配置的模板上：历史对象绑着旧模板 / 旧子版本 / 未绑定时，
+            // 先在同一次事务里切过去，再按新模板设置状态 —— 不再提供"保留旧模板"。
+            migrateTo = resolveConfiguredMigration(typeDefinitionCode, oid);
+        }
         String blocked = runtimeBlockedReason(oid, typeDefinitionCode);
         if (blocked != null) {
             return ApiResponse.fail(409, blocked);
         }
+        final String migrateToIteration = migrateTo;
         return execVoid(() -> {
             if (initial) {
-                softTypeInstanceService.resetLifecycleState(typeDefinitionCode, oid, str(body, "entityVersion"));
+                softTypeInstanceService.resetLifecycleState(
+                        typeDefinitionCode, oid, str(body, "entityVersion"), migrateToIteration);
             } else {
                 softTypeInstanceService.setLifecycleState(
-                        typeDefinitionCode, oid, str(body, "entityVersion"), targetStateCode);
+                        typeDefinitionCode, oid, str(body, "entityVersion"), targetStateCode,
+                        migrateToIteration);
             }
         }, "设置生命周期状态失败");
+    }
+
+    /**
+     * 手工设置状态前，判断是否需要先把对象切到业务配置的模板。
+     *
+     * <p>只要迭代上固化的模板子版本 ≠ 业务配置模板的最新子版本（未绑定、旧模板、
+     * 同 code 的旧子版本都算），就返回配置的模板子版本；完全相同返回 null。
+     *
+     * <p>这是"设置状态"这一操作的语义：<b>在类型当前绑定的模板上设置</b>。
+     * 历史对象沿用旧模板会导致状态写进旧模板、界面候选与新模板对不上，
+     * 所以不再让用户选"保留旧模板"。
+     */
+    private String resolveConfiguredMigration(String typeDefinitionCode, String oid) {
+        String configured = typeLifecycleStateService.configuredTemplateIteration(typeDefinitionCode);
+        if (configured == null) {
+            return null;
+        }
+        try {
+            String bound = softTypeInstanceService.lifecycleTemplateIteration(typeDefinitionCode, oid, null);
+            return configured.equals(bound) ? null : configured;
+        } catch (RuntimeException e) {
+            // 读不到绑定（宿主不支持 / 数据损坏）：按需要切换处理，避免直接失败
+            log.warn("读取对象绑定的生命周期模板失败，按需要切换处理: oid={}, type={}, error={}",
+                    oid, typeDefinitionCode, e.getMessage());
+            return configured;
+        }
     }
 
     /**

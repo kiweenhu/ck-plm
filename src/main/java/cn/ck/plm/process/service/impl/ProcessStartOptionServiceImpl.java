@@ -16,6 +16,7 @@ import cn.ck.plm.process.mapper.ProcessTemplateMapper;
 import cn.ck.plm.process.mapper.ProcessTemplateVersionMapper;
 import cn.ck.plm.process.service.api.ProcessEntitySetService;
 import cn.ck.plm.process.service.api.ProcessStartOptionService;
+import cn.ck.plm.product.service.impl.ProductTeamRoleResolver;
 import cn.ck.plm.softtype.entity.TypeDefinition;
 import cn.ck.plm.softtype.entity.TypeLifecycleStateProcessLink;
 import cn.ck.plm.softtype.mapper.TypeDefinitionMapper;
@@ -47,19 +48,26 @@ public class ProcessStartOptionServiceImpl implements ProcessStartOptionService 
     private final RepositoryService repositoryService;
     /** 判定"该对象是否已有流程在执行"（发起闸门，与 start 端点同一口径） */
     private final ProcessEntitySetService entitySetService;
+    /**
+     * 项目级发起权限（2026-10-14）：按"我在该系列 / 型号团队里的角色"判 —— 见 {@link ProductTeamRoleResolver}。
+     * 非项目对象（器件 / 文档…）不受此限。
+     */
+    private final ProductTeamRoleResolver roleResolver;
 
     public ProcessStartOptionServiceImpl(TypeDefinitionMapper typeDefinitionMapper,
                                          TypeLifecycleStateProcessService typeLifecycleStateProcessService,
                                          ProcessTemplateMapper templateMapper,
                                          ProcessTemplateVersionMapper versionMapper,
                                          RepositoryService repositoryService,
-                                         ProcessEntitySetService entitySetService) {
+                                         ProcessEntitySetService entitySetService,
+                                         ProductTeamRoleResolver roleResolver) {
         this.typeDefinitionMapper = typeDefinitionMapper;
         this.typeLifecycleStateProcessService = typeLifecycleStateProcessService;
         this.templateMapper = templateMapper;
         this.versionMapper = versionMapper;
         this.repositoryService = repositoryService;
         this.entitySetService = entitySetService;
+        this.roleResolver = roleResolver;
     }
 
     @Override
@@ -113,6 +121,57 @@ public class ProcessStartOptionServiceImpl implements ProcessStartOptionService 
                     + "请在本租户能看到该流程的前提下重新配置");
             return vo;
         }
+        return fillTemplateAndVersion(vo, template, type.getCode(), status);
+    }
+
+    @Override
+    public ProcessStartOptionVO resolveByKey(String processKey, String typeCode, String statusCode,
+                                             String entityOid) {
+        String key = trimToNull(processKey);
+        if (key == null) {
+            throw new IllegalArgumentException("processKey 不能为空");
+        }
+        ProcessStartOptionVO vo = new ProcessStartOptionVO();
+        vo.setTypeDefinitionCode(trimToNull(typeCode));
+        vo.setStatusCode(trimToNull(statusCode));
+
+        // 冲突闸门与按类型解析同一口径（同一对象同一大版本只允许一个流程在执行）
+        ProcessStartConflictVO conflict =
+                entitySetService.resolveStartConflict(entityOid, trimToNull(typeCode), null);
+        if (conflict.isBlocked()) {
+            vo.setStartable(false);
+            vo.setReason(ProcessEntitySetService.conflictMessage(conflict)
+                    + "（可在「流程监控 → 运行中」查看或终止）");
+            return vo;
+        }
+
+        // 项目级发起权限（2026-10-14 用户要求）：门 / 评审的发起上下文是产品系列 / 型号 ——
+        // 若该 oid 确实是系列 / 型号，则要求"我在其团队里的角色可发起"
+        // （产品经理 / 项目经理 / IPDT 组长；管理员豁免）。非项目对象（器件、文档…）不在此拦。
+        if (roleResolver.isProductOwner(entityOid) && !roleResolver.canStartProcessUnder(entityOid)) {
+            vo.setStartable(false);
+            vo.setReason("没有发起权：本操作限该系列 / 型号团队里的「产品经理 / 项目经理 / IPDT 组长」（或管理员）");
+            return vo;
+        }
+
+        // 调用方已明确"要发起哪个流程"（如阶段门 / 评审行上的 process_key），不再查状态-流程绑定
+        ProcessTemplate template = templateMapper.selectByKey(key);
+        if (template == null) {
+            vo.setStartable(false);
+            vo.setReason("流程模板在当前租户下不存在: " + key + "（可能已被删除，或它属于其他租户）");
+            return vo;
+        }
+        return fillTemplateAndVersion(vo, template, trimToNull(typeCode), trimToNull(statusCode));
+    }
+
+    /**
+     * 公共出口：组装模板/版本展示信息 + 判定"当前租户下能否发起"。
+     *
+     * <p>两种解析（按类型绑定 / 按 key 直传）共用本方法 —— 部署判定只有一份实现，
+     * 两条入口的 {@code startable} 语义因此不会漂移。
+     */
+    private ProcessStartOptionVO fillTemplateAndVersion(ProcessStartOptionVO vo, ProcessTemplate template,
+                                                        String typeCode, String statusCode) {
         ProcessStartOptionVO.ProcessTemplateInfo info = new ProcessStartOptionVO.ProcessTemplateInfo();
         info.setOid(template.getOid());
         info.setKey(template.getKey());
@@ -154,7 +213,7 @@ public class ProcessStartOptionServiceImpl implements ProcessStartOptionService 
         }
         vo.setStartable(true);
         log.debug("发起流程解析: type={} status={} template={} 当前租户内已有部署定义",
-                type.getCode(), status, template.getKey());
+                typeCode, statusCode, template.getKey());
         return vo;
     }
 

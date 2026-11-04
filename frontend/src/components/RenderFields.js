@@ -1,5 +1,5 @@
 import { h } from 'vue'
-import { Textarea, InputNumber, Select, Switch, DatePicker, TreeSelect, Input, Card, Row, Col, Form, Tag, Button, Space } from 'ant-design-vue'
+import { Textarea, InputNumber, Select, Switch, DatePicker, TreeSelect, Input, Card, Form, Tag, Button, Space } from 'ant-design-vue'
 import ImageUploader from './ImageUploader.vue'
 import FileUploader from './FileUploader.vue'
 import CKFileUploader from './CKFileUploader.vue'
@@ -16,6 +16,17 @@ import NumberPreview from './NumberPreview.vue'
 import ResourceContainerSelect from './ResourceContainerSelect.vue'
 import CadToolSelect from './CadToolSelect.vue'
 import VersionDisplay from './VersionDisplay.vue'
+import {
+  ChangeUserSelect,
+  ChangeIssueSelect,
+  ChangeRequestSelect,
+  ChangeAffectedObjectSelect,
+} from './change/changeFieldWidgets.js'
+// 控件 type 归一化：布局里可能写成 change_issue_selector（下划线），
+// switch 分支统一用 kebab-case，别名表维护在控件目录中。
+import { normalizeWidgetType } from '../widgets/catalog'
+// 布局行内每个字段占多宽：富文本/文本域/上传/表格自动整行，其余等分（与设计器共用一份判定）
+import { resolveFieldSpan } from '../widgets/layout-span'
 
 /** 去除 HTML 标签，保留纯文本 */
 const stripHtml = (html) => {
@@ -53,8 +64,24 @@ const RenderFields = {
     typeDefinitionOid: { type: String, default: null },
     /** 当前所处容器 oid，用于 resource-container-select（已进入资源库时锁定构建容器） */
     currentContainerOid: { type: String, default: null },
+    /**
+     * 当前表单所属实体编码（如 ENG_DOCUMENT）。
+     * 主文件控件据此判断是不是 CAD 三维数模 —— 数模主文档按数模格式筛选并提示轻量化转换。
+     */
+    entityCode: { type: String, default: '' },
+    /**
+     * 控件级外部数据（按 key 取用），目前用于：
+     * {@code issueOptions} —— 变更单据编辑回填时，把详情接口带回的 {oid, code, name}
+     * 交给 change-issue-selector 作 seed，避免已选值只剩裸 oid。
+     */
+    widgetOptions: { type: Object, default: () => ({}) },
+    /**
+     * 追加锁定的字段名：布局里没写 readonly，但由宿主按当前单据决定"这次不能改"。
+     * 递归渲染分组 / 布局行时必须原样透传，否则嵌套字段会漏锁。
+     */
+    readonlyFields: { type: Array, default: () => [] },
   },
-  emits: ['update', 'table-action'],
+  emits: ['update', 'table-action', 'object-options'],
   render() {
     if (!this.fields || this.fields.length === 0) return null
 
@@ -82,6 +109,9 @@ const RenderFields = {
                   stageOptions: this.stageOptions,
                   typeDefinitionOid: this.typeDefinitionOid,
                   currentContainerOid: this.currentContainerOid,
+                  entityCode: this.entityCode,
+                  widgetOptions: this.widgetOptions,
+                  readonlyFields: this.readonlyFields,
                   onUpdate: (key, val) => this.$emit('update', key, val),
                   'onTable-action': (payload) => this.$emit('table-action', payload),
                 })
@@ -94,10 +124,17 @@ const RenderFields = {
       // ===== 布局行容器 =====
       if (field.type === 'layout-row' || field.uiComponent === 'layout-row') {
         const cols = field.columns || 2
-        const span = Math.floor(24 / cols)
-        const rowChildren = (field.children || []).map(child =>
-          h(Col, { key: child.id || child.fieldName, span }, {
-            default: () => h(RenderFieldsWrapper, {
+        // 每列占的栅格宽度（24 / 列数），字段的 span 换算成"占几列"
+        const unit = 24 / cols
+        const cells = (field.children || []).map(child =>
+          // 宽度按字段自身判定，不再一律等分：富文本/文本域/上传/表格占整行，
+          // 也允许布局 JSON 用 span / colSpan 显式指定
+          h('div', {
+            key: child.id || child.fieldName,
+            class: 'df-layout-cell',
+            style: { gridColumn: `span ${Math.max(1, Math.round(resolveFieldSpan(child, cols) / unit))}` },
+          }, [
+            h(RenderFieldsWrapper, {
               fields: [child],
               formData: this.formData,
               productLineTree: this.productLineTree,
@@ -109,17 +146,27 @@ const RenderFields = {
               stageOptions: this.stageOptions,
               typeDefinitionOid: this.typeDefinitionOid,
               currentContainerOid: this.currentContainerOid,
+              entityCode: this.entityCode,
+              widgetOptions: this.widgetOptions,
+              readonlyFields: this.readonlyFields,
               onUpdate: (key, val) => this.$emit('update', key, val),
               'onTable-action': (payload) => this.$emit('table-action', payload),
             }),
-          })
+          ])
         )
+        // 用 CSS Grid 而不是 Row/Col 的负边距：后者在弹窗里会比容器宽出 16px，
+        // 白白给表单加一条横向滚动条（内容并不需要滚动）
         items.push(
-          h(Row, {
+          h('div', {
             key: field.id || field.fieldName,
-            gutter: 16,
-            style: { marginBottom: '8px' },
-          }, { default: () => rowChildren })
+            class: 'df-layout-row',
+            style: {
+              display: 'grid',
+              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+              columnGap: '16px',
+              marginBottom: '8px',
+            },
+          }, cells)
         )
         continue
       }
@@ -233,15 +280,17 @@ const RenderFields = {
     renderFieldItem(field) {
       const isVertical = field.labelLayout === 'vertical'
       const isRequired = field.required === true
-      const isReadonly = field.readonly === true
+      const isReadonly = field.readonly === true || this.readonlyFields.includes(field.fieldName)
       const component = this.buildFieldComponent(field, isReadonly)
 
+      // 字段间距交给宿主的样式（DynamicForm 里统一 .ant-form-item 的 margin-bottom）：
+      // 这里传的 style 会被 antd 落到**内层** .ant-form-item-row 上，与外层自带的 margin 折叠，
+      // 结果两头都不准（曾经想设 16px，实际一直是 24px）。
       return h(Form.Item, {
         key: field.id || field.fieldName,
         label: field.label,
         required: isRequired,
         class: isVertical ? 'df-form-item-vertical' : '',
-        style: { marginBottom: '16px' },
       }, { default: () => component })
     },
 
@@ -250,12 +299,14 @@ const RenderFields = {
       const value = this.formData[fieldName] ?? field.defaultValue ?? ''
       const placeholder = field.placeholder || `请输入${field.label || ''}`
       const commonProps = { value, disabled: isReadonly, placeholder, style: { width: '100%' } }
-      const type = field.uiComponent || 'input'
+      const type = normalizeWidgetType(field.uiComponent)
 
       switch (type) {
         case 'textarea':
           return h(Textarea, {
             ...commonProps, rows: field.rows || 3,
+            // 布局声明的长度上限要真正落到输入框上，否则长文本校验只剩后端兜底
+            ...(field.maxlength ? { maxlength: field.maxlength } : {}),
             'onUpdate:value': (val) => this.$emit('update', fieldName, val),
           })
 
@@ -298,6 +349,10 @@ const RenderFields = {
           return h(DatePicker, {
             ...commonProps, showTime: field.showTime || false,
             format: field.format || 'YYYY-MM-DD',
+            // 仅当布局显式声明 valueFormat 时才按字符串进出：变更单据的日期字段对应后端
+            // LocalDate（'YYYY-MM-DD'），传 dayjs 对象会在序列化后变成 ISO 串导致解析失败。
+            // 不声明时保持原行为（dayjs 对象），DOCUMENT / PART 的既有布局不受影响。
+            ...(field.valueFormat ? { valueFormat: field.valueFormat } : {}),
             'onUpdate:value': (val) => this.$emit('update', fieldName, val),
           })
 
@@ -321,17 +376,21 @@ const RenderFields = {
         case 'product-select': {
           // 优先使用组合树（含系列+型号），回退到纯系列树
           const tree = (this.productOwnerTree?.length ? this.productOwnerTree : this.productLineTree) || []
+          // 选中后要同步的"类型字段"：零件/文档是 containerType，
+          // 变更单据用 productType（同一控件、不同列名，由布局字段声明）
+          const typeField = field.typeFieldName || 'containerType'
+          // 配了 typeFieldName 的布局（变更单据）走 patch 语义：空串 = 清空，null = 不改。
+          // 不配的（零件/文档）保持原样，避免把 '' 写进 containerOid。
+          const clearAsEmpty = !!field.typeFieldName
           return h(TreeSelect, {
             ...commonProps, treeData: tree,
             treeDefaultExpandAll: true, showSearch: true, treeNodeFilterProp: 'title', allowClear: true,
             fieldNames: { label: 'title', key: 'key', value: 'value', children: 'children' },
             placeholder: placeholder || '请选择所属产品',
             'onUpdate:value': (val) => {
-              this.$emit('update', fieldName, val)
-              if (val) {
-                const nt = this.nodeTypeMap?.[val] || 'PRODUCT_LINE'
-                this.$emit('update', 'containerType', nt)
-              }
+              this.$emit('update', fieldName, clearAsEmpty ? (val || '') : val)
+              // 清空时类型也要清 —— 否则会出现"没有容器、却留着容器类型"的脏数据
+              this.$emit('update', typeField, val ? (this.nodeTypeMap?.[val] || 'PRODUCT_LINE') : null)
             },
           })
         }
@@ -351,6 +410,39 @@ const RenderFields = {
             options: this.userOptions || [],
             placeholder: placeholder || '选择用户',
             filterOption: (input, option) => (option.label || '').toLowerCase().includes(input.toLowerCase()),
+            'onUpdate:value': (val) => this.$emit('update', fieldName, val),
+          })
+
+        // ===== 变更单据专用控件（取值口径与 change 服务一致，见 changeFieldWidgets.js） =====
+        case 'change-user-selector':
+          return h(ChangeUserSelect, {
+            value, disabled: isReadonly, placeholder,
+            'onUpdate:value': (val) => this.$emit('update', fieldName, val),
+          })
+
+        case 'change-issue-selector':
+          return h(ChangeIssueSelect, {
+            value, disabled: isReadonly, placeholder,
+            seedOptions: this.widgetOptions?.issueOptions || [],
+            'onUpdate:value': (val) => this.$emit('update', fieldName, val),
+          })
+
+        case 'change-affected-object-selector':
+          // 检索范围跟着「变更系列/型号」走：布局可用 scopeFieldName 指定承载产品 oid 的字段
+          // （变更单据默认 productOid），没选产品时不传 → 服务端不做范围过滤
+          return h(ChangeAffectedObjectSelect, {
+            value, disabled: isReadonly, placeholder,
+            seedOptions: this.widgetOptions?.affectedObjectOptions || [],
+            containerOid: this.formData?.[field.scopeFieldName || 'productOid'] || '',
+            'onUpdate:value': (val) => this.$emit('update', fieldName, val),
+            // 选项（oid → "零件 · 编码 名称"）往上抛：变更通告表单的「变更实现」页签
+            // 要把已选对象做成变更任务的范围下拉，没有这份 label 只能显示裸 oid
+            'onOptionsChange': (options) => this.$emit('object-options', fieldName, options),
+          })
+
+        case 'change-request-selector':
+          return h(ChangeRequestSelect, {
+            value, disabled: isReadonly, placeholder,
             'onUpdate:value': (val) => this.$emit('update', fieldName, val),
           })
 
@@ -383,6 +475,10 @@ const RenderFields = {
           return h(CKFileUploader, {
             value,
             disabled: isReadonly,
+            // 数模主文档（ENG_DOCUMENT）：未显式配置 accept 时按 CAD 三维数模格式筛选，
+            // 并在上传区说明「STEP/IGES/STL 可转轻量化预览、原生格式仅归档」
+            entityCode: this.entityCode,
+            accept: field.accept || '',
             'onUpdate:value': (val) => this.$emit('update', fieldName, val),
           })
 
@@ -391,6 +487,18 @@ const RenderFields = {
             modelValue: value,
             disabled: isReadonly,
             placeholder: placeholder || '请选择文档类型',
+            rootCode: 'DOCUMENT',
+            'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
+          })
+
+        // 工程数据（ENG_DOCUMENT）的类型选择：树根取 ENG_DOCUMENT，
+        // 否则只能选到文档类型（见 DocumentTypeSelect 的 rootCode）
+        case 'eng-document-type-select':
+          return h(DocumentTypeSelect, {
+            modelValue: value,
+            disabled: isReadonly,
+            placeholder: placeholder || '请选择工程数据类型',
+            rootCode: 'ENG_DOCUMENT',
             'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
           })
 
@@ -512,6 +620,7 @@ const RenderFields = {
         default:
           return h(Input, {
             ...commonProps, type: field.inputType || 'text',
+            ...(field.maxlength ? { maxlength: field.maxlength } : {}),
             'onUpdate:value': (val) => this.$emit('update', fieldName, val),
           })
       }

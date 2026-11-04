@@ -58,3 +58,17 @@ backup-*.sql
 # 浏览器工具（Playwright 等）导出的页面 aria 快照，形如 login.yaml / home.yaml，
 # 属调试产物。只作用于仓库根目录，不影响 src/main/resources 下的应用配置。
 /*.yaml
+
+# 行业包：只有 platform-base 是开源包（随仓库分发），其余均为商业交付包，不进版本库。
+# 与各包 pack.json 的 "license" 字段一一对应：OPEN_SOURCE 随仓库、BUSINESS 走商务交付。
+# 注意两点：
+#   ① 被忽略的包仍在磁盘上 —— 本地开发与构建照常可用（会照常拷进 target/classes）；
+#   ② 新克隆的仓库只有 platform-base；商业包应通过外部包目录投放（plm.industry-pack.dir 配置），
+#      不改 jar 即可安装。
+src/main/resources/industry-packs/*
+!src/main/resources/industry-packs/platform-base/
+
+# ===== 临时文件 =====
+.tmp/
+tmp_*.sql
+after-login.png

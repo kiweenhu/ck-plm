@@ -99,6 +99,7 @@
       </div>
 
       <DataTable
+        scroll-x="max-content"
         :columns="userColumns"
         :data-source="users"
         :loading="userLoading"
@@ -164,6 +165,18 @@
             tree-default-expand-all
             style="width: 100%"
           />
+        </a-form-item>
+        <a-form-item label="部门主管">
+          <a-select
+            v-model:value="deptModal.form.leaderOid"
+            :options="userOptions"
+            show-search
+            allow-clear
+            placeholder="选择该部门的主管"
+          />
+          <div style="color:#999;font-size:12px;margin-top:4px">
+            流程里「发起人上级」按这个字段解析审批人；留空则该策略解析不出来，任务会停在"无人可办"（节点日志里能看到原因）
+          </div>
         </a-form-item>
         <a-form-item label="描述">
           <a-textarea v-model:value="deptModal.form.description" :rows="2" placeholder="部门职责、备注等" />
@@ -279,7 +292,7 @@ import DataTable from '@/components/DataTable.vue'
 import RoleConfig from '@/views/system/RoleConfig.vue'
 import {
   getOrgTree, createOrg, updateOrg, deleteOrg,
-  getUsersByOrg, createUser, updateUser, deleteUser, resetPassword
+  getUsersByOrg, getAllUsers, createUser, updateUser, deleteUser, resetPassword
 } from '@/api'
 
 const route = useRoute()
@@ -387,6 +400,21 @@ function onTreeSelect(keys, info) {
   loadUsers()
 }
 
+// ==================== 部门主管候选（全部用户，取一次缓存） ====================
+const userOptions = ref([])
+async function loadUserOptions() {
+  if (userOptions.value.length) return
+  try {
+    const res = await getAllUsers({})
+    if (res.code === 200) {
+      userOptions.value = (res.data || []).map((u) => ({
+        value: u.oid,
+        label: u.displayName ? `${u.displayName}（${u.username}）` : u.username
+      }))
+    }
+  } catch { /* 候选加载失败不影响部门维护的其他字段 */ }
+}
+
 // ==================== 部门弹窗 ====================
 const deptModal = reactive({
   visible: false,
@@ -394,12 +422,13 @@ const deptModal = reactive({
   saving: false,
   editingOid: null,
   form: {
-    code: '', name: '', parentOid: null,
+    code: '', name: '', parentOid: null, leaderOid: null,
     description: '', enabled: true
   }
 })
 
 function openDeptModal(node) {
+  loadUserOptions()
   deptModal.editingOid = node?.oid || null
   deptModal.isEdit = !!node
   if (node) {
@@ -407,6 +436,7 @@ function openDeptModal(node) {
       code: node.code,
       name: node.name,
       parentOid: node.parentOid || null,
+      leaderOid: node.leaderOid || null,
       description: node.description || '',
       enabled: node.enabled !== false
     }
@@ -414,6 +444,7 @@ function openDeptModal(node) {
     deptModal.form = {
       code: '', name: '',
       parentOid: selectedDept.value?.oid || null,
+      leaderOid: null,
       description: '', enabled: true
     }
   }
@@ -428,6 +459,7 @@ function onDeptMenu({ key }, node) {
     deptModal.form = {
       code: '', name: '',
       parentOid: dept.oid,
+      leaderOid: null,
       description: '', enabled: true
     }
     deptModal.editingOid = null
@@ -448,6 +480,7 @@ async function handleDeptSave() {
       code: code.trim(),
       name: name.trim(),
       parentOid: deptModal.form.parentOid || null,
+      leaderOid: deptModal.form.leaderOid || null,
       description: deptModal.form.description || '',
       enabled: deptModal.form.enabled
     }

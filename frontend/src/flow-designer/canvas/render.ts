@@ -463,7 +463,9 @@ export const RETURN_LANE_BAND = 40
  * 直线必然穿过中间的节点；而 X6 的自动路由对这类长边并不可靠 —— 实测它会退回
  * `orth`（完全不避让障碍物），画出一条笔直穿过节点的竖线，这就是用户看到的「线穿框」。
  * 与其赌路由算法，不如确定性地给一条**外车道**：
- * 从源的侧向锚点横出去 → 贴画布最外侧竖着往上 → 在目标上方那条空带里横回来 → 落到目标顶部。
+ * 从源的侧向锚点横出去 → 贴画布最外侧竖着往上 → 横回来落到目标。
+ * 落点优先取**车道这一侧的侧边锚点**（竖段走到目标中线即可，不必越过目标再折回来）；
+ * 该侧没有空锚点、或横回来的那段会压到别的节点时，才绕到目标上方从顶部落。
  * 三段都是直线，任何路由算法都会照走。
  */
 export function returnLaneVertices(
@@ -489,12 +491,36 @@ export function returnLaneVertices(
       { x: targetAnchor.x, y: bandY },
     ]
   }
-  // 从**侧向**进（目标锚点被手动钉在 left/right，车道恰在同一侧）：竖段直接走到那个锚点的
-  // 高度，再横着进去 —— 横线只需穿过"目标 ↔ 画布外缘"这段空档。
+  // 从**侧向**进（车道恰好在目标这一侧）：竖段直接走到那个锚点的高度，再横着进去 ——
+  // 横线只需穿过"目标 ↔ 画布外缘"这段空档，不必越过目标再折回来。
   return [
     { x: laneX, y: sourceAnchor.y },
     { x: laneX, y: targetAnchor.y },
   ]
+}
+
+/**
+ * 「正上方直落竖线」的横向对齐容差（px）。
+ *
+ * <p>源与目标中心 x 相差不超过它，才认为这条入边是从正上方直落下来的竖线。
+ * 目标被这样的竖线占住顶边时，第二条从侧面来的入边应改走侧边 —— 否则它会在
+ * 层间空带里横着穿过那条竖线、再贴着它落进同一条顶边，两条线看起来「打结」。
+ */
+export const VERTICAL_FEED_ALIGN_TOLERANCE = 8
+
+/**
+ * 源是否「正上方 + 横向对齐」——即这条边会在目标顶边直落一条竖线。
+ *
+ * <p>见 {@link VERTICAL_FEED_ALIGN_TOLERANCE}：这类边是「主入边」，
+ * 目标顶边让给它；其它侧向来边改走朝向源的侧边，两条线的入场路径就不再交叉。
+ */
+export function isVerticalFeed(sourceRect: Rect, targetRect: Rect): boolean {
+  const sourceCx = sourceRect.x + sourceRect.width / 2
+  const targetCx = targetRect.x + targetRect.width / 2
+  return (
+    sourceRect.y + sourceRect.height <= targetRect.y &&
+    Math.abs(sourceCx - targetCx) <= VERTICAL_FEED_ALIGN_TOLERANCE
+  )
 }
 
 /** 分支线出线/入线的「贴边段」长度（px）：拐角离节点边至少这么远，不再贴着框拐弯 */
@@ -555,6 +581,74 @@ function crossesNode(chain: Array<{ x: number; y: number }>, obstacles: Rect[]):
   return false
 }
 
+/** 该方位是左右（横向）还是上下（纵向）—— 直线走线要求两端同在一条轴上 */
+function isHorizontalSide(side: PortSide): boolean {
+  return side === 'left' || side === 'right'
+}
+
+/**
+ * 「直线」的对齐容差（px）。
+ *
+ * <p>锚点坐标由槽位比例算出来，同一列/同一行的两端可能差 0.5px（例如 `top-2` 与
+ * `bottom` 的四等分点）。差这么点就该照直画：交给路由算法反而会在中间插一段
+ * 0.5px 的横移，放大后是一条肉眼看得见的「折」。
+ */
+export const STRAIGHT_ALIGN_TOLERANCE = 2
+
+/**
+ * 两端锚点是否已经连成一条**不穿节点**的直线（同层并排 / 同列相邻）。
+ *
+ * <p><b>为什么这条不能交给路由算法</b>：锚点已经对齐时，最短路径就是这条直线，
+ * 没有任何"路由决策"可做；而 manhattan 会把这种零长度的折线再算一遍，在两端之间
+ * 绕出一个多余的折角（用户截图里「技术评审 → 评审驳回」那个钩）。显式认成直线、
+ * 改用 normal 路由，形状才是唯一确定的。
+ *
+ * <p>除了共线，还要求两端的方位**互相朝向**（右出 → 左进，下出 → 上进）：
+ * 锚点开在背对的一侧时，直线会从节点框里穿过去 —— 那种情况必须留给路由算法绕。
+ */
+export function isStraightRoute(
+  sourceRect: Rect,
+  targetRect: Rect,
+  sourcePort: string | undefined,
+  targetPort: string | undefined,
+  obstacles: Rect[],
+): boolean {
+  const sourceSide = sideOfPortId(sourcePort)
+  const targetSide = sideOfPortId(targetPort)
+  if (!sourceSide || !targetSide) {
+    return false
+  }
+  const from = anchorPoint(sourceSide, slotOfPortId(sourcePort) ?? 0, sourceRect)
+  const to = anchorPoint(targetSide, slotOfPortId(targetPort) ?? 0, targetRect)
+  const horizontal = Math.abs(from.y - to.y) <= STRAIGHT_ALIGN_TOLERANCE
+  if (!horizontal && Math.abs(from.x - to.x) > STRAIGHT_ALIGN_TOLERANCE) {
+    return false
+  }
+  if (horizontal) {
+    if (!isHorizontalSide(sourceSide) || !isHorizontalSide(targetSide)) {
+      return false
+    }
+    // 出线方向必须朝向目标，入线方向必须背对目标（= 迎着源）
+    const forward = sourceSide === 'right' ? to.x > from.x : to.x < from.x
+    const facing = to.x > from.x ? targetSide === 'left' : targetSide === 'right'
+    if (!forward || !facing) {
+      return false
+    }
+  } else {
+    if (isHorizontalSide(sourceSide) || isHorizontalSide(targetSide)) {
+      return false
+    }
+    const forward = sourceSide === 'bottom' ? to.y > from.y : to.y < from.y
+    const facing = to.y > from.y ? targetSide === 'top' : targetSide === 'bottom'
+    if (!forward || !facing) {
+      return false
+    }
+  }
+  // 障碍物含源/目标自己的框：锚点背对时直线必从框内穿过，上面的方位检查已挡住；
+  // 这一层再挡住"中间还隔着别的节点"的情况
+  return !crossesNode([from, to], obstacles)
+}
+
 /**
  * 「锚点背对源」时的入场走线：绕到目标那一侧**之外**，再从外面正对着进锚点。
  *
@@ -590,6 +684,16 @@ function wrapApproachVertices(
   if (targetSide === 'bottom' || targetSide === 'top') {
     // 从上下进：先在目标左右之一的外侧竖着过去，再横到锚点正前方，最后竖着进
     const bandY = targetSide === 'bottom' ? bottomBand : topBand
+    // 源已经在目标左右之外时，**先竖着走到空带、再横过去**就是最短的走法：
+    // 若照下面的通用形状先横到 bandX，第一段会贴着目标的上下边沿走一整段
+    // （用户截图里的「驳回线绕过设置对象状态一圈」就是这么来的）。
+    if (outPoint.x <= leftBand || outPoint.x >= rightBand) {
+      candidates.push([
+        outPoint,
+        { x: outPoint.x, y: bandY },
+        { x: targetAnchor.x, y: bandY },
+      ])
+    }
     for (const bandX of [leftBand, rightBand]) {
       candidates.push([
         outPoint,
@@ -601,6 +705,14 @@ function wrapApproachVertices(
   } else {
     // 从左右进：先在目标上下之一的外侧横过去，再竖到锚点那一层，最后横着进
     const bandX = targetSide === 'left' ? leftBand : rightBand
+    // 与上面同理：源已经在目标上下之外时先横后竖（跳过贴着目标边沿的那一竖）
+    if (outPoint.y <= topBand || outPoint.y >= bottomBand) {
+      candidates.push([
+        outPoint,
+        { x: bandX, y: outPoint.y },
+        { x: bandX, y: targetAnchor.y },
+      ])
+    }
     for (const bandY of [topBand, bottomBand]) {
       candidates.push([
         outPoint,
@@ -616,6 +728,26 @@ function wrapApproachVertices(
     }
   }
   return undefined
+}
+
+/**
+ * 侧向出线那一小段横线的 x 坐标：默认离框 {@link BRANCH_STUB}，但**不能越过目标的近侧边线**。
+ *
+ * <p>两个节点挨得近（横缝 < 20px）时，固定 20px 的短横段会直接扎进目标框，整条走线自检
+ * 不通过、退回 manhattan —— 用户截图里「驳回」那条在窄缝里绕出的小台阶就是这么来的。
+ * 窄缝里把竖段放到两端之间（离两侧各留几像素），一步就能下去，形状是确定的。
+ */
+function branchStubX(sourceSide: PortSide, sourceAnchorX: number, targetRect: Rect): number {
+  if (sourceSide === 'right') {
+    const limit = targetRect.x - 2
+    // 目标不在右侧（横向已重叠）就退回不横移：竖段贴着源框走，交给自检决定可行性
+    return limit > sourceAnchorX ? Math.min(sourceAnchorX + BRANCH_STUB, limit) : sourceAnchorX
+  }
+  if (sourceSide === 'left') {
+    const limit = targetRect.x + targetRect.width + 2
+    return limit < sourceAnchorX ? Math.max(sourceAnchorX - BRANCH_STUB, limit) : sourceAnchorX
+  }
+  return sourceAnchorX
 }
 
 /**
@@ -666,10 +798,13 @@ export function branchLaneVertices(
   const verticalIn = targetSide === 'top' || targetSide === 'bottom'
   const verticalOut = sourceSide === 'top' || sourceSide === 'bottom'
   const horizontalIn = targetSide === 'left' || targetSide === 'right'
-  // 三种可用形状：
+  // 四种可用形状：
   //   side-to-band  源从侧向出、目标从上下进（钉了左右锚点的网关扇出）→ 出线段 + 空带 + 横移
   //   band-only     源从上下出、目标也从上下进（网关默认从底边走、分支在下一层）→ 空带 + 横移
   //   drop-then-side 源从上下出、目标从侧向进（分支汇回网关）→ 竖到目标锚点那一层再横着进
+  //   side-drop-side 源从侧向出、目标也从侧向进（源在目标斜上方、目标从朝外一侧收）→
+  //                 出线段 + 竖到目标锚点那一层 + 横着进。少这一形状时这条线会整个交回
+  //                  路由算法（折点丢失、路线不确定），正是「斜向回环」画不干净的原因之一。
   const shape =
     horizontalOut && verticalIn
       ? 'side-to-band'
@@ -677,27 +812,39 @@ export function branchLaneVertices(
         ? 'band-only'
         : verticalOut && horizontalIn
           ? 'drop-then-side'
-          : undefined
+          : horizontalOut && horizontalIn
+            ? 'side-drop-side'
+            : undefined
   if (!shape) {
     return undefined
   }
-  // 两行之间的空带（纵向）；太窄就放弃
+  // 两行之间的空带（纵向）；太窄就放弃。
+  // side-drop-side 是「同层左右并排、侧出侧进」的形状（如 技术评审→评审驳回 的驳回线），
+  // 它只在两端之外竖着走一小段，不需要层间空带 —— 这里若一并按空带判，
+  // 同层的侧向边会全部被推回 manhattan（画出一个多余的绕行，用户截图里的那个「钩」）。
   const gapTop = Math.min(sourceRect.y + sourceRect.height, targetRect.y + targetRect.height)
   const gapBottom = Math.max(sourceRect.y, targetRect.y)
-  if (gapBottom - gapTop < 24) {
+  if (shape !== 'side-drop-side' && gapBottom - gapTop < 24) {
     return undefined
   }
   const sourceAnchor = anchorPoint(sourceSide, slotOfPortId(sourcePort) ?? 0, sourceRect)
   const targetAnchor = anchorPoint(targetSide, slotOfPortId(targetPort) ?? 0, targetRect)
   // 错开方向按"这条分支朝哪边"定：朝左的分支把水平段抬高一档、朝右的压低一档 ——
-  // 同一层两条分支于是永远不在同一高度，不会被看成一条线穿过去
-  const stagger = targetAnchor.x < sourceAnchor.x ? -BRANCH_BAND_STAGGER : BRANCH_BAND_STAGGER
-  const bandY = Math.min(gapBottom - 10, Math.max(gapTop + 10, (gapTop + gapBottom) / 2 + stagger))
+  // 同一层两条分支于是不在同一高度，不会被看成一条线穿过去。
+  // 层间空带很窄时（用户把两层拖近了），固定 10px 留白 + 12px 错开会同时被夹掉、
+  // 两条分支落回同一条水平线；留白与错开量都按空带高度收，保证两者始终分得开。
+  const bandHeight = gapBottom - gapTop
+  const bandMargin = Math.min(10, bandHeight / 3)
+  const bandLow = gapTop + bandMargin
+  const bandHigh = gapBottom - bandMargin
+  const staggerRange = Math.min(BRANCH_BAND_STAGGER, Math.max(0, (bandHigh - bandLow) / 2))
+  const stagger = targetAnchor.x < sourceAnchor.x ? -staggerRange : staggerRange
+  const bandY = Math.min(bandHigh, Math.max(bandLow, (gapTop + gapBottom) / 2 + stagger))
 
   let points: Array<{ x: number; y: number }>
   if (shape === 'side-to-band') {
     // 侧向先横走一小段（拐角离框远）→ 到空带 → 横移到目标正上/下方 → 竖着进锚点
-    const stubX = sourceAnchor.x + (sourceSide === 'left' ? -BRANCH_STUB : BRANCH_STUB)
+    const stubX = branchStubX(sourceSide, sourceAnchor.x, targetRect)
     points = [
       { x: stubX, y: sourceAnchor.y },
       { x: stubX, y: bandY },
@@ -708,6 +855,14 @@ export function branchLaneVertices(
     points = [
       { x: sourceAnchor.x, y: bandY },
       { x: targetAnchor.x, y: bandY },
+    ]
+  } else if (shape === 'side-drop-side') {
+    // 侧向先横走一小段贴边段（拐角离框远）→ 竖到目标锚点那一层 → 横着进侧向锚点。
+    // 竖段落在两端节点之外的竖向空档里，不会与「正上方直落竖线」交叉。
+    const stubX = branchStubX(sourceSide, sourceAnchor.x, targetRect)
+    points = [
+      { x: stubX, y: sourceAnchor.y },
+      { x: stubX, y: targetAnchor.y },
     ]
   } else {
     // 竖着走到目标锚点那一层 → 横着进侧向锚点
@@ -799,6 +954,19 @@ function mapEdges(
     }
     return false
   }
+  /** 该方位第一个空闲锚点（只查询、不占用）：先试算走线是否可行，再决定占不占 */
+  const peekFreePort = (store: Map<string, Set<string>>, nodeId: string, side: PortSide,
+                         size: Rect): string | undefined => {
+    const used = store.get(nodeId)
+    const manual = manualPorts.get(nodeId)
+    for (let slot = 0; slot < portSlotCount(side, size); slot += 1) {
+      const id = portIdOf(side, slot)
+      if (!used?.has(id) && !manual?.has(id)) {
+        return id
+      }
+    }
+    return undefined
+  }
   /**
    * 取该方位下一个空闲锚点。
    *
@@ -826,6 +994,24 @@ function mapEdges(
   const graphMidX = (leftMost + rightMost) / 2
   /** 回边 → 固定走线点（见 returnLaneVertices 的说明） */
   const returnVertices = new Map<string, Array<{ x: number; y: number }>>()
+  /** 两端锚点已对齐成直线的边：给 normal 路由，不让 manhattan 再算一遍（见 isStraightRoute） */
+  const straightEdges = new Set<string>()
+  /**
+   * 被「正上方直落竖线」喂着的目标节点。
+   *
+   * <p>这类目标的顶边已被一条从正上方下来的竖线占住；第二条从侧面来的入边
+   * 若也挤顶边，就会在层间空带里横穿那条竖线、再贴着它落进同一条顶边 ——
+   * 两条线看起来像一条（用户反馈的「画线打结」）。故给它们改走侧边的机会，
+   * 判定见 {@link isVerticalFeed}。
+   */
+  const verticalFedTargets = new Set<string>()
+  for (const other of dsl.edges) {
+    const sourceRect = rectOf.get(other.source)
+    const targetRect = rectOf.get(other.target)
+    if (sourceRect && targetRect && isVerticalFeed(sourceRect, targetRect)) {
+      verticalFedTargets.add(other.target)
+    }
+  }
 
   // 附着方位按两个节点的相对位置推导：横向相邻走左右、纵向相邻走上下 ——
   // 横向排版（复杂流程更清晰）不再只能绕到上下两侧
@@ -870,12 +1056,22 @@ function mapEdges(
     let laneSide: PortSide | undefined
     if (targetRect.y + targetRect.height <= sourceRect.y) {
       const pinnedSide = sideOfPortId(pinnedSource)
-      laneSide =
-        pinnedSide === 'left' || pinnedSide === 'right'
-          ? pinnedSide
-          : sourceRect.x + sourceRect.width / 2 <= graphMidX
-            ? 'left'
-            : 'right'
+      if (pinnedSide === 'left' || pinnedSide === 'right') {
+        laneSide = pinnedSide
+      } else {
+        // 车道走哪一侧：**先看目标在源的哪一侧**（回边终究要回到目标，朝它那一侧绕最短），
+        // 两者水平上几乎重叠（同一列的回边）时才退回"源在画布中线哪侧" ——
+        // 那条判据是给"多条回边分列画布两侧、不互相压住"用的。
+        //
+        // 2026-10-13 优化：原先**只看画布中线**，于是"目标在右上方、源恰好在中线左侧"的回边
+        // 会先向左出去、再向上、再向右绕回来 —— 多绕半个画布，复杂流程里一眼就能看出别扭。
+        const sourceCx = sourceRect.x + sourceRect.width / 2
+        const targetCx = targetRect.x + targetRect.width / 2
+        const dx = targetCx - sourceCx
+        // 容差取两节点宽度的四分之一：小于它视为"同一列"（此时左右都算不上更近）
+        const tolerance = (sourceRect.width + targetRect.width) / 4
+        laneSide = Math.abs(dx) > tolerance ? (dx > 0 ? 'right' : 'left') : (sourceCx <= graphMidX ? 'left' : 'right')
+      }
     }
     if (!sourcePort) {
       if (laneSide) {
@@ -916,15 +1112,51 @@ function mapEdges(
     let laneSide = returnLanes.get(edge.id)
     if (!targetPort) {
       if (laneSide) {
-        // 从目标**上方**进：那条层间空带里没有节点，横回来的线压不到谁
-        targetPort = takePort(usedByTarget, edge.target, 'top', targetRect)
+        // 车道已经贴着目标这一侧的外缘：**直接横着进侧边锚点**，比绕到目标上方再折回来
+        // 短一大截（用户截图里那条"绕过目标顶边再落下"的大回环就是原做法）。
+        // 两条兜底条件：该侧没有空锚点、或"车道 → 锚点"这段横线会压到别的节点
+        // （目标不是最外侧那一列时），才退回从顶部进 —— 那条层间空带里没有节点。
+        const laneX =
+          laneSide === 'left' ? leftMost - RETURN_LANE_MARGIN : rightMost + RETURN_LANE_MARGIN
+        const sidePort = portSidesFor(targetNode.type).includes(laneSide)
+          ? peekFreePort(usedByTarget, edge.target, laneSide, targetRect)
+          : undefined
+        const sideAnchor = sidePort
+          ? anchorPoint(laneSide, slotOfPortId(sidePort) ?? 0, targetRect)
+          : undefined
+        // 该锚点若已被这个节点的**出边**占着（出边占用记在另一本账上），横进来会和它叠在一点，
+        // 于是同样退回顶部进
+        const takenByOutEdge = sidePort ? usedBySource.get(edge.target)?.has(sidePort) ?? false : false
+        targetPort =
+          sideAnchor && !takenByOutEdge && !crossesNode([{ x: laneX, y: sideAnchor.y }, sideAnchor], rects)
+            ? takePort(usedByTarget, edge.target, laneSide, targetRect)
+            : takePort(usedByTarget, edge.target, 'top', targetRect)
       } else {
         // 入边侧：方位按朝向排序，但同一方位上的多条入边各占一个锚点 ——
         // 多个箭头汇在同一个点会让"从哪来"看不出来（驳回与通过常常同时指回同一个节点）
         const ranked = rankPortSides(targetRect, sourceRect, portSidesFor(targetNode.type))
-        const side =
+        let side =
           ranked.find((candidate) => hasFreeSlot(usedByTarget, edge.target, candidate, targetRect))
           ?? ranked[0]
+        // 目标顶边已被「正上方直落竖线」占住时，第二条从侧面来的入边改走侧边：
+        // 否则 branchLaneVertices 会在层间空带里横穿那条竖线、再贴着它落进同一条顶边，
+        // 两条线看起来像一条（用户反馈的「画线打结」，见 verticalFedTargets 的说明）。
+        // 条件收得很窄 —— 只在 ①顶边确实被正上方竖线喂着、②本次源横向偏开超过半个框宽
+        // 时才改道；纵向汇聚（网关扇入，源都在目标上方但不同列）与「正上方那条自己」不受影响。
+        const sourceCx = sourceRect.x + sourceRect.width / 2
+        const targetCx = targetRect.x + targetRect.width / 2
+        const laterallyOffset = Math.abs(sourceCx - targetCx) > targetRect.width / 2
+        if (side === 'top' && verticalFedTargets.has(edge.target) && laterallyOffset) {
+          const sideEntry = ranked.find(
+            (candidate) =>
+              (candidate === 'left' || candidate === 'right') &&
+              sideFaces(candidate, targetRect, sourceRect) &&
+              hasFreeSlot(usedByTarget, edge.target, candidate, targetRect),
+          )
+          if (sideEntry) {
+            side = sideEntry
+          }
+        }
         targetPort = takePort(usedByTarget, edge.target, side, targetRect)
       }
     } else if (laneSide) {
@@ -946,13 +1178,19 @@ function mapEdges(
         returnLaneVertices(sourceRect, targetRect, sourcePort, targetPort, laneX),
       )
     } else if (sourcePort && targetPort) {
-      // 分支线（网关扇出/扇入这类"侧向出 → 纵向进"的折线）：拐角进层间空带、左右错开，
-      // 且自检不穿别的节点 —— 见 branchLaneVertices 的说明
-      // 障碍物要**含源/目标自身**：走线不能压任何节点框，包括自己两端的框 ——
-      // 漏掉它们时，"竖线从节点内部穿进去"这种错反而检不出来
-      const branch = branchLaneVertices(sourceRect, targetRect, sourcePort, targetPort, rects)
-      if (branch) {
-        returnVertices.set(edge.id, branch)
+      // 同层并排 / 同列相邻且锚点已对齐：直线就是最终走线，不产生折点、也不进路由算法
+      // （见 isStraightRoute：交给 manhattan 会在两端之间绕出多余的折角）
+      if (isStraightRoute(sourceRect, targetRect, sourcePort, targetPort, rects)) {
+        straightEdges.add(edge.id)
+      } else {
+        // 分支线（网关扇出/扇入这类"侧向出 → 纵向进"的折线）：拐角进层间空带、左右错开，
+        // 且自检不穿别的节点 —— 见 branchLaneVertices 的说明
+        // 障碍物要**含源/目标自身**：走线不能压任何节点框，包括自己两端的框 ——
+        // 漏掉它们时，"竖线从节点内部穿进去"这种错反而检不出来
+        const branch = branchLaneVertices(sourceRect, targetRect, sourcePort, targetPort, rects)
+        if (branch) {
+          returnVertices.set(edge.id, branch)
+        }
       }
     }
   }
@@ -980,7 +1218,8 @@ function mapEdges(
       zIndex: 1,
       // 有折点的边**不再交给路由算法**：折点就是最终走线。否则 manhattan 会自己加折角、
       // 甚至绕出小圈（用户反馈的"一拖就多出折角"就是这么来的）。没有折点的边才走自动路由。
-      router: vertices?.length ? { name: 'normal' } : EDGE_ROUTER,
+      // 两端锚点已对齐成直线的边同样只认 normal：manhattan 会在这种边上绕出多余的钩。
+      router: vertices?.length || straightEdges.has(edge.id) ? { name: 'normal' } : EDGE_ROUTER,
       connector: { name: 'rounded', args: { radius: 8 } },
     }
   })

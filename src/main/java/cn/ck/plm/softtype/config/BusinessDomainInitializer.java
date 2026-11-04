@@ -40,7 +40,7 @@ import java.util.UUID;
  * （域表成为唯一来源，类型侧只按 code 关联），届时本类收缩为"纯种子 upsert"。
  */
 @Component
-@Order(0) // 必须先于 TypeDefinitionInitializer(@Order=2)：类型注册与域归属都要读业务域
+@Order(0) // 必须先于行业包引导(@Order=1)：类型注册（softtypes.json）与域归属都要读业务域
 public class BusinessDomainInitializer implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(BusinessDomainInitializer.class);

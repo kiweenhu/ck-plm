@@ -74,6 +74,11 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
         if (mapper.existsByCode(code) > 0) {
             throw new IllegalArgumentException("模板编码 '" + code + "' 已存在");
         }
+        // 按租户隔离（2026-10-11）：归属必须显式落本租户 —— insert 列含 tenant_oid，不设会写 NULL；
+        // 隔离后 NULL 行本租户读不到，等于"创建即失踪"。
+        if (template.getTenantOid() == null) {
+            template.setTenantOid(TenantContext.get());
+        }
         // 1. 插入主表
         mapper.insert(template);
 
@@ -128,6 +133,9 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
             // 保存状态和流转规则到新子版本
             template.setOid(existing.getOid());
             saveChildren(template, newIter.getOid());
+            // 「可修订」是权限开关而非结构：编辑模板时改了它，同样要落到全部子版本 ——
+            // 否则在途对象（固化了旧子版本）会继续按旧标记判定，表现成"改了配置不生效"
+            applyRevisableToIterations(existing.getOid(), template.getStates());
             // 「状态 → 流程」配置按状态 code 继承到新子版本。
             // 必须做：模板每次编辑都整体重建状态行并生成新子版本，而配置挂的是子版本 ——
             // 不继承的话用户一编辑模板，配置就留在旧版本上（界面上看不到、实例也解析不到）。
@@ -178,6 +186,22 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
     public LifecycleTemplateMaster findByCode(String code) {
         if (code == null || code.trim().isEmpty()) return null;
         return fillChildren(mapper.selectByCode(code.trim()));
+    }
+
+    @Override
+    public LifecycleTemplateMaster findByIterationOid(String templateIterationOid) {
+        if (templateIterationOid == null || templateIterationOid.trim().isEmpty()) return null;
+        LifecycleTemplateIteration iter = iterationMapper.selectByOid(templateIterationOid.trim());
+        if (iter == null || iter.getMasterOid() == null || iter.getMasterOid().trim().isEmpty()) {
+            return null;
+        }
+        LifecycleTemplateMaster master = mapper.selectByOid(iter.getMasterOid().trim());
+        if (master == null) return null;
+        // 注意：这里 latestIteration 放的是**传入的那一版**，states / transitions 也从它加载 ——
+        // 对象固化的模板版本可能落后于最新版，候选必须与执行侧（loadDef(该版本)）同源
+        master.setLatestIteration(iter);
+        fillChildrenOf(master, iter.getOid());
+        return master;
     }
 
     @Override
@@ -244,6 +268,178 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
     // ==================== 目标状态迁移 ====================
 
     @Override
+    public String rebindLifecycle(IterationEntity iteration, String templateIterationOid) {
+        if (iteration == null) {
+            throw new IllegalArgumentException("迭代对象不能为空");
+        }
+        String targetOid = templateIterationOid == null ? "" : templateIterationOid.trim();
+        if (targetOid.isEmpty()) {
+            throw new IllegalArgumentException("目标生命周期模板不能为空");
+        }
+        LifecycleTemplateIteration targetIter = iterationMapper.selectByOid(targetOid);
+        if (targetIter == null) {
+            throw new IllegalArgumentException("生命周期模板子版本不存在: " + targetOid);
+        }
+        LifecycleTemplateDef def = loadDef(targetOid);
+        if (def.getStatuses().isEmpty()) {
+            throw new IllegalStateException("目标生命周期模板没有定义任何状态: " + targetOid);
+        }
+        // 状态按 code 迁移：新模板里有同名状态就保留（多数模板的 DRAFT/RELEASED 是共通的）；
+        // 没有就落到新模板的初始状态 —— 绝不硬留一个新模板不认识的 code（那会让对象"卡死"）
+        String current = iteration.getStatus() != null ? iteration.getStatus().getCode() : null;
+        boolean keepsStatus = current != null
+                && def.getStatuses().stream().anyMatch(s -> current.equals(s.getCode()));
+        final String targetCode = keepsStatus ? current : initialCodeOf(targetIter, def);
+        LifecycleStatus ref = def.getStatuses().stream()
+                .filter(s -> targetCode.equals(s.getCode()))
+                .findFirst()
+                .orElse(new LifecycleStatus(targetCode, targetCode));
+        iteration.setLifecycleTemplateIterationOid(targetOid);
+        iteration.setStatus(resolveStatus(ref));
+        log.info("生命周期模板迁移: templateIteration={}, 状态 {} → {}", targetOid, current, targetCode);
+        return targetCode;
+    }
+
+    /** 模板的初始状态：优先取主档上显式配置的，其次取状态列表的第一个（与 initLifecycle 一致） */
+    private String initialCodeOf(LifecycleTemplateIteration targetIter, LifecycleTemplateDef def) {
+        return initialStatusOf(targetIter != null ? targetIter.getOid() : null, def).getCode();
+    }
+
+    /** 同 {@link #initialCodeOf}，返回状态对象（带显示名），供退回初始状态时使用 */
+    private LifecycleStatus initialStatusOf(String templateIterationOid, LifecycleTemplateDef def) {
+        if (templateIterationOid != null && !templateIterationOid.trim().isEmpty()) {
+            LifecycleTemplateIteration iter = iterationMapper.selectByOid(templateIterationOid.trim());
+            if (iter != null && iter.getMasterOid() != null && !iter.getMasterOid().trim().isEmpty()) {
+                LifecycleTemplateMaster master = mapper.selectByOid(iter.getMasterOid().trim());
+                if (master != null && master.getInitialStateCode() != null
+                        && !master.getInitialStateCode().trim().isEmpty()) {
+                    String configured = master.getInitialStateCode().trim();
+                    for (LifecycleStatus status : def.getStatuses()) {
+                        if (configured.equals(status.getCode())) {
+                            return status;
+                        }
+                    }
+                }
+            }
+        }
+        return def.getStatuses().get(0);
+    }
+
+    @Override
+    public void ensureRevisable(IterationEntity iteration) {
+        if (iteration == null) {
+            return;
+        }
+        String templateIterationOid = iteration.getLifecycleTemplateIterationOid();
+        String statusCode = iteration.getStatus() != null ? iteration.getStatus().getCode() : null;
+        if (isBlank(templateIterationOid) || isBlank(statusCode)) {
+            // 历史数据没固化模板 / 没有状态：与 RevisionRuleGuard 同口径，配置缺失不阻断业务动作
+            return;
+        }
+        LifecycleTemplateStatusRef state;
+        try {
+            List<LifecycleTemplateStatusRef> refs =
+                    mapper.selectStateRefsByIterationOid(templateIterationOid.trim());
+            state = refs == null ? null : refs.stream()
+                    .filter(r -> statusCode.equals(r.getStatusCode()))
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("修订状态校验跳过（模板状态读取失败）: templateIteration={}, status={}, error={}",
+                    templateIterationOid, statusCode, e.getMessage());
+            return;
+        }
+        // 状态已不在该版模板内（模板被编辑过）：交给迁移规则去判，这里不越权解释
+        if (state == null || state.isRevisable()) {
+            return;
+        }
+        String statusName = isBlank(state.getStatusDisplayName())
+                ? statusCode : state.getStatusDisplayName();
+        throw new IllegalStateException("对象当前状态「" + statusName + "」不允许修订。"
+                + "请先通过「设置生命周期状态」切换到允许修订的状态；"
+                + "或由管理员在「业务配置 → 生命周期」中把该状态设为可修订。");
+    }
+
+    @Override
+    @Transactional
+    public void setStateRevisable(String templateCode, String statusCode, boolean revisable) {
+        if (isBlank(templateCode) || isBlank(statusCode)) {
+            throw new IllegalArgumentException("模板编码与状态编码不能为空");
+        }
+        String code = templateCode.trim();
+        String status = statusCode.trim();
+        LifecycleTemplateMaster existing = mapper.selectByCode(code);
+        if (existing == null) {
+            throw new IllegalArgumentException("生命周期模板 '" + code + "' 不存在");
+        }
+        // 平台模板只有平台管理员能改；租户模板由本租户管理员改（与模板结构编辑同一道闸）
+        TenantContext.requireEditPermission(existing.getTenantOid(), "生命周期模板");
+
+        List<LifecycleTemplateIteration> iterations = iterationMapper.selectByMasterOid(existing.getOid());
+        if (iterations == null || iterations.isEmpty()) {
+            throw new IllegalStateException("生命周期模板 '" + code + "' 没有可用子版本");
+        }
+        boolean found = false;
+        for (LifecycleTemplateIteration iter : iterations) {
+            List<LifecycleTemplateStatusRef> states = mapper.selectStateRefsByIterationOid(iter.getOid());
+            if (states == null) {
+                continue;
+            }
+            for (LifecycleTemplateStatusRef ref : states) {
+                if (!status.equals(ref.getStatusCode())) {
+                    continue;
+                }
+                found = true;
+                // 全部子版本一起改：在途对象固化的可能是旧子版本，只改最新版等于"改了配置却不生效"
+                mapper.updateStateRevisable(iter.getOid(), status, revisable);
+            }
+        }
+        if (!found) {
+            throw new IllegalArgumentException("状态 " + status + " 不在生命周期模板 '" + code + "' 内");
+        }
+        log.info("生命周期状态可修订已更新: template={}, status={}, revisable={}", code, status, revisable);
+    }
+
+    @Override
+    public LifecycleStatus initialStatus(String templateIterationOid) {
+        if (isBlank(templateIterationOid)) {
+            return null;
+        }
+        try {
+            LifecycleTemplateDef def = loadDef(templateIterationOid.trim());
+            if (def == null || def.getStatuses() == null || def.getStatuses().isEmpty()) {
+                return null;
+            }
+            return resolveStatus(initialStatusOf(templateIterationOid.trim(), def));
+        } catch (Exception e) {
+            log.warn("解析模板初始状态失败: templateIteration={}, error={}", templateIterationOid, e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public Map<String, Boolean> revisableFlags(String templateIterationOid) {
+        Map<String, Boolean> flags = new HashMap<>();
+        if (isBlank(templateIterationOid)) {
+            return flags;
+        }
+        try {
+            List<LifecycleTemplateStatusRef> refs = mapper.selectStateRefsByIterationOid(templateIterationOid.trim());
+            if (refs != null) {
+                for (LifecycleTemplateStatusRef ref : refs) {
+                    if (ref.getStatusCode() != null) {
+                        flags.put(ref.getStatusCode(), ref.isRevisable());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取状态可修订标记失败，按允许处理: templateIteration={}, error={}",
+                    templateIterationOid, e.getMessage());
+        }
+        return flags;
+    }
+
+    @Override
     public void moveToState(IterationEntity iteration, String targetStateCode) {
         if (iteration == null) {
             throw new IllegalArgumentException("迭代对象不能为空");
@@ -304,7 +500,9 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
         if (def.getStatuses().isEmpty()) {
             throw new IllegalStateException("生命周期模板里没有定义任何状态: " + templateIterationOid);
         }
-        LifecycleStatus initial = def.getStatuses().get(0);
+        // 与 initLifecycle / 候选接口同口径：优先主档上显式配置的初始状态，其次状态清单第一个。
+        // 两处不一致时，迁移把对象放到显式初始状态、退回却按另一个状态走，会直接对不上
+        LifecycleStatus initial = initialStatusOf(templateIterationOid, def);
         String current = iteration.getStatus() != null ? iteration.getStatus().getCode() : null;
         if (current == null || current.equals(initial.getCode())) {
             iteration.setStatus(resolveStatus(initial));
@@ -312,7 +510,7 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
             return;
         }
 
-        // 逐跳回退：多跳（RELEASED→IN_WORK→DRAFT）在模板里没有直接规则，
+        // 逐跳回退：多跳（PUBLISHED→WORKING→DRAFT）在模板里没有直接规则，
         // 允许一步跳过去就等于把回退链当摆设 —— 那正是模板要防的事
         Set<String> visited = new LinkedHashSet<>();
         visited.add(current);
@@ -381,6 +579,10 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
         return code == null ? "（无）" : code;
     }
 
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
     // ==================== 内部方法 ====================
 
     private void saveChildren(LifecycleTemplateMaster template, String iterationOid) {
@@ -412,6 +614,30 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
         }
     }
 
+    /**
+     * 把「可修订」标记同步到该模板的全部子版本。
+     *
+     * <p>权限开关对在途对象同样要生效：它们固化的是旧子版本，只写新版本等于没改。
+     * 旧版本里没有该状态时 UPDATE 自然不命中，无需特殊处理。
+     */
+    private void applyRevisableToIterations(String masterOid, List<LifecycleTemplateStatusRef> states) {
+        if (masterOid == null || states == null || states.isEmpty()) {
+            return;
+        }
+        List<LifecycleTemplateIteration> iterations = iterationMapper.selectByMasterOid(masterOid);
+        if (iterations == null) {
+            return;
+        }
+        for (LifecycleTemplateIteration iter : iterations) {
+            for (LifecycleTemplateStatusRef ref : states) {
+                if (isBlank(ref.getStatusCode())) {
+                    continue;
+                }
+                mapper.updateStateRevisable(iter.getOid(), ref.getStatusCode(), ref.isRevisable());
+            }
+        }
+    }
+
     private LifecycleTemplateMaster fillChildren(LifecycleTemplateMaster template) {
         if (template == null) return null;
         // 加载最新子版本
@@ -419,25 +645,29 @@ public class DefaultLifecycleTemplateService extends MasterServiceImpl implement
         template.setLatestIteration(latestIter);
         // 通过子版本 oid 加载状态和流转规则
         if (latestIter != null) {
-            String iterationOid = latestIter.getOid();
-            List<LifecycleTemplateStatusRef> states = mapper.selectStateRefsByIterationOid(iterationOid);
-            template.setStates(states != null ? states : Collections.emptyList());
-
-            List<LifecycleTemplateTransitionRef> allTrans = mapper.selectTransitionRefsByIterationOid(iterationOid);
-            List<LifecycleTemplateTransitionRef> promotes = new ArrayList<>();
-            List<LifecycleTemplateTransitionRef> rejects = new ArrayList<>();
-            if (allTrans != null) {
-                for (LifecycleTemplateTransitionRef t : allTrans) {
-                    if ("REJECT".equals(t.getTransitionType())) {
-                        rejects.add(t);
-                    } else {
-                        promotes.add(t);
-                    }
-                }
-            }
-            template.setTransitions(promotes);
-            template.setRejections(rejects);
+            fillChildrenOf(template, latestIter.getOid());
         }
         return template;
+    }
+
+    /** 按指定子版本 oid 装载 states / transitions / rejections（最新版与"对象固化的那一版"共用） */
+    private void fillChildrenOf(LifecycleTemplateMaster template, String iterationOid) {
+        List<LifecycleTemplateStatusRef> states = mapper.selectStateRefsByIterationOid(iterationOid);
+        template.setStates(states != null ? states : Collections.emptyList());
+
+        List<LifecycleTemplateTransitionRef> allTrans = mapper.selectTransitionRefsByIterationOid(iterationOid);
+        List<LifecycleTemplateTransitionRef> promotes = new ArrayList<>();
+        List<LifecycleTemplateTransitionRef> rejects = new ArrayList<>();
+        if (allTrans != null) {
+            for (LifecycleTemplateTransitionRef t : allTrans) {
+                if ("REJECT".equals(t.getTransitionType())) {
+                    rejects.add(t);
+                } else {
+                    promotes.add(t);
+                }
+            }
+        }
+        template.setTransitions(promotes);
+        template.setRejections(rejects);
     }
 }

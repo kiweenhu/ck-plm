@@ -57,21 +57,21 @@ public class LifecycleTemplateDef {
     private static LifecycleTemplateDef createStandard() {
         LifecycleTemplateDef def = new LifecycleTemplateDef("Standard");
         def.addStatus(new LifecycleStatus("DRAFT", "Draft"));
-        def.addStatus(new LifecycleStatus("IN_WORK", "In Work"));
-        def.addStatus(new LifecycleStatus("RELEASED", "Released"));
-        def.addTransition("DRAFT", "IN_WORK");
-        def.addTransition("IN_WORK", "RELEASED");
-        def.addRejection("IN_WORK", "DRAFT");
-        def.addRejection("RELEASED", "IN_WORK");
+        def.addStatus(new LifecycleStatus("WORKING", "In Work"));
+        def.addStatus(new LifecycleStatus("PUBLISHED", "Released"));
+        def.addTransition("DRAFT", "WORKING");
+        def.addTransition("WORKING", "PUBLISHED");
+        def.addRejection("WORKING", "DRAFT");
+        def.addRejection("PUBLISHED", "WORKING");
         return def;
     }
 
     private static LifecycleTemplateDef createSimple() {
         LifecycleTemplateDef def = new LifecycleTemplateDef("Simple");
         def.addStatus(new LifecycleStatus("DRAFT", "Draft"));
-        def.addStatus(new LifecycleStatus("RELEASED", "Released"));
-        def.addTransition("DRAFT", "RELEASED");
-        def.addRejection("RELEASED", "DRAFT");
+        def.addStatus(new LifecycleStatus("PUBLISHED", "Released"));
+        def.addTransition("DRAFT", "PUBLISHED");
+        def.addRejection("PUBLISHED", "DRAFT");
         return def;
     }
 

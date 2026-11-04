@@ -1,0 +1,237 @@
+{
+  "key": "change-notice",
+  "name": "变更通告流程（仅 ECN）",
+  "displayName": "变更通告（ECN）流程 · 独立发起",
+  "category": "变更管理",
+  "description": "只用变更通告（不启用变更请求）的企业走这张：发起 → 设置审批人 → 影响面评审 → 变更审批 → 变更管理员终审 → 按清单派发变更任务（1:M 子流程）→ 结束；任一节点驳回即结束。因为前面没有 ECR 的判定结论，这张图把「影响面」也放在审批链里审一遍。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "change-notice",
+      "name": "变更通告流程（仅 ECN）",
+      "displayName": "变更通告（ECN）流程 · 独立发起",
+      "category": "变更管理",
+      "description": "独立变更通告：影响面评审 → 变更审批 → 变更管理员终审 → 派发变更任务。",
+      "notifications": {
+        "channel": "CK_PLM"
+      }
+    },
+    "variables": [],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：发起变更通告",
+        "type": "START",
+        "description": "由变更通告（ECN）的「提交审批」拉起（businessKey = 通告 oid）",
+        "initiator": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "set_approving",
+        "name": "进入审批：审批中",
+        "type": "SERVICE",
+        "description": "单据状态置为「审批中」（APPROVING）：流程一拉起就落到这个状态，审批人在单据上看到的是「审批中」而不是还停在草稿",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "APPROVING"
+        }
+      },
+      {
+        "id": "setup_1",
+        "name": "设置审批人",
+        "description": "发起人按节点指定本次审批的三级人员（覆盖下游静态人员）",
+        "type": "SET_ASSIGNEE",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "assess_1",
+        "name": "影响面评审",
+        "description": "没有 ECR 的前置分析，这一关替代它：BOM 与受影响对象影响面、供应与在制库存、认证是否需重测（电子：替代料准入与可靠性；智能硬件：跨域一致性与试产切换）、客户通知义务是否触发。意见必填",
+        "type": "APPROVAL",
+        "assignee": {
+          "strategy": "INITIATOR_LEADER"
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true,
+        "formRef": "change-notice-review"
+      },
+      {
+        "id": "approve_1",
+        "name": "变更审批",
+        "description": "领域负责人审批：改法是否可行、风险是否可控（电子：器件/AVL 与工艺窗口；智能硬件：硬件/结构/固件接口与包装）。意见必填",
+        "type": "APPROVAL",
+        "assignee": {
+          "strategy": "INITIATOR_LEADER"
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true,
+        "formRef": "change-notice-review"
+      },
+      {
+        "id": "final_1",
+        "name": "变更管理员终审",
+        "description": "变更管理员/项目经理终审：执行计划与实施窗口、切换与回退方案、追溯与关闭判据。通过后派发变更任务",
+        "type": "APPROVAL",
+        "assignee": {
+          "strategy": "INITIATOR_LEADER"
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true,
+        "formRef": "change-notice-review"
+      },
+      {
+        "id": "set_approved",
+        "name": "审批通过：已批准",
+        "type": "SERVICE",
+        "description": "单据状态置为「已批准」（APPROVED）：更改事项在此刻由待生效转为可执行，随后派发变更任务",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "APPROVED"
+        }
+      },
+      {
+        "id": "set_rejected",
+        "name": "审批驳回：已驳回",
+        "type": "SERVICE",
+        "description": "单据状态置为「已驳回」（REJECTED）—— 任一审批环节驳回都汇到这里，结论只写一次",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "REJECTED"
+        }
+      },
+      {
+        "id": "sub_task",
+        "name": "派发变更任务（子流程）",
+        "description": "按 changeTaskList 逐个拉起变更任务流程，每个任务一个独立实例（businessKey = 任务 oid）；全部任务完成后本通告才继续",
+        "type": "SUB_PROCESS",
+        "processKey": "change-task",
+        "variableMap": {
+          "initiator": "${initiator}",
+          "taskAssignee": "${task.assignee}"
+        },
+        "multiInstance": {
+          "collection": "changeTaskList",
+          "elementVariable": "task",
+          "sequential": false,
+          "businessKey": "oid"
+        }
+      },
+      {
+        "id": "end_done",
+        "name": "结束：变更已实施",
+        "type": "END"
+      },
+      {
+        "id": "end_rejected",
+        "name": "结束：审批驳回",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "start_1",
+        "target": "set_approving",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "set_approving",
+        "target": "setup_1",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e3",
+        "source": "setup_1",
+        "target": "assess_1",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e4",
+        "source": "assess_1",
+        "target": "approve_1",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e5",
+        "source": "assess_1",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e6",
+        "source": "approve_1",
+        "target": "final_1",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e7",
+        "source": "approve_1",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e8",
+        "source": "final_1",
+        "target": "set_approved",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e9",
+        "source": "final_1",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e10",
+        "source": "set_approved",
+        "target": "sub_task",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e11",
+        "source": "set_rejected",
+        "target": "end_rejected",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e12",
+        "source": "sub_task",
+        "target": "end_done",
+        "kind": "NORMAL"
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": { "x": 296, "y": -8 },
+        "set_approving": { "x": 240, "y": 66 },
+        "setup_1": { "x": 240, "y": 156 },
+        "assess_1": { "x": 240, "y": 246 },
+        "approve_1": { "x": 240, "y": 336 },
+        "final_1": { "x": 240, "y": 426 },
+        "set_approved": { "x": 240, "y": 516 },
+        "sub_task": { "x": 240, "y": 606 },
+        "end_done": { "x": 296, "y": 696 },
+        "set_rejected": { "x": 569, "y": 426 },
+        "end_rejected": { "x": 625, "y": 516 }
+      }
+    }
+  }
+}

@@ -42,7 +42,7 @@
         </template>
 
         <template v-else-if="column.key === 'action'">
-          <!-- 办理要按节点表单渲染、还带委派/转办/评论，整套在任务中心里；
+          <!-- 办理要按节点表单渲染、还带转办/加签，整套在任务中心里；
                这里只做"把人送过去"，不复制一套弹框（复制出来两处必然漂移） -->
           <a-button type="primary" size="small" @click="goTaskCenter">去办理</a-button>
         </template>

@@ -231,16 +231,17 @@ const editor = useEditor({
 
 // ========== 内外值同步 ==========
 // 外部 modelValue 变化 → 更新编辑器内容
-const isInternalUpdate = ref(false)
+//
+// <p>必须 {@code emitUpdate: false}：tiptap v3 的 setContent 默认会把"规范化后的 HTML"
+// 回发给父组件，于是外部传进来的纯文本（如 ECR 带过来的变更原因）会被改写成 <p>…</p>，
+// 父组件再拿它跟"带进来时的原值"比对就永远不相等 —— 清掉来源请求时这些值回滚不掉。
 watch(() => props.modelValue, (newVal) => {
   if (!editor.value) return
   const currentHtml = editor.value.getHTML()
   const normCurrent = (currentHtml === '<p></p>' || currentHtml === '') ? '' : currentHtml
   const normNew = newVal || ''
   if (normCurrent !== normNew) {
-    isInternalUpdate.value = true
-    editor.value.commands.setContent(normNew)
-    isInternalUpdate.value = false
+    editor.value.commands.setContent(normNew, { emitUpdate: false })
   }
 })
 

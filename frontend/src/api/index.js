@@ -478,7 +478,7 @@ export function savePageLayout(data) {
   return request.post('/page-layouts', data)
 }
 
-/** 克隆平台级页面布局到当前租户 */
+/** 克隆「根类型布局」到当前类型（本租户内：当前类型的 root_type_code 对应类型的同操作布局） */
 export function clonePageLayout(data) {
   return request.post('/page-layouts/clone', data)
 }
@@ -573,6 +573,22 @@ export function removeRoleMember(roleOid, userOid) {
 
 // ==================== 产品线管理 API ====================
 
+/**
+ * 批量查询「我能否维护这些系列/型号」（阶段 / 团队 / 编辑 / 删除）。
+ *
+ * <p>2026-10-17 用户要求：这四类操作只有产品经理（团队角色）能做，管理员豁免。
+ * 列表页用它控制行按钮显隐；后端各写接口仍会独立校验（canManageUnder），这里只管显示。
+ * 系列 oid 与型号 oid 都支持（型号判定继承父系列团队）。
+ *
+ * @param {string[]} oids 系列 / 型号 oid 清单
+ * @returns {Promise<{code:number, data:Object<string,boolean>}>} oid → 是否可维护
+ */
+export function getMyManagePermissions(oids) {
+  return request.get('/product-lines/my-manage-permissions', {
+    params: { oids: (oids || []).join(',') },
+  })
+}
+
 /** 获取产品线列表 */
 export function getProductLines(keyword) {
   return request.get('/product-lines', { params: keyword ? { keyword } : {} })
@@ -602,10 +618,13 @@ export function getEntityByCode(entityCode, oid, params) {
 }
 
 /**
- * 「设置生命周期状态」的候选项 —— 依据该类型绑定的生命周期模板。
+ * 「设置生命周期状态」的候选项 —— 依据该类型<b>当前配置</b>的生命周期模板。
  *
- * 返回 { templateCode, templateName, current, initial, states:[{code,name,reachable,reason}] }：
- * 状态清单、初始状态、以及"从当前状态能否一步迁到它"（不可达的带原因，界面据此禁用）。
+ * <p>候选一律来自业务配置的模板（设置状态时会先把历史对象切到新模板）；
+ * 对象仍绑着旧模板 / 未绑定时，响应用 templateChanged / templateBindRequired
+ * 标记"本次会先切换"，并用 migration* 说明切换后当前状态会变成什么。
+ *
+ * 返回 { templateCode, templateName, current, initial, states:[{code,name,reachable,reason}] }。
  * 与执行侧（后端 moveToState / moveToInitialState）用同一份模板，不会"界面让选、后端拒收"。
  */
 export function getLifecycleStateOptions(oid, typeDefinitionCode) {
@@ -617,9 +636,10 @@ export function getLifecycleStateOptions(oid, typeDefinitionCode) {
 /**
  * 设置生命周期状态。
  *
- * @param {object} data { typeDefinitionCode, mode, targetStateCode? }
+ * @param {object} data { typeDefinitionCode, mode, targetStateCode?, migrateTemplate? }
  *   mode=INITIAL：退回模板初始状态（沿模板回退规则逐跳，如 已发布 → 工作中 → 草稿）
  *   mode=SPECIFIED：设到 targetStateCode（要求当前状态能一步迁到它）
+ *   migrateTemplate=true：先把对象从固化的旧模板迁到业务配置的新模板，再设置状态（同一事务）
  */
 export function setLifecycleState(oid, data) {
   return request.post(`/softtype-instances/${oid}/lifecycle-state`, data)
@@ -677,6 +697,37 @@ export function createProductLine(data) {
 /** 更新产品线 */
 export function updateProductLine(oid, data) {
   return request.put(`/product-lines/${oid}`, data)
+}
+
+/**
+ * 读取容器（产品系列 / 型号）的目标成本。
+ *
+ * <p>系列与型号共用这条路由 —— 后端按 oid 自己判是哪张表，
+ * 返回 `{ ownerType: 'LINE' | 'MODEL', targetCost: number | null }`。
+ * 目标成本是 IBA 属性（TARGET_COST），所以不在产品线的普通字段里。
+ */
+export function getTargetCost(oid) {
+  return request.get(`/product-lines/${oid}/target-cost`)
+}
+
+/** 设置目标成本（单位：元）；targetCost 传 null 表示清除 */
+export function setTargetCost(oid, targetCost) {
+  return request.put(`/product-lines/${oid}/target-cost`, { targetCost })
+}
+
+/**
+ * 读取容器（产品系列 / 型号）的目标上市日期。
+ *
+ * <p>返回 `{ ownerType, targetLaunchDate: 'YYYY-MM-DD' | null }`；
+ * 指标「上市时间偏差」用它和 LDCP（上市决策评审）的通过日相减。
+ */
+export function getTargetLaunchDate(oid) {
+  return request.get(`/product-lines/${oid}/target-launch-date`)
+}
+
+/** 设置目标上市日期（yyyy-MM-dd）；传 null 表示清除 */
+export function setTargetLaunchDate(oid, targetLaunchDate) {
+  return request.put(`/product-lines/${oid}/target-launch-date`, { targetLaunchDate })
 }
 
 /** 删除产品线 */
@@ -896,6 +947,16 @@ export function getAttachment(oid) {
   return request.get(`/attachments/${oid}`)
 }
 
+/**
+ * 附件的下载地址（浏览器直接打开即触发下载）。
+ *
+ * <p>与 getDocumentDownloadUrl 同一口径：不走 axios，交给 <a href> / window.open ——
+ * 走 axios 只能拿到二进制，还得自己造 Blob 再起文件名，中文名容易丢。
+ */
+export function getAttachmentDownloadUrl(oid) {
+  return `/api/attachments/${oid}/download`
+}
+
 // ==================== 图片空间 API（Media 实体） ====================
 
 /**
@@ -1073,11 +1134,6 @@ export function deleteEngineeringDocumentLatestIteration(oid) {
   return request.delete(`/eng-documents/${oid}/latest-iteration`)
 }
 
-/** 新建视图版本（revision+1，iteration=1） */
-export function newViewVersionEngineeringDocument(oid) {
-  return request.post(`/eng-documents/${oid}/new-view-version`)
-}
-
 /** 查询工程数据详情（params = { iterationOid } 可选，用于查看指定历史版本） */
 export function getEngineeringDocument(oid, params) {
   return request.get(`/eng-documents/${oid}`, { params })
@@ -1157,11 +1213,6 @@ export function deletePartLatestIteration(oid) {
   return request.delete(`/parts/${oid}/latest-iteration`)
 }
 
-/** 新建零组件视图版本（新的大版本） */
-export function newViewVersionPart(oid) {
-  return request.post(`/parts/${oid}/new-view-version`)
-}
-
 /** 重命名零组件 */
 export function renamePart(oid, name) {
   return request.put(`/parts/${oid}/rename`, { name })
@@ -1212,11 +1263,6 @@ export function deleteDocument(oid) {
 /** 删除文档的最新小版本 */
 export function deleteDocumentLatestIteration(oid) {
   return request.delete(`/documents/${oid}/latest-iteration`)
-}
-
-/** 新建文档视图版本（新的大版本） */
-export function newViewVersionDocument(oid) {
-  return request.post(`/documents/${oid}/new-view-version`)
 }
 
 /** 重命名文档 */
@@ -1365,6 +1411,37 @@ export function getMyCheckouts() {
   return request.get('/checkout/mine')
 }
 
+// ==================== 修订 API（通用入口）====================
+
+/**
+ * 修订对象：基于当前最新版本创建新的大版本（revision+1，iteration=1）。
+ *
+ * <p>与检出/检入同一套架构：前端只调这一个入口，后端按 entityType 路由到对应
+ * ReviseProvider（PART / DOCUMENT / ENG_DOCUMENT）。新增带版本的实体类型时，
+ * 后端加一个 Provider 即可，所有调用处无需改动。
+ *
+ * @param {'PART'|'DOCUMENT'|'ENG_DOCUMENT'} entityType 实体类型
+ * @param {string} oid 主对象 oid（不是迭代 oid）
+ */
+export function reviseObject(entityType, oid) {
+  return request.post('/revise', { entityType, entityOid: oid })
+}
+
+/**
+ * 实体编码 → 修订入口的 entityType（与后端 ReviseProvider#getEntityType 对齐）。
+ *
+ * <p>Part 子类型（ELECTRONIC / STRUCTURAL…）共用 parts 宿主 → PART；
+ * 文档子类型 → DOCUMENT；工程数据子类型（FOOTPRINT / SYMBOL…）→ ENG_DOCUMENT。
+ * 未登记宿主返回空串，调用方据此拒绝/隐藏修订。
+ */
+export function resolveReviseEntityType(entityCode) {
+  const path = resolveEntityApiPath(entityCode)
+  if (path === 'parts') return 'PART'
+  if (path === 'documents') return 'DOCUMENT'
+  if (path === 'eng-documents') return 'ENG_DOCUMENT'
+  return ''
+}
+
 // ==================== 版本规则 API ====================
 
 /** 获取所有版本规则 */
@@ -1511,6 +1588,16 @@ export function updateLifecycleTemplate(code, data) {
   return request.put(`/lifecycle-templates/${code}`, data)
 }
 
+/**
+ * 设置某状态是否允许修订（租户管理员的权限开关）。
+ *
+ * <p>与模板结构编辑分开：不产生新的模板子版本，改动对该模板全部子版本生效，
+ * 在途对象（固化了旧子版本）也立即按新规则判定。
+ */
+export function setLifecycleStateRevisable(code, statusCode, revisable) {
+  return request.put(`/lifecycle-templates/${code}/states/${statusCode}/revisable`, { revisable })
+}
+
 /** 删除生命周期模板 */
 export function deleteLifecycleTemplate(code) {
   return request.delete(`/lifecycle-templates/${code}`)
@@ -1575,6 +1662,69 @@ export function resetNumberSequence(code, segmentOid, value) {
   return request.post(`/number-rules/${encodeURIComponent(code)}/reset-sequence`, { segmentOid, value })
 }
 
+// ==================== 行业初始化引导（租户管理员首登：选行业与研发方法）API ====================
+
+/** 引导状态：租户是否已引导 / 已选行业与方法论 / 当前用户是否租户管理员 / 本租户已有阶段数 */
+export function getOnboardingState() {
+  return request.get('/onboarding/state')
+}
+
+/** 可选的行业与研发方法（来自平台级阶段模板集的分组，不是前端硬编码清单） */
+export function getOnboardingOptions() {
+  return request.get('/onboarding/options')
+}
+
+/**
+ * 行业解决方案（干跑预演，一行不写）—— 引导页"点「确认画像」后、确认安装前"看的那份方案清单。
+ * 返回 { packId, packName, willInsert, willSkip, items[], errors[] }。
+ */
+export function planOnboarding(industryCode, devMethodCode) {
+  return request.get('/onboarding/plan', {
+    params: { industryCode, devMethodCode }
+  })
+}
+
+/** 完成行业初始化：选定行业与研发方法，后端把该行业包装到本租户（幂等） */
+export function completeOnboarding(payload) {
+  return request.post('/onboarding/complete', payload)
+}
+
+// ==================== 行业包（Industry Pack）API ====================
+
+/** 可用行业包列表（平台内置 + 外部目录覆盖） */
+export function getIndustryPacks() {
+  return request.get('/industry-packs/available')
+}
+
+/** 已安装的行业包（平台级 + 当前租户级） */
+export function getInstalledIndustryPacks() {
+  return request.get('/industry-packs/installed')
+}
+
+/** 校验全部行业包：平台版本区间 / 父包是否存在 / 资源文件是否齐 */
+export function validateIndustryPacks() {
+  return request.get('/industry-packs/validate')
+}
+
+/**
+ * 行业包内容详情 —— 平台管理员"查看行业与内嵌方法论内容"：
+ * 清单元数据 + 能力开关 + 企业画像题 + 可调参数（含按规模建议值）+ 内容亮点 + 待办 + 逐资源条目预览。
+ */
+export function getIndustryPackContent(code, version) {
+  return request.get(`/industry-packs/${encodeURIComponent(code)}/${encodeURIComponent(version)}/content`)
+}
+
+/** 安装预演（dry-run）：回答"真装会得到什么"，不写库，可反复点 */
+export function planIndustryPack(code, version) {
+  return request.get(`/industry-packs/${encodeURIComponent(code)}/${encodeURIComponent(version)}/plan`)
+}
+
+/** 安装行业包（幂等）—— 平台级包通常由启动自动安装，这里留给实施/排障手动触发 */
+export function installIndustryPack(code, version, params) {
+  return request.post(`/industry-packs/${encodeURIComponent(code)}/${encodeURIComponent(version)}/install`,
+    params ? { params } : {})
+}
+
 // ==================== 视图定义 API ====================
 
 /** 获取视图列表（支持 keyword 模糊搜索） */
@@ -1632,16 +1782,6 @@ export function deleteViewTransition(oid) {
 // ==================== 分类管理 ====================
 export function getClassificationTree() {
   return request.get('/classifications/tree')
-}
-
-/** 获取平台租户的分类树（用于克隆预览） */
-export function getPlatformTree() {
-  return request.get('/classifications/platform-tree')
-}
-
-/** 从平台克隆指定根分类到当前租户（支持多选） */
-export function clonePlatform(rootOids) {
-  return request.post('/classifications/clone-platform', { rootOids })
 }
 
 export function getClassificationList() {
@@ -1811,6 +1951,20 @@ export function disableProcessTemplate(oid) {
   return request.post(`/plm/process-templates/${oid}/disable`)
 }
 
+/**
+ * 预置流程模板市场：行业包里可取的流程清单（只读，不落库）。
+ *
+ * 数据源是包目录（随 jar 发布），不是模板表 —— 取用后才在本租户生成模板行。
+ */
+export function listProcessTemplateMarket() {
+  return request.get('/plm/process-templates/market')
+}
+
+/** 取用一个预置流程（body: { packId, file, key?, name? }） */
+export function adoptProcessTemplate(data) {
+  return request.post('/plm/process-templates/market/adopt', data)
+}
+
 /** 版本历史 */
 export function listProcessTemplateVersions(oid) {
   return request.get(`/plm/process-templates/${oid}/versions`)
@@ -1854,6 +2008,22 @@ export function deployProcessTemplate(oid, data) {
  */
 export function getProcessStartOption(params) {
   return request.get('/workflow/instance/start-options', { params })
+}
+
+/**
+ * 按流程 key **直传**解析发起选项 —— 不经过"类型 + 状态 → 绑定"这条解析，
+ * 用于"行上自带 processKey"的入口（产品系列页的**阶段门 / 评审**行：
+ * TR1 → technical-review、CHARTER → gate-decision …）。
+ *
+ * <p>返回形状与 {@link getProcessStartOption} 完全一致（后端同一个 VO、同一份组装逻辑），
+ * 因此发起弹框可直接复用：`startable / reason / processTemplate / processVersion`。
+ *
+ * @param {{ processKey: string, typeCode?: string, statusCode?: string, entityOid?: string }} params
+ *        typeCode / statusCode / entityOid 是**发起上下文**（从哪个对象发起），
+ *        与按类型解析时同义：entityOid 传了会一并判定"该对象该大版本下是否已有流程在执行"。
+ */
+export function getProcessStartOptionByKey(params) {
+  return request.get('/workflow/instance/start-option-by-key', { params })
 }
 
 /**
@@ -1947,6 +2117,18 @@ export function getTaskForm(id) {
 }
 
 /**
+ * 发起表单上下文：{ formKey, startEventId, dslJson, processDefinitionKey/version }
+ * —— 开始节点配的表单（{@code startEvent} 的 flowable:formKey = DSL start 节点的 formRef）。
+ *
+ * <p>发起弹框在解析出「该发起哪个流程」后调它：formKey 非空则渲染申请表单，
+ * 可填的字段随发起变量一并提交；为空则不渲染表单区（与老流程完全一致）。
+ * 未部署时各字段为空，不是错误。
+ */
+export function getStartForm(processKey) {
+  return request.get('/workflow/instance/start-form', { params: { processKey } })
+}
+
+/**
  * 办理任务。
  *
  * @param {string} id 任务 id
@@ -2030,6 +2212,20 @@ export function getInstanceNodeLogs(id, params) {
   return request.get(`/workflow/instance/${id}/node-logs`, { params })
 }
 
+/**
+ * 某节点的「表单填写」—— 该节点办理时写入流程变量的表单类键值清单（key / label / value）。
+ *
+ * <p>与节点执行日志互补：日志回答"后台跑了什么"，这里回答"这一步填了什么"
+ * （如「设置审批人」节点写入的各环节审批人 {@code ckplmSetupAssignees_<节点id>}）。
+ * 平台内部变量（发起人 / 业务对象集 / 结论等）不返回 —— 那几项在节点头部已展示。
+ *
+ * @param {string} id 流程实例 id
+ * @param {string} activityId 节点（活动）id
+ */
+export function getActivityForm(id, activityId) {
+  return request.get(`/workflow/instance/${id}/activity-form`, { params: { activityId } })
+}
+
 /** 移动到指定分组（body: { categoryOid }；不产生新版本） */
 export function moveProcessTemplateCategory(oid, categoryOid) {
   return request.post(`/plm/process-templates/${oid}/category`, { categoryOid })
@@ -2075,6 +2271,315 @@ export function cloneStageTemplatesFromPlatform(industry) {
     : request.post('/stage-templates/clone-from-platform')
 }
 
+// ==================== 交付件（交付物）模板 API ====================
+// 与阶段模板同构：行业包随包装入企业一份，企业在此裁剪（含"停用"），
+// 创建产品系列/型号时按它快照成实例（P2）。
+
+/** 本租户交付件模板（可按 industry 过滤） */
+export function listDeliverableTemplates(industry) {
+  return request.get('/deliverable-templates', { params: { industry } })
+}
+export function createDeliverableTemplate(data) { return request.post('/deliverable-templates', data) }
+export function updateDeliverableTemplate(oid, data) { return request.put(`/deliverable-templates/${oid}`, data) }
+export function deleteDeliverableTemplate(oid) { return request.delete(`/deliverable-templates/${oid}`) }
+/** 停用/启用（企业裁剪的正道：保留行与幂等键，重装行业包不会改回） */
+export function setDeliverableTemplateDisabled(oid, value) {
+  return request.put(`/deliverable-templates/${oid}/disabled`, null, { params: { value } })
+}
+/** 查询平台提供的方法论列表（克隆弹窗的选项来源） */
+export function listPlatformDeliverableIndustries() { return request.get('/deliverable-templates/platform-industries') }
+/** 查询平台交付件模板（按 industry 过滤） */
+export function listPlatformDeliverableTemplates(industry) {
+  return request.get('/deliverable-templates/platform', { params: { industry } })
+}
+/** 克隆平台交付件模板（幂等：已存在的 code 跳过，不覆盖企业裁剪） */
+export function cloneDeliverableTemplatesFromPlatform(industry) {
+  return industry
+    ? request.post(`/deliverable-templates/clone-from-platform?industry=${encodeURIComponent(industry)}`)
+    : request.post('/deliverable-templates/clone-from-platform')
+}
+
+// ==================== 阶段门（评审门）模板 API ====================
+// 与阶段模板 / 交付件模板同构：行业包随包装入企业一份，企业在此裁剪（含"停用"）。
+
+/** 本租户阶段门模板（可按 industry 过滤） */
+export function listGateTemplates(industry) {
+  return request.get('/gate-templates', { params: { industry } })
+}
+export function createGateTemplate(data) { return request.post('/gate-templates', data) }
+export function updateGateTemplate(oid, data) { return request.put(`/gate-templates/${oid}`, data) }
+export function deleteGateTemplate(oid) { return request.delete(`/gate-templates/${oid}`) }
+/** 停用/启用（企业裁剪的正道：保留行与幂等键，重装行业包不会改回） */
+export function setGateTemplateDisabled(oid, value) {
+  return request.put(`/gate-templates/${oid}/disabled`, null, { params: { value } })
+}
+/** 查询平台提供的方法论列表（克隆弹窗的选项来源） */
+export function listPlatformGateIndustries() { return request.get('/gate-templates/platform-industries') }
+/** 查询平台阶段门模板（按 industry 过滤） */
+export function listPlatformGateTemplates(industry) {
+  return request.get('/gate-templates/platform', { params: { industry } })
+}
+/** 克隆平台阶段门模板（幂等：已存在的 code 跳过，不覆盖企业裁剪） */
+export function cloneGateTemplatesFromPlatform(industry) {
+  return industry
+    ? request.post(`/gate-templates/clone-from-platform?industry=${encodeURIComponent(industry)}`)
+    : request.post('/gate-templates/clone-from-platform')
+}
+
+// ==================== 评审模板 API ====================
+// 与阶段 / 交付件 / 门模板同构：行业包随包装入企业一份，企业在此裁剪（含"停用"）。
+
+/** 本租户评审模板（可按 industry 过滤） */
+export function listReviewTemplates(industry) {
+  return request.get('/review-templates', { params: { industry } })
+}
+export function createReviewTemplate(data) { return request.post('/review-templates', data) }
+export function updateReviewTemplate(oid, data) { return request.put(`/review-templates/${oid}`, data) }
+export function deleteReviewTemplate(oid) { return request.delete(`/review-templates/${oid}`) }
+/** 停用/启用（企业裁剪的正道：保留行与幂等键，重装行业包不会改回） */
+export function setReviewTemplateDisabled(oid, value) {
+  return request.put(`/review-templates/${oid}/disabled`, null, { params: { value } })
+}
+/** 查询平台提供的方法论列表（克隆弹窗的选项来源） */
+export function listPlatformReviewIndustries() { return request.get('/review-templates/platform-industries') }
+/** 查询平台评审模板（按 industry 过滤） */
+export function listPlatformReviewTemplates(industry) {
+  return request.get('/review-templates/platform', { params: { industry } })
+}
+/** 克隆平台评审模板（幂等：已存在的 code 跳过，不覆盖企业裁剪） */
+export function cloneReviewTemplatesFromPlatform(industry) {
+  return industry
+    ? request.post(`/review-templates/clone-from-platform?industry=${encodeURIComponent(industry)}`)
+    : request.post('/review-templates/clone-from-platform')
+}
+
+// ==================== 检查规则模板 API ====================
+// 与前面几类模板同构：行业包随包装入企业一份，企业在此裁剪（含"停用"）。
+
+/** 本租户检查规则（可按 industry 过滤） */
+export function listRuleTemplates(industry) {
+  return request.get('/rule-templates', { params: { industry } })
+}
+export function createRuleTemplate(data) { return request.post('/rule-templates', data) }
+export function updateRuleTemplate(oid, data) { return request.put(`/rule-templates/${oid}`, data) }
+export function deleteRuleTemplate(oid) { return request.delete(`/rule-templates/${oid}`) }
+/** 停用/启用（企业裁剪的正道：保留行与幂等键，重装行业包不会改回） */
+export function setRuleTemplateDisabled(oid, value) {
+  return request.put(`/rule-templates/${oid}/disabled`, null, { params: { value } })
+}
+/** 查询平台提供的方法论列表（克隆弹窗的选项来源） */
+export function listPlatformRuleIndustries() { return request.get('/rule-templates/platform-industries') }
+/** 查询平台检查规则（按 industry 过滤） */
+export function listPlatformRuleTemplates(industry) {
+  return request.get('/rule-templates/platform', { params: { industry } })
+}
+/** 克隆平台检查规则（幂等：已存在的 code 跳过，不覆盖企业裁剪） */
+export function cloneRuleTemplatesFromPlatform(industry) {
+  return industry
+    ? request.post(`/rule-templates/clone-from-platform?industry=${encodeURIComponent(industry)}`)
+    : request.post('/rule-templates/clone-from-platform')
+}
+
+// ==================== 问题类型模板 API ====================
+// 与前面几类模板同构：行业包随包装入企业一份，企业在此裁剪（含"停用"）。
+
+/** 本租户问题类型（可按 industry 过滤） */
+export function listIssueTypeTemplates(industry) {
+  return request.get('/issue-type-templates', { params: { industry } })
+}
+export function createIssueTypeTemplate(data) { return request.post('/issue-type-templates', data) }
+export function updateIssueTypeTemplate(oid, data) { return request.put(`/issue-type-templates/${oid}`, data) }
+export function deleteIssueTypeTemplate(oid) { return request.delete(`/issue-type-templates/${oid}`) }
+/** 停用/启用（企业裁剪的正道：保留行与幂等键，重装行业包不会改回） */
+export function setIssueTypeTemplateDisabled(oid, value) {
+  return request.put(`/issue-type-templates/${oid}/disabled`, null, { params: { value } })
+}
+/** 查询平台提供的方法论列表（克隆弹窗的选项来源） */
+export function listPlatformIssueTypeIndustries() { return request.get('/issue-type-templates/platform-industries') }
+/** 查询平台问题类型（按 industry 过滤） */
+export function listPlatformIssueTypeTemplates(industry) {
+  return request.get('/issue-type-templates/platform', { params: { industry } })
+}
+/** 克隆平台问题类型（幂等：已存在的 code 跳过，不覆盖企业裁剪） */
+export function cloneIssueTypeTemplatesFromPlatform(industry) {
+  return industry
+    ? request.post(`/issue-type-templates/clone-from-platform?industry=${encodeURIComponent(industry)}`)
+    : request.post('/issue-type-templates/clone-from-platform')
+}
+
+// ==================== 指标（驾驶舱）模板 API ====================
+// 指标与其它模板不同：它是"计算口径 + 数据就绪度"（level A/B/C；C 级第一版显示「暂未评估」，禁止编造数值）。
+
+/** 本租户指标（可按 industry 过滤） */
+export function listMetricTemplates(industry) {
+  return request.get('/metric-templates', { params: { industry } })
+}
+export function createMetricTemplate(data) { return request.post('/metric-templates', data) }
+export function updateMetricTemplate(oid, data) { return request.put(`/metric-templates/${oid}`, data) }
+export function deleteMetricTemplate(oid) { return request.delete(`/metric-templates/${oid}`) }
+/** 停用/启用（企业裁剪的正道：保留行与幂等键，重装行业包不会改回） */
+export function setMetricTemplateDisabled(oid, value) {
+  return request.put(`/metric-templates/${oid}/disabled`, null, { params: { value } })
+}
+/** 查询平台提供的方法论列表（克隆弹窗的选项来源） */
+export function listPlatformMetricIndustries() { return request.get('/metric-templates/platform-industries') }
+/** 查询平台指标（按 industry 过滤） */
+export function listPlatformMetricTemplates(industry) {
+  return request.get('/metric-templates/platform', { params: { industry } })
+}
+/** 克隆平台指标（幂等：已存在的 code 跳过，不覆盖企业裁剪） */
+export function cloneMetricTemplatesFromPlatform(industry) {
+  return industry
+    ? request.post(`/metric-templates/clone-from-platform?industry=${encodeURIComponent(industry)}`)
+    : request.post('/metric-templates/clone-from-platform')
+}
+
+// ==================== 驾驶舱（布局）模板 API ====================
+// 与前面几类同构：行业包随包装入企业一份，企业在此裁剪（含"停用"）。
+// 视角类型即 code：ENTERPRISE（经营战报）/ PRODUCT_LINE（系列战况）/ PRODUCT_MODEL（型号作战地图，主视角）。
+
+/** 本租户驾驶舱布局（可按 industry 过滤） */
+export function listDashboardTemplates(industry) {
+  return request.get('/dashboard-templates', { params: { industry } })
+}
+export function createDashboardTemplate(data) { return request.post('/dashboard-templates', data) }
+export function updateDashboardTemplate(oid, data) { return request.put(`/dashboard-templates/${oid}`, data) }
+export function deleteDashboardTemplate(oid) { return request.delete(`/dashboard-templates/${oid}`) }
+/** 停用/启用（企业裁剪的正道：保留行与幂等键，重装行业包不会改回） */
+export function setDashboardTemplateDisabled(oid, value) {
+  return request.put(`/dashboard-templates/${oid}/disabled`, null, { params: { value } })
+}
+/** 查询平台提供的方法论列表（克隆弹窗的选项来源） */
+export function listPlatformDashboardIndustries() { return request.get('/dashboard-templates/platform-industries') }
+/** 查询平台驾驶舱布局（按 industry 过滤） */
+export function listPlatformDashboardTemplates(industry) {
+  return request.get('/dashboard-templates/platform', { params: { industry } })
+}
+/** 克隆平台驾驶舱布局（幂等：已存在的 code 跳过，不覆盖企业裁剪） */
+export function cloneDashboardTemplatesFromPlatform(industry) {
+  return industry
+    ? request.post(`/dashboard-templates/clone-from-platform?industry=${encodeURIComponent(industry)}`)
+    : request.post('/dashboard-templates/clone-from-platform')
+}
+
+// ==================== MPN 管理 API（参考 Windchill 的 AML/AVL）====================
+// 三层：内部件 ck_part → AML（制造商 + 制造商料号）→ AVL（供应商 + 供货条件）。
+// MPN 厂商：制造商 / 供应商（导航页「MPN 厂商」维护；显示名 2026-10-11 由「MPN 数据」定名）。
+
+/** 制造商列表（可按 keyword 过滤） */
+export function listManufacturers(keyword) {
+  return request.get('/mpn/manufacturers', { params: { keyword } })
+}
+export function createManufacturer(data) { return request.post('/mpn/manufacturers', data) }
+export function updateManufacturer(oid, data) { return request.put(`/mpn/manufacturers/${oid}`, data) }
+/** 删除制造商：已被 AML 引用时后端会拒绝（改用停用） */
+export function deleteManufacturer(oid) { return request.delete(`/mpn/manufacturers/${oid}`) }
+
+/** 供应商列表（可按 keyword 过滤） */
+export function listSuppliers(keyword) {
+  return request.get('/mpn/suppliers', { params: { keyword } })
+}
+export function createSupplier(data) { return request.post('/mpn/suppliers', data) }
+export function updateSupplier(oid, data) { return request.put(`/mpn/suppliers/${oid}`, data) }
+export function deleteSupplier(oid) { return request.delete(`/mpn/suppliers/${oid}`) }
+
+/** 选件器：按关键字搜内部件（只返回 oid / code / name） */
+export function searchMpnParts(keyword, limit) {
+  return request.get('/mpn/parts', { params: { keyword, limit } })
+}
+/** 某内部件的 AML 树：AML 行内嵌 avls */
+export function listPartAmlTree(partOid) {
+  return request.get(`/mpn/parts/${partOid}/aml`)
+}
+/** ★ 汇总：AML 数 / 去重供应商数 / 是否单一来源（对应 R-SH-11） */
+export function summarizePartMpn(partOid) {
+  return request.get(`/mpn/parts/${partOid}/summary`)
+}
+
+export function createPartAml(data) { return request.post('/mpn/aml', data) }
+export function updatePartAml(oid, data) { return request.put(`/mpn/aml/${oid}`, data) }
+export function deletePartAml(oid) { return request.delete(`/mpn/aml/${oid}`) }
+
+export function createPartAvl(data) { return request.post('/mpn/avl', data) }
+export function updatePartAvl(oid, data) { return request.put(`/mpn/avl/${oid}`, data) }
+export function deletePartAvl(oid) { return request.delete(`/mpn/avl/${oid}`) }
+
+// ==================== 能力读侧 API ====================
+// 本租户"能用哪些功能"的事实来源（ck_tenant_capability）。
+// 只有包里声明了、且平台已实现的能力才会出现在这里 —— 界面据此决定入口是否显示。
+
+/** 本租户已启用的能力（含名称与来源包） */
+export function listCapabilities() {
+  return request.get('/capabilities')
+}
+
+// ==================== 方法论实例 API（系列 / 型号页的面板数据源） ====================
+
+/**
+ * 取某归属单元（系列 / 型号）的六类实例，一次往返：
+ * { deliverables, gates, reviews, rules, metrics, dashboards }
+ * 阶段过滤在前端做（数据量本就很小）。
+ */
+export function listMethodologyInstances(ownerOid) {
+  return request.get('/instances', { params: { ownerOid } })
+}
+
+/**
+ * 裁剪一条方法论实例（**实例层**）：「本项目不适用」（停用 / 恢复），交付件还可改强制项。
+ *
+ * <p>与模板层「企业裁剪」（业务配置 → 模型定义）是两层 —— 这里只动本系列 / 型号的实例，
+ * 模板与其它项目不受影响。权限限产品经理（PRODUCT_MANAGER）与租户管理员（TENANT_ADMIN），
+ * 无权限时后端返回 403（前端按此提示，不静默）。
+ *
+ * @param {'deliverable'|'gate'|'review'|'rule'} kind
+ * @param {string} oid 实例 oid
+ * @param {{disabled?: boolean, mandatory?: boolean}} payload 至少给一个字段；
+ *        mandatory 只对 deliverable 有效（其余三类给了会报 400）
+ */
+export function tailorInstance(kind, oid, payload) {
+  return request.patch(`/instances/${kind}/${oid}`, payload)
+}
+
+// ==================== 交付件 ↔ 产出物 关联 API（2026-10-11） ====================
+// 交付件的产出物**不都是文档**：原理图 / PCB（工程数据）、结构件 / 软件（零组件）都是业务对象，
+// 三类同构（oid + 版本 + 生命周期）故统一为"产出物引用"。
+// 硬约束：可关联的对象类别由模板 objectType 决定（服务端校验）；候选查询不按容器过滤
+// —— 允许跨容器引用（用户要求），前端用 containerOid 标注"本型号 / 其它容器"。
+
+/** 某交付件下的产出物关联列表（含产出物的编码 / 名称） */
+export function getDeliverableArtifactLinks(deliverableOid) {
+  return request.get('/deliverable-artifact-links', { params: { deliverableOid } })
+}
+
+/** 某系列 / 型号下每个交付件的已关联数：{ deliverableOid: cnt } */
+export function getDeliverableArtifactSummary(ownerOid) {
+  return request.get('/deliverable-artifact-links/summary', { params: { ownerOid } })
+}
+
+/**
+ * 某交付件的产出物进展（「状态」列悬停浮层用，2026-10-25）：
+ * 每条产出物的最新迭代状态（statusCode / statusName）与是否在流程中（inProcess / processName /
+ * currentNode / currentAssignees）。悬停才拉，不随列表预加载。
+ */
+export function getDeliverableArtifactProgress(deliverableOid) {
+  return request.get('/deliverable-artifact-links/progress', { params: { deliverableOid } })
+}
+
+/** 候选产出物（服务端按交付件的 objectType / bindMode 硬约束过滤；keyword 可空） */
+export function getDeliverableArtifactCandidates(deliverableOid, keyword) {
+  return request.get('/deliverable-artifact-links/candidates', { params: { deliverableOid, keyword } })
+}
+
+/** 关联产出物：{ deliverableOid, entityType: DOCUMENT / ENG_DOCUMENT / PART, entityOid } */
+export function createDeliverableArtifactLink(data) {
+  return request.post('/deliverable-artifact-links', data)
+}
+
+/** 解除关联（只删关系，不动产出物本身） */
+export function deleteDeliverableArtifactLink(oid) {
+  return request.delete(`/deliverable-artifact-links/${oid}`)
+}
+
 // ==================== BOM 链接 API ====================
 
 /** 按父迭代查询 BOM 子件（BOM 结构页签） */
@@ -2088,12 +2593,71 @@ export function getBomTree(parentIterationOid) {
 }
 
 /**
+ * 容器（产品系列 / 型号）的**物料清单**：其下所有零件最新迭代的 BOM 行里用到的物料，
+ * 按物料去重聚合（用量合计 / 引用行数 / 使用它的父件编码）。
+ *
+ * <p>与 {@link getBomTree} 是两种视角：那个是"某个件的结构树"（可展开层级、逐版本），
+ * 这个是"这个产品一共用了哪些料"（去重汇总，面向采购 / 成本 / 齐套）。
+ *
+ * @param {string} containerOid 产品系列或型号 oid
+ * @returns {Promise<{code:number, data:Array}>} 每项含 childPartOid / number / name /
+ *   typeCode / version / status / unit / totalQuantity / lineCount / parentNumbers
+ */
+export function getBomMaterials(containerOid) {
+  return request.get(`/bom-links/materials/${containerOid}`)
+}
+
+/**
  * BOM 成本报告（卷积）：后端一次给出总成本与逐层明细（含每行的单位成本/本层金额/累计金额）。
  *
  * <p>入参是<b>父件迭代 oid</b>：成本是有版本的口径（BOM 行挂在迭代上）。
  */
 export function getBomCostReport(parentIterationOid) {
   return request.get(`/bom-links/cost-report/${parentIterationOid}`)
+}
+
+/**
+ * 容器（产品系列 / 型号）的成本趋势 —— 系列/型号页「成本趋势」分组件。
+ *
+ * 返回：当前卷积总成本 + 历史快照点（本层直接成本口径）+ 数据缺口提示。
+ * 系列容器会自动并入旗下型号的零件（BOM 挂在型号的零件上）。
+ */
+export function getContainerCostTrend(containerOid) {
+  return request.get(`/bom-links/cost-trend/${containerOid}`)
+}
+
+// ==================== BOM 快照 API ====================
+// 快照 = 某一时刻父件迭代的顶层 BOM 行定格；只读，BOM 后续再改也不会回写它。
+
+/**
+ * 新增快照：把指定迭代当前的 BOM 行存成一份记录。
+ * @param {{iterationOid:string, name:string, remark?:string}} data
+ */
+export function createBomSnapshot(data) {
+  return request.post('/bom-snapshots', data)
+}
+
+/** 快照记录：按零件（跨版本）或按迭代过滤 */
+export function getBomSnapshots(params) {
+  return request.get('/bom-snapshots', { params })
+}
+
+/** 单份快照（含 BOM 明细） */
+export function getBomSnapshot(oid) {
+  return request.get(`/bom-snapshots/${oid}`)
+}
+
+/** 删除快照 */
+export function deleteBomSnapshot(oid) {
+  return request.delete(`/bom-snapshots/${oid}`)
+}
+
+/**
+ * 快照对比：快照 ↔ 快照（toSnapshot）或 快照 ↔ 当前 BOM（toIteration）。
+ * @param {{from:string, toSnapshot?:string, toIteration?:string}} params
+ */
+export function compareBomSnapshots(params) {
+  return request.get('/bom-snapshots/compare', { params })
 }
 
 // ==================== 局部替代（BOM 行替代） ====================
@@ -2214,6 +2778,14 @@ export function getBomLinksByChildPart(childPartOid) {
   return request.get(`/bom-links/by-child-part/${childPartOid}`)
 }
 
+/**
+ * 被使用情况（反向 BOM）的可读口径：某零件被哪些父件引用。
+ * 父件已解析成 编码 / 名称 / 版本，并带 parentPartOid —— 拿它再调一次本接口即「往上一层」。
+ */
+export function getPartUsedBy(partOid) {
+  return request.get(`/bom-links/used-by/${partOid}`)
+}
+
 /** 查询两个 BOM 版本之间的差异（预计算数据，由检入时生成） */
 export function getBomDiff(fromIterationOid, toIterationOid) {
   return request.get('/bom-diffs/between', { params: { fromIterationOid, toIterationOid } })
@@ -2279,12 +2851,47 @@ export function promotePartDocLink(oid) {
   return request.post(`/part-doc-links/${oid}/promote`)
 }
 
+// ============ 零件-工程数据关联 API（Windchill EPMBuildRule：零件版本 ↔ 工程数据版本） ============
+
+/**
+ * 查询构建规则。
+ * @param {{partOid?:string, partIterationOid?:string, engDocumentOid?:string}} params
+ *   传零件侧参数 → 该零件版本关联的工程数据；传 engDocumentOid → 引用它的零件版本
+ */
+export function getEngDocPartLinks(params = {}) {
+  return request.get('/eng-doc-part-links', { params })
+}
+
+/**
+ * 建立关联：
+ * { partOid | partIterationOid, engDocumentOid, engDocIterationOid?, assocType?,
+ *   buildStructure?, buildAttribute?, buildRepresentation?, primary?, sortOrder? }
+ */
+export function createEngDocPartLink(data) {
+  return request.post('/eng-doc-part-links', data)
+}
+
+/** 修改关联（关联类型 / 构建规则 / 锁定的工程数据版本） */
+export function updateEngDocPartLink(oid, data) {
+  return request.put(`/eng-doc-part-links/${oid}`, data)
+}
+
+/** 解除关联 */
+export function deleteEngDocPartLink(oid) {
+  return request.delete(`/eng-doc-part-links/${oid}`)
+}
+
 // ==================== 企业资源库-电子元器件库 API ====================
 // 元器件为 ELECTRONIC 软类型的 Part（创建走 /parts），本模块仅负责分类绑定与清单查询
 
 /** 查询企业资源库根节点下的全部资源子库（按 sort_order 排序） */
 export function getResourceChildren() {
   return request.get('/resource-containers/children')
+}
+
+/** 查询本租户的企业资源库根节点（未初始化时 data 为 null） */
+export function getResourceRoot() {
+  return request.get('/resource-containers/root')
 }
 
 /**
@@ -2335,6 +2942,459 @@ export function getPackageSymbolContext() {
 /** 封装 / 图符清单：folderOid 可空=全部；typeCode 可选 FOOTPRINT / SYMBOL；keyword 名称或编码 */
 export function getPackageSymbols(params = {}) {
   return request.get('/package-symbols', { params })
+}
+
+// ==================== 技术文档知识库 API（TECH_DOC 资源子库） ====================
+// 业务对象是通用文档（Document / ck_document），与封装·图符库的 EPMDocument 不是一类，
+// 所以接口也独立：/tech-docs 只列本资源子库容器下的文档。
+
+/** 技术文档库归属上下文（containerOid / containerType / containerCode / containerName / stageOid） */
+export function getTechDocContext() {
+  return request.get('/tech-docs/context')
+}
+
+/** 技术文档清单：folderOid 可空=该库全部；keyword 匹配名称/编码/主文件名 */
+export function getTechDocs(params = {}) {
+  return request.get('/tech-docs', { params })
+}
+
+// ==================== 问题（持续改进 —— 跟踪与闭环） API ====================
+
+/** 问题列表：status / severity / owner / keyword 可空；分页 { page, pageSize }（返回 { rows, total, page, pageSize }） */
+export function listIssues(params = {}) {
+  return request.get('/issues', { params })
+}
+
+/** 各状态计数 + 闭环率（闭环率 = CLOSED /（总数 - CANCELLED）） */
+export function getIssueStats() {
+  return request.get('/issues/stats')
+}
+
+/** 详情（问题本体 + 处理历程时间线 { issue, activities }） */
+export function getIssueDetail(oid) {
+  return request.get(`/issues/${oid}`)
+}
+
+/** 新建（编号自动生成，状态恒为 OPEN；提出人 = 当前用户） */
+export function createIssue(data) {
+  return request.post('/issues', data)
+}
+
+/** 编辑（patch 语义：缺席字段不改、空串清空；已关闭/已取消不可编辑） */
+export function updateIssue(oid, data) {
+  return request.put(`/issues/${oid}`, data)
+}
+
+/** 状态流转（闭环核心）：{ action, comment, verifyResult } —— action 见 utils/issueFlow.js */
+export function transitionIssue(oid, payload) {
+  return request.post(`/issues/${oid}/transition`, payload)
+}
+
+/** 追加跟踪备注（不改状态，只往时间线加一条） */
+export function addIssueComment(oid, comment) {
+  return request.post(`/issues/${oid}/comments`, { comment })
+}
+
+/**
+ * 关联对象候选（表单里「关联对象编码」的模糊搜索，2026-10-25）。
+ *
+ * @param {{keyword?: string, type?: string, limit?: number}} params
+ *   type = PART / DOCUMENT / ENG_DOCUMENT / PRODUCT_LINE / PRODUCT_MODEL（空 = 五类都查）
+ * @returns {Promise<{code, data: Array<{oid, entityType, code, name}>}>}
+ */
+export function listIssueObjectCandidates(params = {}) {
+  return request.get('/issues/object-candidates', { params })
+}
+
+/** 删除（连带时间线；一般问题应关闭而不是删除） */
+export function deleteIssue(oid) {
+  return request.delete(`/issues/${oid}`)
+}
+
+/**
+ * 门的 ISSUE_OPEN 自动检查（"开门前还有几个未闭环问题"）：
+ * 逐门判定只算挂在该门上（gate_oid 相同）的未闭环问题；openTotal / blockOpen / warnOpen
+ * 是产品级汇总。返回 { ownerOid, openTotal, blockOpen, warnOpen, gates, items }。
+ */
+export function getIssueGateCheck(ownerOid) {
+  return request.get('/issues/gate-check', { params: { ownerOid } })
+}
+
+// ==================== 变更管理（ECR / ECN / 变更任务）====================
+// 状态与动作口径见 utils/changeFlow.js；真正的闸门在后端（非法流转返回 400/403）。
+
+/**
+ * 变更单挑问题的候选 → [{ oid, code, name, status }]。
+ *
+ * <p>只含<b>还能被关联</b>的问题（OPEN / IN_PROGRESS / VERIFYING），区别于
+ * listIssues（问题台账，含已关闭）。下拉用这个，避免用户选到已闭环的问题才被后端退回。
+ */
+export function listChangeIssueOptions(params = {}) {
+  return request.get('/plm/change-issues/options', { params })
+}
+
+/** 变更请求列表 { status, keyword, page, pageSize } → { rows, total, page, pageSize } */
+export function listChangeRequests(params = {}) {
+  return request.get('/plm/change-requests', { params })
+}
+
+/** 变更请求各状态计数 → { total, counts: { DRAFT: 0, ... } } */
+export function getChangeRequestStats() {
+  return request.get('/plm/change-requests/stats')
+}
+
+/** 变更请求详情 → { request, activities, issues, notices, affectedObjects } */
+export function getChangeRequest(oid) {
+  return request.get(`/plm/change-requests/${oid}`)
+}
+
+/**
+ * 对象候选（变更单的「预估受影响对象」选择器）。
+ *
+ * <p>零件 / 文档 / 工程文档三类各取 limit 条：`[{ oid, entityType, code, name, containerOid }]`。
+ *
+ * <p>`containerOid` 传当前选中的产品系列/型号时，服务端只在它（含子系列与其下型号）里检索。
+ */
+export function listChangeObjectCandidates(keyword, limit = 20, containerOid) {
+  return request.get('/plm/change-requests/object-candidates', {
+    params: { keyword: keyword || undefined, limit, containerOid: containerOid || undefined }
+  })
+}
+
+/**
+ * 收集所选对象关联的其他对象（更改事项挑对象时的「收集关联对象」）。
+ *
+ * <p>当前口径：只对零件生效 —— 关联文档（DESCRIBES + REFERENCE）+ 替代件（双向），BOM 不收集。
+ * 返回 `[{ oid, entityType, code, name, containerOid, relation, alternateType? }]`，
+ * `relation` = DOCUMENT / ALTERNATE，服务端已按 oid 去重。
+ */
+export function listRelatedChangeObjects(entityOids) {
+  return request.get('/plm/change-requests/related-objects', {
+    params: { entityOids: (entityOids || []).join(',') }
+  })
+}
+
+/** 预估受影响对象 → [{ oid, entityType, entityOid, entityCode, entityName, containerOid, containerName }] */
+export function listChangeRequestAffectedObjects(oid) {
+  return request.get(`/plm/change-requests/${oid}/affected-objects`)
+}
+
+/** 添加预估受影响对象：只需 { entityOid, note }，类型/编码/名称/容器由服务端回查 */
+export function addChangeRequestAffectedObject(oid, data) {
+  return request.post(`/plm/change-requests/${oid}/affected-objects`, data)
+}
+
+/** 移除预估受影响对象 */
+export function removeChangeRequestAffectedObject(oid, affectedOid) {
+  return request.delete(`/plm/change-requests/${oid}/affected-objects/${affectedOid}`)
+}
+
+/** 新建（编号自动生成 ECR-####，状态恒为 DRAFT，提出人 = 当前用户） */
+export function createChangeRequest(data) {
+  return request.post('/plm/change-requests', data)
+}
+
+/** 编辑（patch 语义：缺席字段不改） */
+export function updateChangeRequest(oid, data) {
+  return request.put(`/plm/change-requests/${oid}`, data)
+}
+
+/** 流转 { action, comment } —— action 见 CHANGE_REQUEST_ACTIONS */
+export function transitionChangeRequest(oid, payload) {
+  return request.post(`/plm/change-requests/${oid}/transition`, payload)
+}
+
+/** 删除（仅草稿） */
+export function deleteChangeRequest(oid) {
+  return request.delete(`/plm/change-requests/${oid}`)
+}
+
+/** 变更通告列表 { status, requestOid, keyword, page, pageSize } */
+export function listChangeNotices(params = {}) {
+  return request.get('/plm/change-notices', { params })
+}
+
+/** 各状态计数 → { total, counts: { DRAFT: 0, ... } } */
+export function getChangeNoticeStats() {
+  return request.get('/plm/change-notices/stats')
+}
+
+/** 详情聚合 → { notice, request, affectedObjects, tasks, activities } */
+export function getChangeNotice(oid) {
+  return request.get(`/plm/change-notices/${oid}`)
+}
+
+/**
+ * 按对象反查变更通告 —— 对象详情页「变更情况」用。
+ *
+ * <p>口径是**变更通告的受影响对象**（ck_change_affected_object，主对象级），
+ * 一行 = 某张通告上的这一条变更对象（被修订版本 / 修订产物 / 执行时间 + 通告状态）。
+ *
+ * @param {'PART'|'DOCUMENT'|'ENG_DOCUMENT'} entityType
+ * @param {string} entityOid 主对象 oid（不是迭代 oid）
+ */
+export function listChangeNoticesByEntity(entityType, entityOid) {
+  return request.get('/plm/change-notices/by-entity', { params: { entityType, entityOid } })
+}
+
+export function createChangeNotice(data) {
+  return request.post('/plm/change-notices', data)
+}
+
+export function updateChangeNotice(oid, data) {
+  return request.put(`/plm/change-notices/${oid}`, data)
+}
+
+/** 流转 { action, comment } —— 免审提交时 comment 即免审原因（必填） */
+export function transitionChangeNotice(oid, payload) {
+  return request.post(`/plm/change-notices/${oid}/transition`, payload)
+}
+
+/**
+ * 管理员直接设置单据状态（运维纠错）：{ status, reason }。
+ *
+ * <p>与 {@link transitionChangeNotice} 分开：那条走状态机、责任人就能推；这条跳过规则与
+ * 门槛，只有租户管理员能用，服务端另有 403 兜底。
+ */
+export function setChangeNoticeStatus(oid, payload) {
+  return request.post(`/plm/change-notices/${oid}/status`, payload)
+}
+
+export function deleteChangeNotice(oid) {
+  return request.delete(`/plm/change-notices/${oid}`)
+}
+
+/**
+ * 按 oid 反查变更单据（请求 / 通告 / 任务）→ { kind, oid, code, name, status }。
+ *
+ * <p>流程侧只交出 businessKey，不认识业务表；任务中心 / 流程监控靠这条把
+ * "办的是哪一张变更单"补上（见 {@code useEntityLabels}）。不是变更单据时后端返回 404，
+ * 调用方按"没有业务对象"处理即可。
+ */
+export function getChangeDocument(oid) {
+  return request.get(`/plm/change-documents/${oid}`)
+}
+
+export function listChangeAffectedObjects(oid) {
+  return request.get(`/plm/change-notices/${oid}/affected-objects`)
+}
+
+/** 添加受影响对象（必须指定具体版本：baseIterationOid + baseVersion） */
+export function addChangeAffectedObject(oid, data) {
+  return request.post(`/plm/change-notices/${oid}/affected-objects`, data)
+}
+
+/**
+ * 按对象 oid 添加受影响对象（受影响版本由服务端按对象当前迭代回查）。
+ *
+ * <p>更改事项上直接挑对象时用：前端只有对象 oid，不该先查一遍版本再 POST。
+ * 幂等 —— 对象已在本通告里时返回既有那行。
+ */
+export function addChangeAffectedByEntity(oid, entityOid) {
+  return request.post(`/plm/change-notices/${oid}/affected-objects/by-entity`, { entityOid })
+}
+
+export function removeChangeAffectedObject(oid, affectedOid) {
+  return request.delete(`/plm/change-notices/${oid}/affected-objects/${affectedOid}`)
+}
+
+/** 把受影响对象改派到某个更改事项（变更任务）；taskOid 传空 = 取消归属 */
+export function assignChangeAffectedTask(oid, affectedOid, taskOid) {
+  return request.put(`/plm/change-notices/${oid}/affected-objects/${affectedOid}/task`, { taskOid: taskOid || '' })
+}
+
+/** 我的任务（assignee 缺省 = 当前用户） */
+export function listMyChangeTasks(params = {}) {
+  return request.get('/plm/change-tasks/my', { params })
+}
+
+/** 变更任务各状态计数（assignee 为空 = 全部）→ { total, counts: { OPEN: 0, ... } } */
+export function getChangeTaskStats(params = {}) {
+  return request.get('/plm/change-tasks/stats', { params })
+}
+
+export function listChangeTasksByNotice(noticeOid) {
+  return request.get(`/plm/change-tasks/by-notice/${noticeOid}`)
+}
+
+export function createChangeTask(data) {
+  return request.post('/plm/change-tasks', data)
+}
+
+export function updateChangeTask(oid, data) {
+  return request.put(`/plm/change-tasks/${oid}`, data)
+}
+
+/** 流转 { action, comment }；START / SUBMIT 仅任务责任人可执行 */
+export function transitionChangeTask(oid, payload) {
+  return request.post(`/plm/change-tasks/${oid}/transition`, payload)
+}
+
+/**
+ * 派发某通告下的全部草稿任务。
+ *
+ * <p>审批通过时后端会自动派发，界面自 2026-11-03 起不再提供入口（用户口径「不需要派发操作」）；
+ * 保留这个包装是给运维/脚本兜底用的，新代码不要在前端调它。
+ */
+export function dispatchChangeTasks(noticeOid) {
+  return request.post(`/plm/change-tasks/by-notice/${noticeOid}/dispatch`)
+}
+
+export function deleteChangeTask(oid) {
+  return request.delete(`/plm/change-tasks/${oid}`)
+}
+
+/** 变更租户配置（免审开关）→ { approvalRequired, approvalProcessKey, bypassForReleased } */
+export function getChangeConfig() {
+  return request.get('/plm/change-config')
+}
+
+export function updateChangeConfig(data) {
+  return request.put('/plm/change-config', data)
+}
+
+// ==================== CAD 轻量化可视化 ====================
+
+/**
+ * 转换器是否可用。
+ * 未部署转换器时返回 false —— 前端据此隐藏 3D 入口，
+ * 而不是给用户一个永远转不完的加载圈。
+ */
+export function getCadViewerAvailable() {
+  return request.get('/cad-visualizations/available')
+}
+
+/**
+ * 触发 CAD 转换（异步提交）。
+ *
+ * 立刻返回，status = QUEUED；真正的结果靠轮询 getLatestCadVisualization 拿。
+ * 不要在调用处同步等待 —— 转换可能跑几十秒到几分钟。
+ *
+ * @param {{engDocIterationOid: string, sourceCkfileOid: string}} data
+ */
+export function convertCadModel(data) {
+  return request.post('/cad-visualizations/convert', data)
+}
+
+/** 查询某迭代最近一次转换记录（前端轮询入口） */
+export function getLatestCadVisualization(engDocIterationOid) {
+  return request.get('/cad-visualizations/latest', { params: { engDocIterationOid } })
+}
+
+/**
+ * 容器（产品系列 / 型号）下配套的三维数模清单 —— 「产品数模」页签。
+ *
+ * 一行 = 一个工程数据（ENG_DOCUMENT）最新迭代上的一个 CAD 主文件
+ * （.step/.stp/.iges/.igs/.stl），加上它最近一次的轻量化转换状态。
+ * 注意载体是 EPMDocument（ck_eng_document），不是通用文档（ck_document）。
+ * 后端一次查全，不要逐行调 latest（N+1）。
+ *
+ * @param {string} containerOid 产品系列或型号 oid
+ * @returns {Promise<{code:number, data:Array}>} 每项含 engDocNumber / engDocName / cadName /
+ *   iterationOid / sourceCkfileOid / fileName / status / glbCkfileOid / triangleCount 等，
+ *   status 为空表示未转换
+ */
+export function getContainerCadModels(containerOid) {
+  return request.get('/cad-visualizations/models', { params: { containerOid } })
+}
+
+/**
+ * 单个零件版本的数模与转换状态 —— BOM 右侧「轻量化」页签。
+ *
+ * 库里链条：零件迭代 →（EPMBuildRule）→ 工程数据迭代 → 主文件 → 最近一次转换记录。
+ * data 为 null = 该零件版本没关联工程数据 / 主文件不是可轻量化的数模；
+ * 有值时含 iterationOid + sourceCkfileOid（提交转换用）与 status/glbCkfileOid（渲染用）。
+ *
+ * @param {string} partIterationOid 零件迭代 oid（不是零件主对象 oid）
+ */
+export function getCadModelByPartIteration(partIterationOid) {
+  return request.get(`/cad-visualizations/by-part-iteration/${partIterationOid}`)
+}
+
+/**
+ * 批量提交轻量化转换。
+ *
+ * 为什么不前端循环调 convertCadModel：N 次 HTTP + N 条提示，中途失败没法汇总，
+ * 用户也不知道到底哪几份进去了。后端逐条处理并返回分类结果。
+ *
+ * @param {Array<{iterationOid:string, ckfileOid:string}>} items
+ * @returns {Promise<{code:number, data:{total:number, accepted:number, cached:number,
+ *   skipped:number, failed:number, items:Array}}>}
+ */
+export function convertCadBatch(items) {
+  return request.post('/cad-visualizations/convert-batch', items)
+}
+
+/**
+ * 取消排队中 / 转换中的转换任务（批量误提交后的止损手段）。
+ * 只有 QUEUED / RUNNING 可取消，其它状态后端返回 409。
+ */
+export function cancelCadVisualization(oid) {
+  return request.post(`/cad-visualizations/${oid}/cancel`)
+}
+
+/**
+ * 转换器（CK-CADForge）对接配置 —— 「业务配置 → 轻量化转换」。
+ *
+ * 这些值原先只在 application*.yml，2026-10-26 起下沉到 ck_cad_forge_config：
+ * 改地址/超时不再需要改文件重启。令牌不回传明文，只回 callbackTokenSet。
+ */
+export function getCadForgeConfig() {
+  return request.get('/cad-forge/config')
+}
+
+/** 保存并立即生效（后端刷内存 + 重建 HTTP 客户端，不需要重启） */
+export function updateCadForgeConfig(config) {
+  return request.put('/cad-forge/config', config)
+}
+
+/** 测试连接：用已生效的配置探一次转换器 /healthz，返回 engine / 并发 / 车道 */
+export function testCadForgeConnection() {
+  return request.post('/cad-forge/config/test')
+}
+
+/**
+ * 「数模转换中心」：跨容器、跨人的全局转换队列。
+ *
+ * 与 getContainerCadModels 的分工：那个回答"这个产品有哪些数模"，
+ * 这个回答"全公司现在有多少张图在排队 / 在转 / 哪些失败了"。
+ * 批量提交之后，后者才是操作员常驻的页面。
+ *
+ * @param {{filter?:string, keyword?:string, page?:number, size?:number}} params
+ *   filter: active（排队+转换中）/ success / failed（失败+超时）/ skipped；空=全部
+ * @returns {Promise<{code:number, data:{list:Array, total:number, page:number, size:number, stats:Object}}>}
+ */
+export function getCadConvertJobs(params) {
+  return request.get('/cad-visualizations/jobs', { params })
+}
+
+/**
+ * 「下载装配数模」：把本容器下全部数模源文件打成一个 zip。
+ *
+ * 必须走 blob：接口要 Authorization，`window.open` / `<a href>` 带不上请求头会被 401 挡下。
+ * 超时单独放宽到 2 分钟 —— 默认 15s 对几十 MB 的数模包不够。
+ */
+export function downloadContainerCadModels(containerOid) {
+  return request.get('/cad-visualizations/models/package', {
+    params: { containerOid },
+    responseType: 'blob',
+    timeout: 120000,
+  })
+}
+
+/** 查询单条转换记录 */
+export function getCadVisualization(oid) {
+  return request.get(`/cad-visualizations/${oid}`)
+}
+
+/** 重新转换（失败后手动再试） */
+export function retryCadVisualization(oid) {
+  return request.post(`/cad-visualizations/${oid}/retry`)
+}
+
+/** 文件流地址（GLB / 结构树 JSON / 缩略图都走既有 ckfiles 通道） */
+export function ckFileStreamUrl(oid) {
+  return `/api/ckfiles/${oid}/stream`
 }
 
 export default request

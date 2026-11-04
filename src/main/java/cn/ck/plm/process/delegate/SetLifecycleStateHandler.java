@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 /**
  * 自动服务 {@code object.setLifecycleState} —— 「设置状态」。
  *
- * <p>参数 {@code state} 是<b>目标状态 code</b>（如 IN_WORK / PUBLISHED），
+ * <p>参数 {@code state} 是<b>目标状态 code</b>（如 WORKING / PUBLISHED），
  * 由设计器从生命周期状态清单里选出来（人不用记 code）。
  *
  * <p><b>作用对象是"这批对象"而不是"主对象"</b>：一次流程可以带一批对象走审批，
@@ -54,8 +54,9 @@ public class SetLifecycleStateHandler implements PlmServiceHandler {
         }
         for (PlmServiceTarget target : context.targets()) {
             try {
+                // 流程节点不迁移模板：跑在对象固化的那一版上（与设计器里选状态时看到的一致）
                 softTypeInstanceService.setLifecycleState(
-                        target.getTypeCode(), target.getEntityOid(), target.getEntityVersion(), state);
+                        target.getTypeCode(), target.getEntityOid(), target.getEntityVersion(), state, null);
             } catch (RuntimeException e) {
                 throw new PlmServiceException("节点「" + context.nodeName() + "」设置状态失败："
                         + target.label() + " → " + state + "：" + e.getMessage(), e);

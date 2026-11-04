@@ -1,0 +1,1070 @@
+{
+  "types": [
+    { "code": "PRODUCT_LINE", "name": "产品系列", "displayName": "产品系列", "kind": "OOTB", "source": "OOTB",
+      "icon": "ApartmentOutlined", "sortOrder": 5, "parentCode": null, "hostCode": "PRODUCT_LINE",
+      "description": "产品系列管理，关联产品、团队与缩略图",
+      "numberRule": "PRODUCT_LINE", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "PRODUCT_DATA_DOMAIN" },
+    { "code": "PRODUCT_MODEL", "name": "产品型号", "displayName": "产品型号", "kind": "OOTB", "source": "OOTB",
+      "icon": "TagOutlined", "sortOrder": 6, "parentCode": null, "hostCode": "PRODUCT_MODEL",
+      "description": "产品型号管理，隶属于产品系列，拥有独立团队和研发阶段",
+      "numberRule": "PRODUCT_MODEL", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "PRODUCT_DATA_DOMAIN" },
+    { "code": "DOCUMENT", "name": "文档", "displayName": "文档", "kind": "OOTB", "source": "OOTB",
+      "icon": "FileTextOutlined", "sortOrder": 10, "parentCode": null, "hostCode": "DOCUMENT",
+      "description": "文档复合对象（主数据+子版本），支持版本控制、文件存储与阶段关联",
+      "numberRule": "DOC_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "DOC_REVIEW",
+      "lifecycleStateProcesses": { "DRAFT": "doc-technical-review" },
+      "domain": "PRODUCT_DATA_DOMAIN" },
+    { "code": "ENG_DOCUMENT", "name": "工程数据", "displayName": "工程数据", "kind": "OOTB", "source": "OOTB",
+      "icon": "FileImageOutlined", "sortOrder": 11, "parentCode": null, "hostCode": "ENG_DOCUMENT",
+      "description": "工程数据（参照 Windchill EPMDocument）：3D 数模 / 2D 工程图 / 材料规格说明等工程对象的统称，含 CAD 主文件、制图属性（图幅/比例/图号）与零部件描述关系，并可向电子领域扩展（符号、封装等 EDA 设计数据）",
+      "numberRule": "ENG_DOC_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "PRODUCT_DATA_DOMAIN" },
+    { "code": "PART", "name": "部件", "displayName": "部件", "kind": "OOTB", "source": "OOTB",
+      "icon": "ToolOutlined", "sortOrder": 12, "parentCode": null, "hostCode": "PART",
+      "description": "部件复合对象（主数据+子版本），支持版本控制、分类关联与单位管理",
+      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "PRODUCT_DATA_DOMAIN" },
+    { "code": "BOM_LINK", "name": "BOM 行", "displayName": "BOM 行", "kind": "OOTB", "source": "OOTB",
+      "icon": "BranchesOutlined", "sortOrder": 93, "parentCode": null, "hostCode": "BOM_LINK",
+      "description": "BOM 行对象（参照 Windchill WTPartUsageLink）：父件迭代与子件的构成关系。位号（refDes）等 BOM 行属性挂在它上面 —— 同一个器件在不同父件上可有不同位号，故这些属性属于「行」而不属于「件」。不绑编码规则（行号由 line_number 表达）、不绑版本规则（随父件迭代受控）、不绑生命周期模板（无独立生命周期），故本条目不带 numberRule / versionRule / lifecycleTemplate。",
+      "domain": "PRODUCT_DATA_DOMAIN" },
+
+    { "code": "STRUCTURAL", "name": "结构件", "displayName": "结构件", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "ToolOutlined", "sortOrder": 20, "parentCode": "PART", "hostCode": "PART",
+      "description": "机械结构件：钣金、机加、塑钢、装配体等结构专业对象；标准件 / 通用件为其子类型",
+      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "clsIdentifier": "tpl-structure",
+      "domain": "MCAD_DOMAIN" },
+    { "code": "SOFTWARE", "name": "软件", "displayName": "软件", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "CodeOutlined", "sortOrder": 22, "parentCode": "PART", "hostCode": "PART",
+      "description": "软件：嵌入式软件、应用软件、固件、算法等软件专业对象",
+      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "SOFTWARE_DOMAIN" },
+    { "code": "STD_PART", "name": "标准件", "displayName": "标准件", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "GoldOutlined", "sortOrder": 23, "parentCode": "STRUCTURAL", "hostCode": "PART",
+      "description": "按国标 / 行标 / 企标采购或外协的标准零组件：螺钉、螺母、垫圈、轴承、销、弹簧等",
+      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "clsIdentifier": "tpl-structure-standard-part",
+      "domain": "MCAD_DOMAIN" },
+    { "code": "GEN_PART", "name": "通用件", "displayName": "通用件", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "DeploymentUnitOutlined", "sortOrder": 24, "parentCode": "STRUCTURAL", "hostCode": "PART",
+      "description": "企业内部跨产品、跨型号复用的通用结构件（非国标，但有统一规格与图号）",
+      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "MCAD_DOMAIN" },
+
+    { "code": "CHANGE_REQUEST", "name": "变更请求", "displayName": "变更请求（ECR）", "kind": "OOTB", "source": "OOTB",
+      "icon": "FileTextOutlined", "sortOrder": 90, "parentCode": null, "hostCode": "CHANGE_REQUEST",
+      "description": "工程变更请求（ECR）：说明变更原因与方案，经评审受理后派发变更通告。单据主表为 ck_change_request，状态由 ChangeRequestFlow 状态机维护（与所绑生命周期的状态码逐字一致）",
+      "numberRule": "CHANGE_REQUEST", "lifecycleTemplate": "CHANGE_REQUEST_LIFECYCLE",
+      "domain": "PRODUCT_DATA_DOMAIN" },
+
+    { "code": "CHANGE_NOTICE", "name": "变更通告", "displayName": "变更通告（ECN）", "kind": "OOTB", "source": "OOTB",
+      "icon": "BranchesOutlined", "sortOrder": 91, "parentCode": null, "hostCode": "CHANGE_NOTICE",
+      "description": "工程变更通告（ECN）：承载受影响对象与审批，通过后派发变更任务执行。单据主表为 ck_change_notice，状态由 ChangeNoticeFlow 状态机维护（与所绑生命周期的状态码逐字一致）",
+      "numberRule": "CHANGE_NOTICE", "lifecycleTemplate": "CHANGE_NOTICE_LIFECYCLE",
+      "domain": "PRODUCT_DATA_DOMAIN" },
+
+    { "code": "CHANGE_TASK", "name": "变更任务", "displayName": "变更任务（ECT）", "kind": "OOTB", "source": "OOTB",
+      "icon": "ToolOutlined", "sortOrder": 92, "parentCode": null, "hostCode": "CHANGE_TASK",
+      "description": "变更执行任务：按通告派生的具体修订动作，由责任人办理、变更负责人验收。单据主表为 ck_change_task，状态由 ChangeTaskFlow 状态机维护（与所绑生命周期的状态码逐字一致）",
+      "numberRule": "CHANGE_TASK", "lifecycleTemplate": "CHANGE_TASK_LIFECYCLE",
+      "domain": "PRODUCT_DATA_DOMAIN" }
+  ],
+  "pageLayouts": {
+    "note": "各能力宿主的标准页面布局基准（list/create/update/detail）。装包时按 root_type_code 套用给该宿主下的类型；已有布局的类型不覆盖（幂等）。内容由 tmp-export-page-layouts.sql 从库现状导出、不手写 —— layoutJson 里的 uiComponent 是平台自定义组件码（number-preview / version-display / classification-bound-select / resource-container-select 等），手编会渲染不出来。ENG_DOCUMENT 库里当时无布局，其 4 条复制自 DOCUMENT。",
+    "byHost": {
+      "PART": [
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-number","label":"编号","readonly":true,"fieldName":"number","placeholder":"系统根据编码规则自动生成","uiComponent":"number-preview"},{"id":"fld-name","label":"名称","required":true,"fieldName":"name","placeholder":"请输入零部件名称","uiComponent":"input"},{"id":"fld-version","label":"版本","readonly":true,"fieldName":"displayVersion","placeholder":"由系统生成","uiComponent":"version-display"},{"id":"fld-cls","label":"分类","fieldName":"clsOid","placeholder":"请选择分类","uiComponent":"classification-bound-select"},{"id":"fld-container","label":"所属容器","fieldName":"containerOid","placeholder":"请选择所属库或产品","uiComponent":"resource-container-select"},{"id":"fld-unit","label":"单位","fieldName":"unit","placeholder":"请选择单位","uiComponent":"unit-select"},{"id":"fld-source","label":"来源","fieldName":"source","placeholder":"请选择来源","uiComponent":"source-select"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入描述（可选）","uiComponent":"textarea"}]}
+              ]
+            }
+          },
+          "operationCode": "create",
+          "operationName": "新建零部件"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "id": "fld-number",
+                  "label": "编号",
+                  "readonly": true,
+                  "fieldName": "number",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-name",
+                  "label": "名称",
+                  "readonly": true,
+                  "fieldName": "name",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-type",
+                  "label": "类型",
+                  "readonly": true,
+                  "fieldName": "typeDefinitionCode",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-status",
+                  "label": "生命周期状态",
+                  "readonly": true,
+                  "fieldName": "status",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-version",
+                  "label": "版本",
+                  "readonly": true,
+                  "fieldName": "displayVersion",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-cls",
+                  "label": "分类",
+                  "readonly": true,
+                  "fieldName": "clsOid",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-unit",
+                  "label": "单位",
+                  "readonly": true,
+                  "fieldName": "unit",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-source",
+                  "label": "来源",
+                  "readonly": true,
+                  "fieldName": "source",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-creator",
+                  "label": "创建者",
+                  "readonly": true,
+                  "fieldName": "creator",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-desc",
+                  "rows": 3,
+                  "label": "描述",
+                  "readonly": true,
+                  "fieldName": "description",
+                  "uiComponent": "textarea"
+                }
+              ],
+              "readonly": true
+            }
+          },
+          "operationCode": "detail",
+          "operationName": "零部件详情"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "name": "编辑表单",
+              "fields": [],
+              "enabled": true
+            },
+            "table": {
+              "columns": [
+                {
+                  "label": "名称",
+                  "width": 200,
+                  "sortable": false,
+                  "fieldName": "name"
+                },
+                {
+                  "label": "编号",
+                  "width": 150,
+                  "sortable": false,
+                  "fieldName": "number"
+                },
+                {
+                  "label": "类型",
+                  "width": 120,
+                  "sortable": false,
+                  "fieldName": "typeDefinitionCode"
+                },
+                {
+                  "label": "生命周期状态",
+                  "width": 130,
+                  "sortable": false,
+                  "fieldName": "status"
+                },
+                {
+                  "label": "大版本",
+                  "width": 80,
+                  "sortable": false,
+                  "fieldName": "revision"
+                },
+                {
+                  "label": "小版本",
+                  "width": 80,
+                  "sortable": false,
+                  "fieldName": "iteration"
+                },
+                {
+                  "label": "单位",
+                  "width": 80,
+                  "sortable": false,
+                  "fieldName": "unit"
+                },
+                {
+                  "label": "来源",
+                  "width": 90,
+                  "sortable": false,
+                  "fieldName": "source"
+                },
+                {
+                  "fixed": "right",
+                  "label": "操作",
+                  "width": 150,
+                  "sortable": false,
+                  "fieldName": "action"
+                }
+              ],
+              "enabled": true,
+              "hasEdit": true,
+              "toolbar": [
+                "create",
+                "export"
+              ],
+              "hasDelete": true,
+              "toolbarEnabled": true
+            },
+            "search": {
+              "fields": [
+                {
+                  "label": "名称",
+                  "fieldName": "name",
+                  "placeholder": "搜索名称",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "编号",
+                  "fieldName": "number",
+                  "placeholder": "搜索编号",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "类型",
+                  "fieldName": "typeDefinitionCode",
+                  "placeholder": "搜索类型编码",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "版本",
+                  "fieldName": "displayVersion",
+                  "placeholder": "搜索版本",
+                  "uiComponent": "input"
+                }
+              ],
+              "enabled": true
+            }
+          },
+          "operationCode": "list",
+          "operationName": "零部件列表"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-number","label":"编号","readonly":true,"fieldName":"number","placeholder":"编码不可修改","uiComponent":"input"},{"id":"fld-name","label":"名称","required":true,"fieldName":"name","placeholder":"请输入零部件名称","uiComponent":"input"},{"id":"fld-type","label":"类型","readonly":true,"fieldName":"typeDefinitionCode","uiComponent":"input"},{"id":"fld-version","label":"版本","readonly":true,"fieldName":"displayVersion","uiComponent":"version-display"},{"id":"fld-cls","label":"分类","fieldName":"clsOid","placeholder":"请选择分类","uiComponent":"classification-bound-select"},{"id":"fld-container","label":"所属容器","fieldName":"containerOid","placeholder":"请选择所属库或产品","uiComponent":"resource-container-select"},{"id":"fld-unit","label":"单位","fieldName":"unit","placeholder":"请选择单位","uiComponent":"unit-select"},{"id":"fld-source","label":"来源","fieldName":"source","placeholder":"请选择来源","uiComponent":"source-select"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入描述（可选）","uiComponent":"textarea"}]}
+              ]
+            }
+          },
+          "operationCode": "update",
+          "operationName": "编辑零部件"
+        }
+      ],
+      "DOCUMENT": [
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-number","label":"文档编号","readonly":true,"fieldName":"number","placeholder":"系统根据编码规则自动生成","uiComponent":"input"},{"id":"fld-name","label":"文档名称","required":true,"fieldName":"name","placeholder":"请输入文档名称","uiComponent":"input"},{"id":"fld-doctype","label":"文档类型","required":false,"fieldName":"typeDefinitionCode","placeholder":"选择文档类型（TypeDefinition）","uiComponent":"document-type-select"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入文档描述","uiComponent":"textarea"},{"id":"fld-stage","label":"所属研发阶段","required":true,"fieldName":"stageOid","placeholder":"请选择所属研发阶段","uiComponent":"stage-select"},{"id":"fld-location","label":"存放位置","fieldName":"location","placeholder":"文档存放位置","uiComponent":"input"},{"id":"fld-folder","label":"所属文件夹","readonly":true,"fieldName":"folderOid","placeholder":"由当前文件夹自动填充","uiComponent":"folder-select"},{"id":"fld-owner","label":"所属产品","required":true,"fieldName":"ownerOid","placeholder":"选择所属产品","uiComponent":"product-select"},{"id":"fld-mainfile","label":"主文档","required":false,"fieldName":"ckfileOid","placeholder":"上传主文档文件或录入网络地址","uiComponent":"ckfile-upload"},{"id":"fld-attachment","label":"附件上传","required":false,"fieldName":"attachmentOid","placeholder":"上传文档附件","uiComponent":"file-upload"}]}
+              ]
+            }
+          },
+          "operationCode": "create",
+          "operationName": "新建文档"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "id": "fld-number",
+                  "label": "文档编号",
+                  "readonly": true,
+                  "fieldName": "number",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-name",
+                  "label": "文档名称",
+                  "readonly": true,
+                  "fieldName": "name",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-doctype",
+                  "label": "文档类型",
+                  "readonly": true,
+                  "fieldName": "typeDefinitionCode",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-desc",
+                  "rows": 3,
+                  "label": "描述",
+                  "readonly": true,
+                  "fieldName": "description",
+                  "uiComponent": "textarea"
+                },
+                {
+                  "id": "fld-stage",
+                  "label": "所属研发阶段",
+                  "readonly": true,
+                  "fieldName": "stageOid",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-location",
+                  "label": "存放位置",
+                  "readonly": true,
+                  "fieldName": "location",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-revision",
+                  "label": "版本",
+                  "readonly": true,
+                  "fieldName": "revision",
+                  "uiComponent": "input"
+                }
+              ],
+              "readonly": true
+            }
+          },
+          "operationCode": "detail",
+          "operationName": "文档详情"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "name": "编辑表单",
+              "fields": [],
+              "enabled": true
+            },
+            "table": {
+              "columns": [
+                {
+                  "label": "名称",
+                  "width": 160,
+                  "sortable": false,
+                  "fieldName": "name"
+                },
+                {
+                  "label": "编号",
+                  "width": 130,
+                  "sortable": false,
+                  "fieldName": "number"
+                },
+                {
+                  "label": "类型",
+                  "width": 90,
+                  "sortable": false,
+                  "fieldName": "typeDefinitionCode"
+                },
+                {
+                  "label": "阶段",
+                  "width": 100,
+                  "sortable": false,
+                  "fieldName": "stageOid"
+                },
+                {
+                  "label": "位置",
+                  "width": 120,
+                  "sortable": false,
+                  "fieldName": "location"
+                },
+                {
+                  "label": "版本",
+                  "width": 80,
+                  "sortable": false,
+                  "fieldName": "revision"
+                },
+                {
+                  "label": "文件",
+                  "width": 140,
+                  "sortable": false,
+                  "fieldName": "fileName"
+                },
+                {
+                  "label": "创建时间",
+                  "width": 170,
+                  "sortable": false,
+                  "fieldName": "createdAt"
+                },
+                {
+                  "fixed": "right",
+                  "label": "操作",
+                  "width": 150,
+                  "sortable": false,
+                  "fieldName": "action"
+                }
+              ],
+              "enabled": true,
+              "hasEdit": true,
+              "toolbar": [
+                "create",
+                "export"
+              ],
+              "hasDelete": true,
+              "toolbarEnabled": true
+            },
+            "search": {
+              "fields": [
+                {
+                  "label": "文档名称",
+                  "fieldName": "name",
+                  "placeholder": "搜索文档名称",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "编号",
+                  "fieldName": "number",
+                  "placeholder": "搜索编号",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "文档类型",
+                  "fieldName": "typeDefinitionCode",
+                  "placeholder": "筛选文档类型",
+                  "uiComponent": "select"
+                },
+                {
+                  "label": "所属研发阶段",
+                  "fieldName": "stageOid",
+                  "placeholder": "筛选阶段",
+                  "uiComponent": "select"
+                }
+              ],
+              "enabled": true
+            }
+          },
+          "operationCode": "list",
+          "operationName": "文档列表"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-number","label":"文档编号","readonly":true,"fieldName":"number","placeholder":"系统根据编码规则自动生成","uiComponent":"input"},{"id":"fld-name","label":"文档名称","required":true,"fieldName":"name","placeholder":"请输入文档名称","uiComponent":"input"},{"id":"fld-doctype","label":"文档类型","required":false,"fieldName":"typeDefinitionCode","placeholder":"选择文档类型（TypeDefinition）","uiComponent":"document-type-select"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入文档描述","uiComponent":"textarea"},{"id":"fld-stage","label":"所属研发阶段","required":true,"fieldName":"stageOid","placeholder":"请选择所属研发阶段","uiComponent":"stage-select"},{"id":"fld-location","label":"存放位置","fieldName":"location","placeholder":"文档存放位置","uiComponent":"input"},{"id":"fld-folder","label":"所属文件夹","readonly":true,"fieldName":"folderOid","placeholder":"由当前文件夹自动填充","uiComponent":"folder-select"},{"id":"fld-owner","label":"所属产品","required":true,"fieldName":"ownerOid","placeholder":"选择所属产品","uiComponent":"product-select"},{"id":"fld-mainfile","label":"主文档","required":false,"fieldName":"ckfileOid","placeholder":"上传主文档文件或录入网络地址","uiComponent":"ckfile-upload"},{"id":"fld-attachment","label":"附件上传","required":false,"fieldName":"attachmentOid","placeholder":"上传文档附件","uiComponent":"file-upload"}]}
+              ]
+            }
+          },
+          "operationCode": "update",
+          "operationName": "编辑文档"
+        }
+      ],
+      "PRODUCT_LINE": [
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-code","label":"编码","required":true,"fieldName":"code","placeholder":"请输入产品线编码（唯一标识）","uiComponent":"input"},{"id":"fld-name","label":"名称","required":true,"fieldName":"name","placeholder":"请输入产品线名称","uiComponent":"input"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入产品线描述（可选）","uiComponent":"textarea"},{"id":"fld-target-launch","label":"目标上市日期","fieldName":"TARGET_LAUNCH_DATE","placeholder":"选择目标上市日期（「上市时间偏差」= LDCP 通过日 − 此日期）","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-target-cost","label":"目标成本(元)","fieldName":"TARGET_COST","placeholder":"人民币元；留空 = 未设定，不写默认值","uiComponent":"input-number"},{"id":"fld-parent","label":"所属产品系列","fieldName":"parentOid","placeholder":"请选择所属产品系列（可选）","uiComponent":"product-line-select"},{"id":"fld-thumbnail","label":"缩略图","required":false,"fieldName":"thumbnail","placeholder":"请上传产品系列缩略图","uiComponent":"image-upload"}]}
+              ]
+            }
+          },
+          "operationCode": "create",
+          "operationName": "新建产品系列"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "id": "fld-code",
+                  "label": "编码",
+                  "readonly": true,
+                  "fieldName": "code",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-name",
+                  "label": "名称",
+                  "readonly": true,
+                  "fieldName": "name",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-desc",
+                  "rows": 3,
+                  "label": "描述",
+                  "readonly": true,
+                  "fieldName": "description",
+                  "uiComponent": "textarea"
+                },
+                {
+                  "id": "fld-thumbnail",
+                  "label": "缩略图",
+                  "readonly": true,
+                  "fieldName": "thumbnail",
+                  "uiComponent": "image"
+                }
+              ],
+              "readonly": true
+            }
+          },
+          "operationCode": "detail",
+          "operationName": "产品系列详情"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "name": "编辑表单",
+              "fields": [],
+              "enabled": true
+            },
+            "table": {
+              "columns": [
+                {
+                  "label": "编码",
+                  "width": 130,
+                  "sortable": false,
+                  "fieldName": "code"
+                },
+                {
+                  "label": "名称",
+                  "width": 160,
+                  "sortable": false,
+                  "fieldName": "name"
+                },
+                {
+                  "label": "描述",
+                  "sortable": false,
+                  "fieldName": "description"
+                },
+                {
+                  "label": "子系列",
+                  "width": 90,
+                  "sortable": false,
+                  "fieldName": "childrenCount"
+                },
+                {
+                  "label": "父级",
+                  "width": 130,
+                  "sortable": false,
+                  "fieldName": "parent"
+                },
+                {
+                  "label": "缩略图",
+                  "width": 100,
+                  "sortable": false,
+                  "fieldName": "thumbnail"
+                },
+                {
+                  "label": "团队",
+                  "width": 90,
+                  "sortable": false,
+                  "fieldName": "team"
+                },
+                {
+                  "label": "创建时间",
+                  "width": 170,
+                  "sortable": false,
+                  "fieldName": "createdAt"
+                },
+                {
+                  "fixed": "right",
+                  "label": "操作",
+                  "width": 150,
+                  "sortable": false,
+                  "fieldName": "action"
+                }
+              ],
+              "enabled": true,
+              "hasEdit": true,
+              "toolbar": [
+                "create",
+                "export"
+              ],
+              "hasDelete": true,
+              "toolbarEnabled": true
+            },
+            "search": {
+              "fields": [
+                {
+                  "label": "编码",
+                  "fieldName": "code",
+                  "placeholder": "搜索编码",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "名称",
+                  "fieldName": "name",
+                  "placeholder": "搜索名称",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "描述",
+                  "fieldName": "description",
+                  "placeholder": "搜索描述",
+                  "uiComponent": "input"
+                }
+              ],
+              "enabled": true
+            }
+          },
+          "operationCode": "list",
+          "operationName": "产品系列列表"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-code","label":"编码","readonly":true,"required":true,"fieldName":"code","placeholder":"编码不可修改","uiComponent":"input"},{"id":"fld-name","label":"名称","required":true,"fieldName":"name","placeholder":"请输入产品线名称","uiComponent":"input"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入产品线描述（可选）","uiComponent":"textarea"},{"id":"fld-target-launch","label":"目标上市日期","fieldName":"TARGET_LAUNCH_DATE","placeholder":"选择目标上市日期（「上市时间偏差」= LDCP 通过日 − 此日期）","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-target-cost","label":"目标成本(元)","fieldName":"TARGET_COST","placeholder":"人民币元；留空 = 未设定，不写默认值","uiComponent":"input-number"},{"id":"fld-parent","label":"所属产品系列","fieldName":"parentOid","placeholder":"请选择所属产品系列（可选）","uiComponent":"product-line-select"},{"id":"fld-thumbnail","label":"缩略图","required":false,"fieldName":"thumbnail","placeholder":"请上传产品系列缩略图","uiComponent":"image-upload"}]}
+              ]
+            }
+          },
+          "operationCode": "update",
+          "operationName": "编辑产品系列"
+        }
+      ],
+      "PRODUCT_MODEL": [
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-code","label":"编码","required":true,"fieldName":"code","placeholder":"请输入产品型号编码（唯一标识）","uiComponent":"input"},{"id":"fld-name","label":"名称","required":true,"fieldName":"name","placeholder":"请输入产品型号名称","uiComponent":"input"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入产品型号描述（可选）","uiComponent":"textarea"},{"id":"fld-target-launch","label":"目标上市日期","fieldName":"TARGET_LAUNCH_DATE","placeholder":"选择目标上市日期（型号不继承系列）","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-target-cost","label":"目标成本(元)","fieldName":"TARGET_COST","placeholder":"人民币元；型号不继承系列，留空 = 未设定","uiComponent":"input-number"},{"id":"fld-parentOid","label":"所属产品系列","required":true,"fieldName":"parentOid","placeholder":"请选择所属产品系列","uiComponent":"product-line-select"},{"id":"fld-thumbnail","label":"缩略图","required":false,"fieldName":"thumbnail","placeholder":"请上传产品型号缩略图","uiComponent":"image-upload"}]}
+              ]
+            }
+          },
+          "operationCode": "create",
+          "operationName": "新建产品型号"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "id": "fld-code",
+                  "label": "编码",
+                  "readonly": true,
+                  "fieldName": "code",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-name",
+                  "label": "名称",
+                  "readonly": true,
+                  "fieldName": "name",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-desc",
+                  "rows": 3,
+                  "label": "描述",
+                  "readonly": true,
+                  "fieldName": "description",
+                  "uiComponent": "textarea"
+                },
+                {
+                  "id": "fld-productLine",
+                  "label": "所属产品系列",
+                  "readonly": true,
+                  "fieldName": "productLine",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-thumbnail",
+                  "label": "缩略图",
+                  "readonly": true,
+                  "fieldName": "thumbnail",
+                  "uiComponent": "image"
+                }
+              ],
+              "readonly": true
+            }
+          },
+          "operationCode": "detail",
+          "operationName": "产品型号详情"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "name": "编辑表单",
+              "fields": [],
+              "enabled": true
+            },
+            "table": {
+              "columns": [
+                {
+                  "label": "编码",
+                  "width": 130,
+                  "sortable": false,
+                  "fieldName": "code"
+                },
+                {
+                  "label": "名称",
+                  "width": 160,
+                  "sortable": false,
+                  "fieldName": "name"
+                },
+                {
+                  "label": "描述",
+                  "sortable": false,
+                  "fieldName": "description"
+                },
+                {
+                  "label": "所属系列",
+                  "width": 140,
+                  "sortable": false,
+                  "fieldName": "productLine"
+                },
+                {
+                  "label": "缩略图",
+                  "width": 100,
+                  "sortable": false,
+                  "fieldName": "thumbnail"
+                },
+                {
+                  "label": "团队",
+                  "width": 90,
+                  "sortable": false,
+                  "fieldName": "team"
+                },
+                {
+                  "label": "创建时间",
+                  "width": 170,
+                  "sortable": false,
+                  "fieldName": "createdAt"
+                },
+                {
+                  "fixed": "right",
+                  "label": "操作",
+                  "width": 150,
+                  "sortable": false,
+                  "fieldName": "action"
+                }
+              ],
+              "enabled": true,
+              "hasEdit": true,
+              "toolbar": [
+                "create",
+                "export"
+              ],
+              "hasDelete": true,
+              "toolbarEnabled": true
+            },
+            "search": {
+              "fields": [
+                {
+                  "label": "编码",
+                  "fieldName": "code",
+                  "placeholder": "搜索编码",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "名称",
+                  "fieldName": "name",
+                  "placeholder": "搜索名称",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "描述",
+                  "fieldName": "description",
+                  "placeholder": "搜索描述",
+                  "uiComponent": "input"
+                }
+              ],
+              "enabled": true
+            }
+          },
+          "operationCode": "list",
+          "operationName": "产品型号列表"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-code","label":"编码","readonly":true,"required":true,"fieldName":"code","placeholder":"编码不可修改","uiComponent":"input"},{"id":"fld-name","label":"名称","required":true,"fieldName":"name","placeholder":"请输入产品型号名称","uiComponent":"input"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入产品型号描述（可选）","uiComponent":"textarea"},{"id":"fld-target-launch","label":"目标上市日期","fieldName":"TARGET_LAUNCH_DATE","placeholder":"选择目标上市日期（型号不继承系列）","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-target-cost","label":"目标成本(元)","fieldName":"TARGET_COST","placeholder":"人民币元；型号不继承系列，留空 = 未设定","uiComponent":"input-number"},{"id":"fld-parentOid","label":"所属产品系列","required":true,"fieldName":"parentOid","placeholder":"请选择所属产品系列","uiComponent":"product-line-select"},{"id":"fld-thumbnail","label":"缩略图","required":false,"fieldName":"thumbnail","placeholder":"请上传产品型号缩略图","uiComponent":"image-upload"}]}
+              ]
+            }
+          },
+          "operationCode": "update",
+          "operationName": "编辑产品型号"
+        }
+      ],
+      "ENG_DOCUMENT": [
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-number","label":"工程数据编号","readonly":true,"fieldName":"number","placeholder":"系统根据编码规则自动生成","uiComponent":"number-preview"},{"id":"fld-name","label":"工程数据名称","required":true,"fieldName":"name","placeholder":"请输入工程数据名称","uiComponent":"input"},{"id":"fld-doctype","label":"类型","required":false,"fieldName":"typeDefinitionCode","placeholder":"选择工程数据类型（工程数据 / 封装 / PCB设计 / 原理图 / 图符）","uiComponent":"eng-document-type-select"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入描述","uiComponent":"textarea"},{"id":"fld-mainfile","label":"数模主文件","required":false,"fieldName":"ckfileOid","placeholder":"上传 STEP / IGES / STL 等数模文件","uiComponent":"ckfile-upload"},{"id":"fld-cadname","label":"CAD 名称","fieldName":"cadName","placeholder":"数模文件名（如 支架.step）","uiComponent":"input"},{"id":"fld-cadtype","label":"CAD 类型","fieldName":"cadType","placeholder":"如 STEP / IGES / STL","uiComponent":"input"},{"id":"fld-cadtool","label":"来源 CAD 工具","fieldName":"cadTool","placeholder":"如 SolidWorks / Creo / Altium","uiComponent":"input"},{"id":"fld-stage","label":"所属研发阶段","required":true,"fieldName":"stageOid","placeholder":"请选择所属研发阶段","uiComponent":"stage-select"},{"id":"fld-folder","label":"所属文件夹","readonly":true,"fieldName":"folderOid","placeholder":"由当前文件夹自动填充","uiComponent":"folder-select"},{"id":"fld-owner","label":"所属产品","required":true,"fieldName":"ownerOid","placeholder":"选择所属产品","uiComponent":"product-select"},{"id":"fld-attachment","label":"附件上传","required":false,"fieldName":"attachmentOid","placeholder":"上传附件","uiComponent":"file-upload"}]}
+              ]
+            }
+          },
+          "operationCode": "create",
+          "operationName": "新建文档"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "id": "fld-number",
+                  "label": "文档编号",
+                  "readonly": true,
+                  "fieldName": "number",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-name",
+                  "label": "文档名称",
+                  "readonly": true,
+                  "fieldName": "name",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-doctype",
+                  "label": "文档类型",
+                  "readonly": true,
+                  "fieldName": "typeDefinitionCode",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-desc",
+                  "rows": 3,
+                  "label": "描述",
+                  "readonly": true,
+                  "fieldName": "description",
+                  "uiComponent": "textarea"
+                },
+                {
+                  "id": "fld-stage",
+                  "label": "所属研发阶段",
+                  "readonly": true,
+                  "fieldName": "stageOid",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-location",
+                  "label": "存放位置",
+                  "readonly": true,
+                  "fieldName": "location",
+                  "uiComponent": "input"
+                },
+                {
+                  "id": "fld-revision",
+                  "label": "版本",
+                  "readonly": true,
+                  "fieldName": "revision",
+                  "uiComponent": "input"
+                }
+              ],
+              "readonly": true
+            }
+          },
+          "operationCode": "detail",
+          "operationName": "文档详情"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "name": "编辑表单",
+              "fields": [],
+              "enabled": true
+            },
+            "table": {
+              "columns": [
+                {
+                  "label": "名称",
+                  "width": 160,
+                  "sortable": false,
+                  "fieldName": "name"
+                },
+                {
+                  "label": "编号",
+                  "width": 130,
+                  "sortable": false,
+                  "fieldName": "number"
+                },
+                {
+                  "label": "类型",
+                  "width": 90,
+                  "sortable": false,
+                  "fieldName": "typeDefinitionCode"
+                },
+                {
+                  "label": "阶段",
+                  "width": 100,
+                  "sortable": false,
+                  "fieldName": "stageOid"
+                },
+                {
+                  "label": "位置",
+                  "width": 120,
+                  "sortable": false,
+                  "fieldName": "location"
+                },
+                {
+                  "label": "版本",
+                  "width": 80,
+                  "sortable": false,
+                  "fieldName": "revision"
+                },
+                {
+                  "label": "文件",
+                  "width": 140,
+                  "sortable": false,
+                  "fieldName": "fileName"
+                },
+                {
+                  "label": "创建时间",
+                  "width": 170,
+                  "sortable": false,
+                  "fieldName": "createdAt"
+                },
+                {
+                  "fixed": "right",
+                  "label": "操作",
+                  "width": 150,
+                  "sortable": false,
+                  "fieldName": "action"
+                }
+              ],
+              "enabled": true,
+              "hasEdit": true,
+              "toolbar": [
+                "create",
+                "export"
+              ],
+              "hasDelete": true,
+              "toolbarEnabled": true
+            },
+            "search": {
+              "fields": [
+                {
+                  "label": "文档名称",
+                  "fieldName": "name",
+                  "placeholder": "搜索文档名称",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "编号",
+                  "fieldName": "number",
+                  "placeholder": "搜索编号",
+                  "uiComponent": "input"
+                },
+                {
+                  "label": "文档类型",
+                  "fieldName": "typeDefinitionCode",
+                  "placeholder": "筛选文档类型",
+                  "uiComponent": "select"
+                },
+                {
+                  "label": "所属研发阶段",
+                  "fieldName": "stageOid",
+                  "placeholder": "筛选阶段",
+                  "uiComponent": "select"
+                }
+              ],
+              "enabled": true
+            }
+          },
+          "operationCode": "list",
+          "operationName": "文档列表"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-number","label":"工程数据编号","readonly":true,"fieldName":"number","placeholder":"系统根据编码规则自动生成","uiComponent":"number-preview"},{"id":"fld-name","label":"工程数据名称","required":true,"fieldName":"name","placeholder":"请输入工程数据名称","uiComponent":"input"},{"id":"fld-doctype","label":"类型","required":false,"fieldName":"typeDefinitionCode","placeholder":"选择工程数据类型（工程数据 / 封装 / PCB设计 / 原理图 / 图符）","uiComponent":"eng-document-type-select"},{"id":"fld-desc","rows":3,"label":"描述","fieldName":"description","placeholder":"请输入描述","uiComponent":"textarea"},{"id":"fld-mainfile","label":"数模主文件","required":false,"fieldName":"ckfileOid","placeholder":"上传 STEP / IGES / STL 等数模文件","uiComponent":"ckfile-upload"},{"id":"fld-cadname","label":"CAD 名称","fieldName":"cadName","placeholder":"数模文件名（如 支架.step）","uiComponent":"input"},{"id":"fld-cadtype","label":"CAD 类型","fieldName":"cadType","placeholder":"如 STEP / IGES / STL","uiComponent":"input"},{"id":"fld-cadtool","label":"来源 CAD 工具","fieldName":"cadTool","placeholder":"如 SolidWorks / Creo / Altium","uiComponent":"input"},{"id":"fld-stage","label":"所属研发阶段","required":true,"fieldName":"stageOid","placeholder":"请选择所属研发阶段","uiComponent":"stage-select"},{"id":"fld-folder","label":"所属文件夹","readonly":true,"fieldName":"folderOid","placeholder":"由当前文件夹自动填充","uiComponent":"folder-select"},{"id":"fld-owner","label":"所属产品","required":true,"fieldName":"ownerOid","placeholder":"选择所属产品","uiComponent":"product-select"},{"id":"fld-attachment","label":"附件上传","required":false,"fieldName":"attachmentOid","placeholder":"上传附件","uiComponent":"file-upload"}]}
+              ]
+            }
+          },
+          "operationCode": "update",
+          "operationName": "编辑文档"
+        }
+      ],
+    "CHANGE_REQUEST": [
+      {
+        "layoutJson": {
+          "form": {
+            "fields": [
+              {"type":"layout-row","label":"布局行","columns":2,"children":[{"id":"fld-name","label":"标题","required":true,"fieldName":"name","maxlength":300,"placeholder":"一句话说清要改什么","uiComponent":"input"},{"id":"fld-changetype","label":"变更类型","options":[{"label":"设计变更","value":"DESIGN"},{"label":"文档变更","value":"DOCUMENT"},{"label":"结构变更","value":"BOM"},{"label":"工艺变更","value":"PROCESS"},{"label":"物料变更","value":"MATERIAL"}],"required":true,"fieldName":"changeType","placeholder":"未分类","uiComponent":"select"},{"id":"fld-owner","label":"责任人","required":true,"fieldName":"owner","placeholder":"默认 = 提出人","uiComponent":"change-user-selector"},{"id":"fld-product","label":"变更系列/型号","required":true,"fieldName":"productOid","placeholder":"这次变更属于哪个产品系列 / 型号（可选）","uiComponent":"product-select","typeFieldName":"productType"},{"id":"fld-changelevel","label":"变更分级","options":[{"label":"快速","value":"QUICK"},{"label":"标准","value":"STANDARD"},{"label":"重大","value":"MAJOR"}],"fieldName":"changeLevel","placeholder":"决定审签路径：快速=单人审批，标准=会签+产品经理，重大=会签+CCB","uiComponent":"select","defaultValue":"STANDARD"},{"id":"fld-certimpact","label":"认证/合规影响","options":[{"label":"无","value":"NONE"},{"label":"需评估/重测","value":"REVIEW"},{"label":"需重新认证","value":"YES"}],"fieldName":"certImpact","placeholder":"是否触发 CE / FCC / 3C 等重测报备","uiComponent":"select"},{"id":"fld-customerimpact","label":"客户/合同影响","options":[{"label":"无","value":"NONE"},{"label":"需知会","value":"NOTIFY"},{"label":"需客户批准","value":"APPROVAL"}],"fieldName":"customerImpact","placeholder":"是否涉及客户合同或交付承诺","uiComponent":"select"},{"id":"fld-inventoryimpact","label":"在制/库存影响","options":[{"label":"无","value":"NONE"},{"label":"待在制盘点","value":"PENDING"},{"label":"需报废返工","value":"DISPOSAL"}],"fieldName":"inventoryImpact","placeholder":"在制、在途、成品与备件怎么处置","uiComponent":"select"},{"id":"fld-issues","label":"关联问题","fieldName":"issueOids","placeholder":"可选：这张变更单由哪些问题驱动（可多选，输入编号或标题搜索）","uiComponent":"change-issue-selector"},{"id":"fld-priority","label":"优先级","options":[{"label":"高","value":"HIGH"},{"label":"中","value":"MEDIUM"},{"label":"低","value":"LOW"}],"fieldName":"priority","uiComponent":"select"},{"id":"fld-duedate","label":"计划完成","fieldName":"dueDate","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-reason","rows":3,"label":"变更原因","fieldName":"reason","bindFields":null,"description":"富文本编辑器，支持文字排版、图片、链接等丰富内容","placeholder":"为什么要改（提交前必填 —— 说不出原因的变更不该进入评审）","uiComponent":"rich-text"},{"id":"fld-proposal","rows":3,"label":"建议方案","fieldName":"proposal","bindFields":null,"description":"富文本编辑器，支持文字排版、图片、链接等丰富内容","uiComponent":"rich-text"},{"id":"fld-desc","rows":2,"label":"补充说明","fieldName":"description","bindFields":null,"description":"富文本编辑器，支持文字排版、图片、链接等丰富内容","uiComponent":"rich-text"},{"id":"fld-attachment","fieldName":"attachmentOid","label":"补充材料","uiComponent":"file-upload","colSpan":2,"placeholder":"上传评审需要的佐证材料（客户确认函、测试报告、图纸截图等，可选）"}],"fieldName":"row_1"}
+            ]
+          }
+        },
+        "operationCode": "create",
+        "operationName": "新建变更请求"
+      },
+      {
+        "layoutJson": {
+          "form": {
+            "fields": [
+              {"type":"layout-row","label":"布局行","columns":2,"children":[{"id":"fld-name","label":"标题","required":true,"fieldName":"name","maxlength":300,"placeholder":"一句话说清要改什么","uiComponent":"input"},{"id":"fld-product","label":"变更系列/型号","required":true,"fieldName":"productOid","placeholder":"这次变更属于哪个产品系列 / 型号（可选）","uiComponent":"product-select","typeFieldName":"productType"},{"id":"fld-changelevel","label":"变更分级","options":[{"label":"快速","value":"QUICK"},{"label":"标准","value":"STANDARD"},{"label":"重大","value":"MAJOR"}],"required":true,"fieldName":"changeLevel","placeholder":"决定审签路径：快速=单人审批，标准=会签+产品经理，重大=会签+CCB","uiComponent":"select","defaultValue":"STANDARD"},{"id":"fld-certimpact","label":"认证/合规影响","options":[{"label":"无","value":"NONE"},{"label":"需评估/重测","value":"REVIEW"},{"label":"需重新认证","value":"YES"}],"fieldName":"certImpact","placeholder":"是否触发 CE / FCC / 3C 等重测报备","uiComponent":"select"},{"id":"fld-customerimpact","label":"客户/合同影响","options":[{"label":"无","value":"NONE"},{"label":"需知会","value":"NOTIFY"},{"label":"需客户批准","value":"APPROVAL"}],"fieldName":"customerImpact","placeholder":"是否涉及客户合同或交付承诺","uiComponent":"select"},{"id":"fld-inventoryimpact","label":"在制/库存影响","options":[{"label":"无","value":"NONE"},{"label":"待在制盘点","value":"PENDING"},{"label":"需报废返工","value":"DISPOSAL"}],"fieldName":"inventoryImpact","placeholder":"在制、在途、成品与备件怎么处置","uiComponent":"select"},{"id":"fld-changetype","label":"变更类型","options":[{"label":"设计变更","value":"DESIGN"},{"label":"文档变更","value":"DOCUMENT"},{"label":"结构变更","value":"BOM"},{"label":"工艺变更","value":"PROCESS"},{"label":"物料变更","value":"MATERIAL"}],"required":true,"fieldName":"changeType","placeholder":"未分类","uiComponent":"select"},{"id":"fld-priority","label":"优先级","options":[{"label":"高","value":"HIGH"},{"label":"中","value":"MEDIUM"},{"label":"低","value":"LOW"}],"required":true,"fieldName":"priority","uiComponent":"select"},{"id":"fld-duedate","label":"计划完成","required":true,"fieldName":"dueDate","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-owner","label":"责任人","required":true,"fieldName":"owner","placeholder":"默认 = 提出人","uiComponent":"change-user-selector"},{"id":"fld-issues","label":"关联问题","fieldName":"issueOids","placeholder":"可选：这张变更单由哪些问题驱动（可多选，输入编号或标题搜索）","uiComponent":"change-issue-selector"},{"id":"fld-reason","rows":3,"label":"变更原因","fieldName":"reason","bindFields":null,"description":"富文本编辑器，支持文字排版、图片、链接等丰富内容","placeholder":"为什么要改（提交前必填）","uiComponent":"rich-text"},{"id":"fld-proposal","rows":3,"label":"建议方案","fieldName":"proposal","bindFields":null,"description":"富文本编辑器，支持文字排版、图片、链接等丰富内容","uiComponent":"rich-text"},{"id":"fld-desc","rows":2,"label":"补充说明","fieldName":"description","bindFields":null,"description":"富文本编辑器，支持文字排版、图片、链接等丰富内容","uiComponent":"rich-text"},{"id":"fld-attachment","label":"补充材料","colSpan":2,"fieldName":"attachmentOid","placeholder":"上传评审需要的佐证材料（客户确认函、测试报告、图纸截图等，可选）","uiComponent":"file-upload"}],"fieldName":"row_1"}
+            ],
+            "enabled": true
+          }
+        },
+        "operationCode": "update",
+        "operationName": "编辑变更请求"
+      }
+    ],
+    "CHANGE_NOTICE": [
+      {
+        "layoutJson": {
+          "form": {
+            "fields": [
+              {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":2,"children":[{"id":"fld-name","label":"标题","fieldName":"name","uiComponent":"input","required":true,"maxlength":300,"placeholder":"如：X10 主板电池仓结构变更"},{"id":"fld-product","label":"所属容器","fieldName":"productOid","uiComponent":"product-select","typeFieldName":"productType","placeholder":"这次变更属于哪个产品系列 / 型号（可选）"},{"id":"fld-request","label":"来源变更请求","fieldName":"requestOid","uiComponent":"change-request-selector","placeholder":"可选 —— 选了它，类型 / 分级 / 影响 / 原因自动带入并锁定"},{"id":"fld-changetype","label":"变更类型","fieldName":"changeType","uiComponent":"select","options":[{"label":"设计变更","value":"DESIGN"},{"label":"文档变更","value":"DOCUMENT"},{"label":"结构变更","value":"BOM"},{"label":"工艺变更","value":"PROCESS"},{"label":"物料变更","value":"MATERIAL"}],"placeholder":"未分类"},{"id":"fld-changelevel","label":"变更分级","fieldName":"changeLevel","uiComponent":"select","options":[{"label":"快速","value":"QUICK"},{"label":"标准","value":"STANDARD"},{"label":"重大","value":"MAJOR"}],"placeholder":"决定审批路径：快速 / 标准 / 重大"},{"id":"fld-priority","label":"优先级","fieldName":"priority","uiComponent":"select","options":[{"label":"高","value":"HIGH"},{"label":"中","value":"MEDIUM"},{"label":"低","value":"LOW"}],"placeholder":"高 / 中 / 低"},{"id":"fld-certimpact","label":"认证/合规影响","fieldName":"certImpact","uiComponent":"select","options":[{"label":"无","value":"NONE"},{"label":"需评估/重测","value":"REVIEW"},{"label":"需重新认证","value":"YES"}],"placeholder":"是否触发 CE / FCC / 3C 等重测报备"},{"id":"fld-customerimpact","label":"客户/合同影响","fieldName":"customerImpact","uiComponent":"select","options":[{"label":"无","value":"NONE"},{"label":"需知会","value":"NOTIFY"},{"label":"需客户批准","value":"APPROVAL"}],"placeholder":"是否涉及客户合同或交付承诺"},{"id":"fld-inventoryimpact","label":"在制/库存影响","fieldName":"inventoryImpact","uiComponent":"select","options":[{"label":"无","value":"NONE"},{"label":"待在制盘点","value":"PENDING"},{"label":"需报废返工","value":"DISPOSAL"}],"placeholder":"在制、在途、成品与备件怎么处置"},{"id":"fld-reason","label":"变更原因","fieldName":"reason","uiComponent":"textarea","rows":3,"placeholder":"为什么要改（独立新建时必填；选自来源请求则从 ECR 带入）"},{"id":"fld-proposal","label":"执行方案","fieldName":"proposal","uiComponent":"textarea","rows":3,"placeholder":"这次具体怎么做（派生单以 ECR 的建议方案为起点，可改写）"},{"id":"fld-issues","label":"关联问题","fieldName":"issueOids","uiComponent":"change-issue-selector","placeholder":"可选：输入编号或标题搜索（选来源请求后自动带入）"},{"id":"fld-planstart","label":"计划开始","fieldName":"planStart","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-planend","label":"计划完成","fieldName":"planEnd","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-owner","label":"责任人","fieldName":"owner","uiComponent":"change-user-selector","placeholder":"默认 = 来源请求责任人，否则当前用户"},{"id":"fld-desc","label":"补充说明","fieldName":"description","uiComponent":"textarea","rows":3},{"id":"fld-attachment","fieldName":"attachmentOid","label":"补充材料","uiComponent":"file-upload","placeholder":"上传返工方案、试产报告、供应商确认等材料（可选）"}]}
+            ]
+          }
+        },
+        "operationCode": "create",
+        "operationName": "新建变更通告"
+      },
+      {
+        "layoutJson": {
+          "form": {
+            "fields": [
+              {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":2,"children":[{"id":"fld-name","label":"标题","fieldName":"name","uiComponent":"input","required":true,"maxlength":300,"placeholder":"如：X10 主板电池仓结构变更"},{"id":"fld-product","label":"所属容器","fieldName":"productOid","uiComponent":"product-select","typeFieldName":"productType","placeholder":"这次变更属于哪个产品系列 / 型号（可选）"},{"id":"fld-request","label":"来源变更请求","fieldName":"requestOid","uiComponent":"change-request-selector","placeholder":"可选 —— 选了它，类型 / 分级 / 影响 / 原因自动带入并锁定"},{"id":"fld-changetype","label":"变更类型","fieldName":"changeType","uiComponent":"select","options":[{"label":"设计变更","value":"DESIGN"},{"label":"文档变更","value":"DOCUMENT"},{"label":"结构变更","value":"BOM"},{"label":"工艺变更","value":"PROCESS"},{"label":"物料变更","value":"MATERIAL"}],"placeholder":"未分类"},{"id":"fld-changelevel","label":"变更分级","fieldName":"changeLevel","uiComponent":"select","options":[{"label":"快速","value":"QUICK"},{"label":"标准","value":"STANDARD"},{"label":"重大","value":"MAJOR"}],"placeholder":"决定审批路径：快速 / 标准 / 重大"},{"id":"fld-priority","label":"优先级","fieldName":"priority","uiComponent":"select","options":[{"label":"高","value":"HIGH"},{"label":"中","value":"MEDIUM"},{"label":"低","value":"LOW"}],"placeholder":"高 / 中 / 低"},{"id":"fld-certimpact","label":"认证/合规影响","fieldName":"certImpact","uiComponent":"select","options":[{"label":"无","value":"NONE"},{"label":"需评估/重测","value":"REVIEW"},{"label":"需重新认证","value":"YES"}],"placeholder":"是否触发 CE / FCC / 3C 等重测报备"},{"id":"fld-customerimpact","label":"客户/合同影响","fieldName":"customerImpact","uiComponent":"select","options":[{"label":"无","value":"NONE"},{"label":"需知会","value":"NOTIFY"},{"label":"需客户批准","value":"APPROVAL"}],"placeholder":"是否涉及客户合同或交付承诺"},{"id":"fld-inventoryimpact","label":"在制/库存影响","fieldName":"inventoryImpact","uiComponent":"select","options":[{"label":"无","value":"NONE"},{"label":"待在制盘点","value":"PENDING"},{"label":"需报废返工","value":"DISPOSAL"}],"placeholder":"在制、在途、成品与备件怎么处置"},{"id":"fld-reason","label":"变更原因","fieldName":"reason","uiComponent":"textarea","rows":3,"placeholder":"为什么要改（派生单从 ECR 带入，不可在此修改）"},{"id":"fld-proposal","label":"执行方案","fieldName":"proposal","uiComponent":"textarea","rows":3,"placeholder":"这次具体怎么做（派生单以 ECR 的建议方案为起点，可改写）"},{"id":"fld-issues","label":"关联问题","fieldName":"issueOids","uiComponent":"change-issue-selector","placeholder":"可选：输入编号或标题搜索"},{"id":"fld-planstart","label":"计划开始","fieldName":"planStart","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-planend","label":"计划完成","fieldName":"planEnd","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-owner","label":"责任人","fieldName":"owner","uiComponent":"change-user-selector","placeholder":"默认 = 当前用户"},{"id":"fld-desc","label":"补充说明","fieldName":"description","uiComponent":"textarea","rows":3},{"id":"fld-attachment","fieldName":"attachmentOid","label":"补充材料","uiComponent":"file-upload","placeholder":"上传返工方案、试产报告、供应商确认等材料（可选）"}]}
+            ]
+          }
+        },
+        "operationCode": "update",
+        "operationName": "编辑变更通告"
+      }
+    ],
+    "CHANGE_TASK": [
+      {
+        "layoutJson": {
+          "form": {
+            "fields": [
+              {"type":"layout-row","fieldName":"row_1","label":"布局行","columns":1,"children":[{"id":"fld-name","label":"任务标题","fieldName":"name","uiComponent":"input","required":true,"maxlength":300,"placeholder":"如：修订主板结构图纸"},{"id":"fld-tasktype","label":"任务类型","fieldName":"taskType","uiComponent":"select","options":[{"value":"DESIGN","label":"设计"},{"value":"DOCUMENT","label":"文档"},{"value":"BOM","label":"结构"},{"value":"PROCESS","label":"工艺"},{"value":"VERIFY","label":"验证"}]},{"id":"fld-planend","label":"计划完成","fieldName":"planEnd","uiComponent":"datepicker","valueFormat":"YYYY-MM-DD"},{"id":"fld-assignee","label":"责任人","fieldName":"assignee","uiComponent":"change-user-selector","placeholder":"默认 = 当前用户"},{"id":"fld-desc","label":"说明","fieldName":"description","uiComponent":"textarea","rows":2}]}
+            ]
+          }
+        },
+        "operationCode": "create",
+        "operationName": "新建变更任务"
+      }
+    ]
+    }
+  },
+
+  "note": "平台基础类型：6 个 OOTB 根类型 + 4 个通用子类型（部件下专业分类、结构件下的标准件/通用件）。★ 功能架构（FUNCTIONAL）及其三件套（系统 / 子系统 / 配置项）**已移出本包** —— 它是行业概念（军工＝装备级功能系统、汽车＝车型功能域，各有一套分解），随 military-gjb 与 automotive-apqp 各自注册，谁装包谁得到；编码规则 FUNCTIONAL-NUM 仍留本包（见 numberRules.json）供两个行业共用。★ 电气件（ELECTRICAL）同样**已移出本包** —— 电气件的专业口径因行业而异（汽车看整车 E/E 架构、军工看型号配套电气产品），随 automotive-apqp 与 military-gjb 各自注册，谁装包谁得到；它沿用平台层的 PART_NUMBER / LETTER_26 / STANDARD 与平台初始化器建的 ELECTRICAL_DOMAIN，依赖仍在平台层。电子域的 7 个类型在 electronics-core。parentCode = 类型树父（null = 顶层）；hostCode = 能力宿主 rootTypeCode（决定落哪张实体表、用哪套编码规则）；numberRule/versionRule/lifecycleTemplate 是落库时写入绑定表的值（子类型原先由「按宿主继承」推导，这里显式写出，便于审阅）。\n\nBOM_LINK（BOM 行对象）是第 6 个根类型，也是唯一**不绑**编码规则 / 版本规则 / 生命周期模板的一个 —— 它描述的是「父件迭代 × 子件」这条构成关系（参照 Windchill WTPartUsageLink）：行号由 ck_bom_links.line_number 表达（不需要另一套业务编码）、随父件迭代受控（不自建版本）、无独立生命周期。注册它的直接动因：位号（refDes）这类属性属于「行」而不属于「件」，而属性组的 bindTo 只认类型码 —— 不把 BOM 行注册成类型，属性就无处可绑。"
+}

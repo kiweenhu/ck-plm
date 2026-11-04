@@ -34,6 +34,14 @@ public interface PageLayoutService {
     /** 根据实体编码 + 操作码查询布局 */
     PageLayout findByEntityCodeAndOperation(String entityCode, String operationCode);
 
-    /** 克隆平台级页面布局到当前租户 */
-    PageLayout cloneFromPlatform(String entityOid, String entityCode, String operationCode);
+    /**
+     * 克隆「**根类型布局**」到当前类型（当前租户内）。
+     *
+     * <p>根类型 = 当前类型的 {@code root_type_code}（能力宿主，如 电子元器件 → PART）。
+     * 2026-10-11 由"从平台租户母版克隆"改为此口径 —— 与全库"按租户隔离、不拿平台兜底"的原则一致：
+     * 平台那份布局对租户不可见、也不该作为克隆来源；布局应当从**本租户自己的根类型**继承。
+     *
+     * <p>约束：当前类型已有该操作布局时拒绝（要先删除）；根类型自身、根类型缺该操作布局时如实报错。
+     */
+    PageLayout cloneFromRootType(String entityOid, String entityCode, String operationCode);
 }

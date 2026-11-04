@@ -46,6 +46,14 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-plm_pass_2026}
       PLM_STORAGE_BASE: /data/ck-plm
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m}
+      # CAD 轻量化可视化：默认关闭。开启前先起 cadforge 服务，否则转换请求只会落到 SKIPPED。
+      PLM_CAD_FORGE_ENABLED: ${PLM_CAD_FORGE_ENABLED:-false}
+      PLM_CAD_FORGE_BASE_URL: http://cadforge:8090
+      PLM_CAD_FORGE_CALLBACK_URL: http://backend:8082/api/internal/cad/convert/callback
+      PLM_CAD_FORGE_CALLBACK_TOKEN: ${CADFORGE_CALLBACK_TOKEN:-change-me}
+      # cadforge 在 compose 内网（私网地址），出站守卫默认会拦（防 SSRF）。
+      # 这里显式放行 —— "能调通"不该来自"恰好没被拦住"。
+      PLM_INTEGRATION_ALLOW_PRIVATE: ${PLM_INTEGRATION_ALLOW_PRIVATE:-true}
     volumes:
       - plm-data:/data/ck-plm
     # 暴露出来方便单独调接口；只走前端反代时可以注释掉这段
@@ -63,6 +71,34 @@ services:
       - backend
     ports:
       - "${WEB_PORT:-8080}:80"
+
+  # CAD 轻量化转换器（可选）。
+  #
+  # 注意两点：
+  # 1. 这里只引用已发布的镜像，不构建它的源码 —— 转换器是 LGPL-3.0（依赖 pythonocc-core），
+  #    把它的源码带进本工程（Apache-2.0）的构建产物会让许可证边界失效。
+  # 2. 与 backend 共享 plm-data 卷：CK-PLM 上传的 STEP 落盘后转换器直接读同一卷，
+  #    产物写回同一卷，HTTP 只传元数据 —— 几百 MB 的 STEP 不该在序列化上浪费带宽和内存。
+  cadforge:
+    image: ${CADFORGE_IMAGE:-ghcr.io/kiweenhu/ck-cadforge:latest}
+    container_name: ck-cadforge
+    restart: unless-stopped
+    environment:
+      CADFORGE_OUTPUT_DIR: /data/ck-plm/cad/visualizations
+      CADFORGE_CALLBACK_TOKEN: ${CADFORGE_CALLBACK_TOKEN:-change-me}
+      # 大装配体网格化可能很慢，超时给宽一点；并发按 CPU 核数调
+      CADFORGE_JOB_TIMEOUT: ${CADFORGE_JOB_TIMEOUT:-600}
+      CADFORGE_MAX_CONCURRENCY: ${CADFORGE_MAX_CONCURRENCY:-2}
+    volumes:
+      - plm-data:/data/ck-plm
+    # 不对外暴露端口：只有 backend 需要访问它
+    healthcheck:
+      # engine 字段能直接看出当前跑的是真实内核还是降级模式
+      test: ["CMD-SHELL", "python -c \"import urllib.request,json;d=json.load(urllib.request.urlopen('http://127.0.0.1:8090/healthz'));print(d.get('engine'));exit(0 if d.get('ok') else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 volumes:
   pgdata:

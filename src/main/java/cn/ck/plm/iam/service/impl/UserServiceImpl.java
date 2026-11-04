@@ -240,6 +240,8 @@ public class UserServiceImpl implements UserService {
             }
         }
         RoleMember roleMember = new RoleMember(userOid, roleOid);
+        // 成员行归属 = 当前租户（2026-10-11 角色隔离）：不设会写 NULL，隔离后本租户读不到（成员静默消失）
+        roleMember.setTenantOid(cn.ck.plm.base.util.TenantContext.get());
         roleMemberMapper.insert(roleMember);
     }
 

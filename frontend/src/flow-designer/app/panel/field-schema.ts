@@ -15,8 +15,6 @@ import type { FlowDsl, ServiceParamOptionSource } from '@flow-dsl-core'
 
 /** 控件类型：渲染器按此分发 */
 export type FieldControl =
-  /** 「设置审批人」任务表单预览（只读，不写入 DSL） */
-  | 'assignee-setup-preview'
   /** 连线类型（单选而非下拉：「默认分支」必须一眼可见） */
   | 'edge-kind'
   /** 单行文本 */

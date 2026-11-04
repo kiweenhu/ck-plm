@@ -50,6 +50,18 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // ckfiles / attachments 的读取（在线预览、下载、GLB 数据流）由 &lt;img&gt;、window.open、
+        // three.js 加载器直接发起，带不上 Authorization 头 —— 这类 GET 放行（与排除名单原本的意图一致）。
+        // 写操作（上传 / 建 URL）必须带 token：拿不到用户与租户时文件会落进默认租户，
+        // 之后按当前租户查不到该 CKFile，CAD 转换就报"源文件不存在"（2026-10-23 实测踩到）。
+        String uri = request.getRequestURI();
+        boolean readOnlyFileAccess = ("GET".equalsIgnoreCase(request.getMethod())
+                || "HEAD".equalsIgnoreCase(request.getMethod()))
+                && (uri.startsWith("/api/ckfiles/") || uri.startsWith("/api/attachments/"));
+        if (readOnlyFileAccess) {
+            return true;
+        }
+
         String authHeader = request.getHeader(HEADER_AUTH);
         if (authHeader == null || !authHeader.startsWith(PREFIX_BEARER)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

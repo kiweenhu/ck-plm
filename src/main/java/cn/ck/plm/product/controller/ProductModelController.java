@@ -12,6 +12,8 @@ import cn.ck.plm.product.dto.TeamMemberVO;
 import cn.ck.plm.product.entity.ProductModel;
 import cn.ck.plm.product.entity.Team;
 import cn.ck.plm.product.service.api.ProductModelService;
+import cn.ck.plm.product.service.impl.ProductTeamRoleResolver;
+import cn.ck.plm.product.service.impl.ProductTeamVisibility;
 import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
 import cn.ck.plm.softtype.service.api.SoftTypeInstanceService;
 import org.springframework.web.bind.annotation.*;
@@ -29,14 +31,20 @@ public class ProductModelController {
 
     private final ProductModelService productModelService;
     private final SoftTypeInstanceService softTypeInstanceService;
+    private final ProductTeamVisibility productTeamVisibility;
+    private final ProductTeamRoleResolver productTeamRoleResolver;
 
     /** 能力宿主 code（与 TypeDefinition.rootTypeCode 一致） */
     private static final String HOST = "PRODUCT_MODEL";
 
     public ProductModelController(ProductModelService productModelService,
-                                  SoftTypeInstanceService softTypeInstanceService) {
+                                  SoftTypeInstanceService softTypeInstanceService,
+                                  ProductTeamVisibility productTeamVisibility,
+                                  ProductTeamRoleResolver productTeamRoleResolver) {
         this.productModelService = productModelService;
         this.softTypeInstanceService = softTypeInstanceService;
+        this.productTeamVisibility = productTeamVisibility;
+        this.productTeamRoleResolver = productTeamRoleResolver;
     }
 
     /**
@@ -58,9 +66,12 @@ public class ProductModelController {
         }
     }
 
-    /** 更新产品型号 */
+    /** 更新产品型号 —— 仅产品经理（团队角色，型号继承父系列团队）或管理员可维护（2026-10-17 用户口径） */
     @PutMapping("/{oid}")
     public ApiResponse<ProductModel> update(@PathVariable String oid, @RequestBody Map<String, Object> body) {
+        if (!productTeamRoleResolver.canManageUnder(oid)) {
+            return ApiResponse.fail(403, "仅产品经理可编辑产品型号");
+        }
         try {
             // 更新编排已收敛到 ProductModelServiceImpl#updateInstance，与统一入口共用同一实现
             Object entity = softTypeInstanceService.updateForHost(HOST, oid, body);
@@ -72,21 +83,30 @@ public class ProductModelController {
         }
     }
 
-    /** 删除产品型号（逻辑删除，进入回收站） */
+    /** 删除产品型号（逻辑删除，进入回收站）—— 仅产品经理（团队角色）或管理员 */
     @DeleteMapping("/{oid}")
     public ApiResponse<Boolean> delete(@PathVariable String oid) {
+        if (!productTeamRoleResolver.canManageUnder(oid)) {
+            return ApiResponse.fail(403, "仅产品经理可删除产品型号");
+        }
         return ApiResponse.ok(productModelService.delete(oid));
     }
 
-    /** 查询回收站（逻辑删除的产品型号） */
+    /** 查询回收站（逻辑删除的产品型号）—— 仅管理员可见（口径同前端：回收站只对租户管理员开放） */
     @GetMapping("/deleted")
     public ApiResponse<List<ProductModel>> listDeleted() {
+        if (!productTeamVisibility.isAdmin()) {
+            return ApiResponse.fail(403, "回收站仅租户管理员可见");
+        }
         return ApiResponse.ok(productModelService.findDeleted());
     }
 
-    /** 恢复产品型号（从回收站） */
+    /** 恢复产品型号（从回收站）—— 仅管理员可操作 */
     @PostMapping("/{oid}/restore")
     public ApiResponse<Boolean> restore(@PathVariable String oid) {
+        if (!productTeamVisibility.isAdmin()) {
+            return ApiResponse.fail(403, "回收站仅租户管理员可操作");
+        }
         return ApiResponse.ok(productModelService.restore(oid));
     }
 
@@ -97,12 +117,14 @@ public class ProductModelController {
      * <p>读取编排已收敛到 {@code ProductModelInstanceCreator#get}，与统一入口共用同一实现。
      */
     @GetMapping("/{oid}")
-    public ApiResponse<ProductModel> getByOid(@PathVariable String oid) {
+    public ApiResponse<Object> getByOid(@PathVariable String oid) {
         Object entity = softTypeInstanceService.getForHost(HOST, oid, null);
         if (entity == null) {
             return ApiResponse.fail(404, "产品型号不存在");
         }
-        return ApiResponse.ok((ProductModel) entity);
+        // 读取路径返回的是摊平了 IBA 的 Map（见 ProductModelServiceImpl#withIba）；
+        // 原先硬转 ProductModel，每次读详情都 ClassCastException → 500（与产品系列同一处问题）
+        return ApiResponse.ok(entity);
     }
 
     /** 产品型号列表 / 搜索 */
@@ -141,10 +163,13 @@ public class ProductModelController {
         }
     }
 
-    /** 添加团队成员 */
+    /** 添加团队成员 —— 仅产品经理（团队角色）或管理员 */
     @PostMapping("/{oid}/team/members")
     public ApiResponse<Void> addTeamMember(@PathVariable String oid,
                                            @RequestBody Map<String, String> body) {
+        if (!productTeamRoleResolver.canManageUnder(oid)) {
+            return ApiResponse.fail(403, "仅产品经理可维护团队");
+        }
         try {
             productModelService.addTeamMember(oid, body.get("userId"), body.get("roleName"));
             return ApiResponse.ok();
@@ -153,10 +178,13 @@ public class ProductModelController {
         }
     }
 
-    /** 移除团队成员 */
+    /** 移除团队成员 —— 仅产品经理（团队角色）或管理员 */
     @DeleteMapping("/{oid}/team/members/{userId}")
     public ApiResponse<Void> removeTeamMember(@PathVariable String oid,
                                                @PathVariable String userId) {
+        if (!productTeamRoleResolver.canManageUnder(oid)) {
+            return ApiResponse.fail(403, "仅产品经理可维护团队");
+        }
         try {
             productModelService.removeTeamMember(oid, userId);
             return ApiResponse.ok();

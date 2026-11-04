@@ -70,10 +70,22 @@ public class PageLayoutController {
         return ApiResponse.ok(service.findByEntityCodeAndOperation(entityCode, operationCode));
     }
 
-    /** 克隆平台布局到当前租户 */
+    /**
+     * 克隆「根类型布局」（当前类型的 root_type_code 对应类型）到当前类型 —— 本租户内，不读平台那份。
+     *
+     * <p>异常按全站惯例转成 {@link ApiResponse#fail}：否则 IllegalArgumentException / IllegalStateException
+     * 裸奔成 Spring 默认 500 JSON（没有 message）→ 前端只能弹笼统的"克隆失败"，
+     * 看不到"本租户已有该操作布局 / 根类型还没有布局"这类可纠正的原因。
+     */
     @PostMapping("/clone")
     public ApiResponse<PageLayout> clone(@RequestBody PageLayout layout) {
-        return ApiResponse.ok(service.cloneFromPlatform(layout.getEntityOid(),
-                layout.getEntityCode(), layout.getOperationCode()));
+        try {
+            return ApiResponse.ok(service.cloneFromRootType(layout.getEntityOid(),
+                    layout.getEntityCode(), layout.getOperationCode()));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
+        } catch (IllegalStateException e) {
+            return ApiResponse.fail(409, e.getMessage());
+        }
     }
 }

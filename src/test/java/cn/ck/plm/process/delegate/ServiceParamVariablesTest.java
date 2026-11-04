@@ -55,7 +55,7 @@ class ServiceParamVariablesTest {
 
     @Test
     void 字面量与别的花括号内容一律不动() {
-        assertThat(resolve("IN_WORK", "state")).isEqualTo("IN_WORK");
+        assertThat(resolve("PUBLISHED", "state")).isEqualTo("PUBLISHED");
         // 整段 JSON 报文模板：花括号不是变量名，必须原样保留
         assertThat(resolve("{\"a\":1}", "body")).isEqualTo("{\"a\":1}");
         assertThat(resolve(null, "any")).isNull();

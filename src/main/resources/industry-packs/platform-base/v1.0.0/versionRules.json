@@ -1,0 +1,15 @@
+{
+  "items": [
+    {
+      "code": "LETTER_26",
+      "name": "26位字母序列",
+      "ruleDefinition": "A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z",
+      "description": "大版本字母序列，26 个大写字母逐列（逗号分隔，A 到 Z；类型默认绑定这条）",
+      "applicableType": "GENERAL",
+      "sequenceValue": 0,
+      "enabled": true
+    }
+  ],
+  "note": "大版本（revision）字母序列。VersionRuleService 解析 (A-Z)/(A,B,C) 得到序列，getFirstRevision / getNextRevision 据此推 A→B→C。<b>不要把编码规则塞进来</b>：那是 ck_number 的另一套（见 numberRules.json）。",
+  "belongs": "平台级基础数据（applicableType=GENERAL，跟行业无关）—— 原先放在 electronics-core，2026-10 移到 platform-base：任何一个行业（含不依赖 electronics-core 的军工/通用档）都要给类型绑大版本规则，它不该成为电子行业的专属资源。"
+}

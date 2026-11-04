@@ -40,13 +40,17 @@ public class TenantServiceImpl implements TenantService {
     private final UserService userService;
     private final RoleMapper roleMapper;
     private final NotificationService notificationService;
+    /** 角色隔离后需要"跨租户复制平台角色"（拦截器会按上下文改写 Mapper SQL，这类操作用 JDBC 显式写租户条件） */
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     public TenantServiceImpl(TenantMapper tenantMapper, UserService userService,
-                              RoleMapper roleMapper, NotificationService notificationService) {
+                              RoleMapper roleMapper, NotificationService notificationService,
+                              org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         this.tenantMapper = tenantMapper;
         this.userService = userService;
         this.roleMapper = roleMapper;
         this.notificationService = notificationService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -137,6 +141,10 @@ public class TenantServiceImpl implements TenantService {
         // 2. 激活租户管理员用户（设置 TenantContext 确保能查到该租户下的用户）
         cn.ck.plm.base.util.TenantContext.set(tenant.getOid());
         try {
+            // 2.1 确保本租户有系统角色副本（角色已按租户隔离：TENANT_ADMIN 等必须各租户一份，
+            //     否则下面的绑定查不到角色，租户管理员会"没有角色"）
+            ensureSystemRoles(tenant.getOid());
+
             User admin = userService.findByUsername(tenant.getAdminUsername());
             if (admin != null) {
                 admin.setEnabled(true);
@@ -156,16 +164,41 @@ public class TenantServiceImpl implements TenantService {
                 admin.setEnabled(true);
                 admin.setLocked(false);
                 userService.createWithEncodedPassword(admin, password);
-                Role tenantAdminRole = roleMapper.selectByCode(TENANT_ADMIN_ROLE_CODE);
-                if (tenantAdminRole != null) {
-                    userService.assignRole(admin.getOid(), tenantAdminRole.getOid());
-                }
+            }
+            // 2.2 无条件确保管理员绑定到**本租户**的 TENANT_ADMIN（assignRole 幂等）。
+            //     注册时租户还没有角色副本，那次绑定会落空 —— 审核通过是补齐它的正确时机。
+            Role tenantAdminRole = roleMapper.selectByCode(TENANT_ADMIN_ROLE_CODE);
+            if (tenantAdminRole != null) {
+                userService.assignRole(admin.getOid(), tenantAdminRole.getOid());
+            } else {
+                log.warn("本租户缺少系统角色 {}（应在 ensureSystemRoles 中补齐），管理员未绑定角色: tenant={}",
+                        TENANT_ADMIN_ROLE_CODE, tenant.getTenantId());
             }
         } finally {
             cn.ck.plm.base.util.TenantContext.clear();
         }
 
         log.info("租户审核通过: tenantId={}, oid={}, approvedBy={}", tenant.getTenantId(), tenant.getOid(), approvedBy);
+    }
+
+    /**
+     * 确保目标租户拥有系统角色副本（除 PLATFORM_ADMIN 外的平台系统角色）。
+     *
+     * <p>角色按租户隔离（2026-10-11）后，新建租户不能复用平台的角色行：
+     * 从**平台租户**复制缺失的系统角色（PLATFORM_ADMIN 为平台专属，不复制）。
+     * 用 JDBC 直写并显式带两侧 tenant_oid —— 拦截器会按当前上下文改写 Mapper SQL，这里需要跨租户读平台行。
+     */
+    private void ensureSystemRoles(String tenantOid) {
+        int created = jdbcTemplate.update(
+                "INSERT INTO ck_role (oid, code, name, description, role_type, tenant_oid, creator, created_at, updater, updated_at) "
+                        + "SELECT gen_random_uuid()::text, r.code, r.name, r.description, r.role_type, ?, 'system', now(), 'system', now() "
+                        + "FROM ck_role r "
+                        + "WHERE r.tenant_oid = ? AND r.role_type = 'PLATFORM' AND r.code <> 'PLATFORM_ADMIN' "
+                        + "AND NOT EXISTS (SELECT 1 FROM ck_role x WHERE x.code = r.code AND x.tenant_oid = ?)",
+                tenantOid, cn.ck.plm.base.util.TenantContext.PLATFORM_TENANT_OID, tenantOid);
+        if (created > 0) {
+            log.info("已为租户 {} 复制 {} 个系统角色副本", tenantOid, created);
+        }
     }
 
     @Override

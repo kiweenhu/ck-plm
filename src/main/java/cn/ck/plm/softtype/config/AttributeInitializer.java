@@ -12,6 +12,9 @@ import cn.ck.plm.document.entity.DocumentIteration;
 import cn.ck.plm.document.entity.EngineeringDocument;
 import cn.ck.plm.document.entity.EngineeringDocumentIteration;
 import cn.ck.plm.base.entity.BaseEntity;
+import cn.ck.plm.change.entity.ChangeNotice;
+import cn.ck.plm.change.entity.ChangeRequest;
+import cn.ck.plm.change.entity.ChangeTask;
 import cn.ck.plm.part.entity.Part;
 import cn.ck.plm.part.entity.PartIteration;
 import cn.ck.plm.product.entity.ProductLine;
@@ -36,7 +39,7 @@ import java.util.*;
  * 应用启动时自动扫描 {@link #ENTITY_CODE_MAP} 中指定的 OOTB 实体类，
  * 通过反射发现字段并自动注册属性定义到 ck_attribute_definition 表。
  *
- * <p>在 {@link TypeDefinitionInitializer}（{@code @Order(2)}）之后执行。
+ * <p>在 {@code IndustryPackBootstrap}（{@code @Order(1)}，装载类型定义）之后执行。
  *
  * <h3>扩展方式</h3>
  * 在 {@link #ENTITY_CODE_MAP} 中添加新实体类及其 TypeDefinition code 即可自动扫描注册。
@@ -56,12 +59,12 @@ import java.util.*;
  *   <li>未在 FIELD_META 中的字段 → 默认 searchable=true, listable=true, editable=true</li>
  * </ul>
  *
- * <p>实体 code 由 {@link #ENTITY_CODE_MAP} 显式配置（如 PRODUCT_LINE、DOCUMENT），与 TypeDefinitionInitializer 保持一致。</p>
+ * <p>实体 code 由 {@link #ENTITY_CODE_MAP} 显式配置（如 PRODUCT_LINE、DOCUMENT），与包内 softtypes.json 保持一致。</p>
  *
  * <p>幂等：已存在的属性不会重复注册（由 {@link AttributeDefinitionService#registerSystemAttributes} 保证）。</p>
  */
 @Component
-@Order(3) // 在 TypeDefinitionInitializer(@Order=2) 之后执行
+@Order(3) // 在行业包引导(@Order=1)之后执行：类型定义先就位，属性才有归属的类型
 public class AttributeInitializer implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AttributeInitializer.class);
@@ -70,7 +73,7 @@ public class AttributeInitializer implements CommandLineRunner {
 
     // ==================== OOTB 实体类 → TypeDefinition code 映射 ====================
 
-    /** 实体类 → TypeDefinition code 映射，code 必须与 TypeDefinitionInitializer.ENTITY_META 保持一致 */
+    /** 实体类 → TypeDefinition code 映射，code 必须与包内 softtypes.json（platform-base / electronics-core）保持一致 */
     private static final Map<Class<? extends BaseEntity>, String> ENTITY_CODE_MAP = new LinkedHashMap<>();
     static {
         ENTITY_CODE_MAP.put(ProductLine.class,  "PRODUCT_LINE");
@@ -81,6 +84,13 @@ public class AttributeInitializer implements CommandLineRunner {
         // 工程数据（EngineeringDocument）：root_type_code = ENG_DOCUMENT，
         // 承载 FOOTPRINT / SYMBOL / SCHEMATIC / PCB_LAYOUT / DRAWING_2D 等软类型的能力宿主
         ENTITY_CODE_MAP.put(EngineeringDocument.class, "ENG_DOCUMENT");
+        // 变更单据：不注册就不会进「页面设计器」的字段池 —— 用户在设计器里
+        // 找不到「所属容器」（productOid），布局自然加不上去（2026-10-22 反馈）。
+        ENTITY_CODE_MAP.put(ChangeRequest.class, "CHANGE_REQUEST");
+        ENTITY_CODE_MAP.put(ChangeNotice.class,  "CHANGE_NOTICE");
+        // 变更任务同样是变更域单据：漏注册会让平台租户的设计器里没有它的字段，
+        // 而租户那份由 platform-base 的 attributes.json 声明（CHANGE_TASK_BASE）—— 两侧要对齐。
+        ENTITY_CODE_MAP.put(ChangeTask.class,    "CHANGE_TASK");
     }
 
     // ==================== 复合实体扫描配置 ====================
@@ -131,7 +141,12 @@ public class AttributeInitializer implements CommandLineRunner {
      *   <li>{@code tenantOid} —— 租户隔离列，注册出来还会被当成"可搜索 / 可列表 / 可编辑"的业务字段。</li>
      * </ul>
      */
-    private static final Set<String> SKIP_FIELDS = new LinkedHashSet<>(Arrays.asList("oid", "tenantOid"));
+    private static final Set<String> SKIP_FIELDS = new LinkedHashSet<>(Arrays.asList(
+            "oid", "tenantOid",
+            // 以下五个是变更单据的**传输字段**（不落库、无对应列）：注册成属性只会让
+            // 页面设计器的字段池里多出几个"拖进布局也存不下"的假字段
+            // （noticeCode 是变更任务的"所属通告编号"，由查询 JOIN 带出）
+            "productName", "issueOids", "affectedObjectOids", "affectedObjects", "noticeCode"));
 
     private static final Map<String, FieldMeta> FIELD_META = new LinkedHashMap<>();
     static {
@@ -169,6 +184,46 @@ public class AttributeInitializer implements CommandLineRunner {
         // ---------- MasterEntity 容器字段（Document / Part 通用） ----------
         fm("containerOid",  "所属容器",     30, true,  true,  true);
         fm("containerType", "容器类型",     31, false, true,  true);
+
+        // ---------- 变更单据（ChangeRequest / ChangeNotice）字段 ----------
+        // productOid 在变更单据上叫"所属容器"（指向产品系列 / 型号），
+        // 与 containerOid 是同一业务含义、不同列名，显示名必须对齐，否则设计器里
+        // 只显示英文 "Product Oid"，用户根本找不到这个字段。
+        fm("productOid",    "所属容器",     30, true,  true,  true);
+        fm("productType",   "容器类型",     31, false, true,  true);
+        fm("owner",         "责任人",        4, true,  true,  true);
+        fm("requester",     "提出人",        5, true,  true,  false);
+        fm("requestOid",    "来源变更请求",   6, true,  true,  true);
+        fm("changeType",    "变更类型",       7, true,  true,  true);
+        fm("priority",      "优先级",         8, true,  true,  true);
+        // 变更分级 / 三项影响评估 / 受理时间：原先不在映射里，走 camelToHuman 回退 ——
+        // 注册出来是 "Change Level" / "Cert Impact" 这类英文名，设计器字段池里用户认不出来
+        fm("changeLevel",     "变更分级",       3, true,  true,  true);
+        fm("certImpact",      "认证/合规影响",  4, true,  true,  true);
+        fm("customerImpact",  "客户/合同影响",  5, true,  true,  true);
+        fm("inventoryImpact", "在制/库存影响",  6, true,  true,  true);
+        fm("acceptedAt",      "受理时间",      11, true,  true,  true);
+        // 补充材料：PART / DOCUMENT / 变更单据共用同一个字段名与语义（存 ck_attachment.oid）
+        fm("attachmentOid",   "补充材料",      66, true,  true,  true);
+        fm("dueDate",       "计划完成",       9, false, true,  true);
+        fm("planStart",     "计划开始",       9, false, true,  true);
+        fm("planEnd",       "计划完成",      10, false, true,  true);
+        fm("reason",        "变更原因",      45, true,  false, true);
+        fm("proposal",      "建议方案",      46, false, false, true);
+        fm("sourceIssueOid","来源问题",      20, false, false, true);
+        fm("processInstanceId", "流程实例",  97, false, false, false);
+        fm("approvedAt",    "审批通过时间",  88, false, false, false);
+        fm("completedAt",   "完成时间",      89, false, false, false);
+        fm("closedAt",      "关闭时间",      90, false, false, false);
+        fm("approvalBypassed", "免审",       32, false, true,  false);
+        fm("bypassReason",  "免审理由",      33, false, true,  false);
+        fm("bypassedBy",    "免审操作人",    34, false, true,  false);
+        fm("bypassedAt",    "免审时间",      35, false, false, false);
+
+        // ---------- 变更任务（ChangeTask）字段 ----------
+        fm("noticeOid",     "所属变更通告",   6, true,  true,  true);
+        fm("taskType",      "任务类型",       7, true,  true,  true);
+        fm("assignee",      "责任人",         8, true,  true,  true);
 
         // ---------- Document 特有字段 ----------
         fm("typeDefinitionCode", "类型定义编码", 10, true, true, true);
@@ -308,11 +363,22 @@ public class AttributeInitializer implements CommandLineRunner {
         }
     }
 
+    /**
+     * 已从「零件」模型上退役的字段。
+     *
+     * <p>2026-10-22：零件管理独立于阶段与文件夹 —— 这两个字段不再登记为属性，
+     * 页面设计器的字段池里也就不会再有它们。<b>实体列与历史数据保留</b>
+     * （文件夹浏览、移动、按阶段查询等既有链路仍在用），只是不再作为"属性"暴露给用户。
+     */
+    private static final Set<String> RETIRED_PART_FIELDS = Set.of("folderOid", "stageOid");
+
     /** PART 复合实体属性重建（先清后建，确保与实体类字段完全一致） */
     private void reinitPartAttributes() {
         String entityCode = "PART";
         try {
             List<AttributeDefinition> partDefs = scanFields(Part.class);
+            // 退役字段不登记：reinit 是「先清后建」，过滤掉即等于从 ck_attribute_definition 删除
+            partDefs.removeIf(def -> RETIRED_PART_FIELDS.contains(def.getFieldName()));
             List<AttributeDefinition> iterDefs = scanFields(PartIteration.class);
             mergeAndReinit(entityCode, partDefs, iterDefs, "Part + PartIteration → PART");
         } catch (Exception e) {
@@ -539,6 +605,11 @@ public class AttributeInitializer implements CommandLineRunner {
         }
         if ("parentOid".equalsIgnoreCase(fieldName)) {
             return "tree-select";
+        }
+        // 变更单据的"所属容器"是产品系列 / 型号，要与 containerOid 区分开：
+        // 后者是构建容器（资源库 / 产品 / 文件夹），前者只选产品树节点。
+        if ("productOid".equalsIgnoreCase(fieldName)) {
+            return "product-select";
         }
         if ("unit".equalsIgnoreCase(fieldName)) {
             return "unit-select";

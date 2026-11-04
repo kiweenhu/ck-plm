@@ -26,17 +26,18 @@ public interface TypeDefinitionMapper {
     TypeDefinition selectByOid(String oid);
 
     /**
-     * 按 code 查询（优先本租户，无则回退平台租户）
+     * 按 code 查询 —— <b>只在本租户内查</b>（2026-10-10 起类型定义按租户隔离）。
+     * 参数 {@code platformOid} 已废弃（保留仅为不改动服务层签名），SQL 不再使用。
      */
     TypeDefinition selectByCode(String code, String tenantOid, String platformOid);
 
     /**
-     * 查询全部类型（平台 + 本租户），优先本租户
+     * 查询本租户全部类型（2026-10-10 起不再并入平台那份）
      */
     List<TypeDefinition> selectAll(String tenantOid, String platformOid);
 
     /**
-     * 查询已启用类型（平台 + 本租户），优先本租户
+     * 查询本租户已启用类型（2026-10-10 起不再并入平台那份）
      */
     List<TypeDefinition> selectEnabled(String tenantOid, String platformOid);
 

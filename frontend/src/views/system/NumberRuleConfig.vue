@@ -29,6 +29,7 @@
     <!-- 表格 -->
     <div class="nr-table-wrap">
       <DataTable
+        scroll-x="max-content"
         :columns="columns"
         :data-source="rules"
         :loading="loading"

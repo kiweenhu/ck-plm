@@ -49,6 +49,11 @@ public class DefaultLifecycleStatusService implements LifecycleStatusService {
             throw new IllegalArgumentException("状态编码 '" + code + "' 已存在");
         }
         LocalDateTime now = LocalDateTime.now();
+        // 按租户隔离（2026-10-11）：归属必须显式落本租户 —— insert 列含 tenant_oid，不设会写 NULL；
+        // 隔离后 NULL 行本租户读不到，等于"创建即失踪"。
+        if (status.getTenantOid() == null) {
+            status.setTenantOid(cn.ck.plm.base.util.TenantContext.get());
+        }
         status.setCreatedAt(now);
         status.setUpdatedAt(now);
         mapper.insert(status);

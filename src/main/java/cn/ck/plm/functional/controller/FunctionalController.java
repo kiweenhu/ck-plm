@@ -87,12 +87,14 @@ public class FunctionalController {
      * <p>读取编排已收敛到 {@code FunctionalInstanceCreator#get}，与统一入口共用同一实现。
      */
     @GetMapping("/{oid}")
-    public ApiResponse<FunctionalEntity> getByOid(@PathVariable String oid) {
+    public ApiResponse<Object> getByOid(@PathVariable String oid) {
         Object entity = softTypeInstanceService.getForHost(HOST, oid, null);
         if (entity == null) {
             return ApiResponse.fail(404, "系统不存在: " + oid);
         }
-        return ApiResponse.ok((FunctionalEntity) entity);
+        // 读取路径返回的是摊平了 IBA 的 Map（见 FunctionalServiceImpl#getInstance），
+        // 硬转 FunctionalEntity 会 ClassCastException → 500（与产品系列同一处问题）
+        return ApiResponse.ok(entity);
     }
 
     @GetMapping("/by-folder")

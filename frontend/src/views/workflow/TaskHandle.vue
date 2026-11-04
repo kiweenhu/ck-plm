@@ -21,14 +21,14 @@
       <!-- ==================== 右列：页头 + 通用信息 + 办理表单 ==================== -->
       <div class="th-main">
         <!-- 页头答「办的是哪一条」：业务实体（名称 + 编码 + 大版本）｜ 流程名 · 任务名。
-             新窗口常同时开好几个，只给任务名+流程名时两张卡片长得几乎一样，
-             只能翻下面的「通用信息」去找实体 —— 那正是页头该省掉的动作。 -->
+             它不再独占一个窗口，所以第一个动作永远是"怎么出去"：返回（回来源）+ 任务中心（回列表）。 -->
         <div class="th-head">
           <div class="th-head-left">
-            <a-button type="text" class="th-back" @click="goTaskCenter">
+            <a-button type="text" class="th-back" @click="goBack">
               <template #icon><ArrowLeftOutlined /></template>
-              任务中心
+              返回
             </a-button>
+            <a-button type="link" size="small" class="th-back-center" @click="goTaskCenter">任务中心</a-button>
             <a-divider type="vertical" />
 
             <template v-if="primaryEntity">
@@ -65,8 +65,8 @@
           <a-result v-else-if="finished" status="success" title="已办理完成" :sub-title="finishedText">
             <template #extra>
               <a-space>
-                <a-button type="primary" @click="closeWindow">关闭本窗口</a-button>
-                <a-button @click="goTaskCenter">返回任务中心</a-button>
+                <a-button type="primary" @click="goTaskCenter">返回任务中心</a-button>
+                <a-button @click="goBack">返回上一页</a-button>
               </a-space>
             </template>
           </a-result>
@@ -106,16 +106,22 @@ import TaskFormRenderer from '@/components/task/TaskFormRenderer.vue'
 import ProcessActivityTimeline from '@/components/ProcessActivityTimeline.vue'
 import ProcessNodeDetailDrawer from '@/components/ProcessNodeDetailDrawer.vue'
 import { effectiveFormCode, hasOwnTaskForm, taskFormLabel } from '@/components/task/taskForms'
+// 表单模板清单（含行业包带来的自定义表单）：卡片标题与「当前任务 · 表单」要把 code 翻成表名，
+// 不先注入就会显示成兜底文案「审批处理」—— 见 form-templates.ts 的 ensureFormTemplates
+import { ensureFormTemplates } from '@/flow-designer/app/form-templates'
 import { useEntityInfo } from '@/composables/useEntityInfo'
 import {
   entityHeadline, entityCodeText, entityVersionText, flowTaskText,
 } from '@/utils/taskHeader'
 
 /**
- * 任务办理页 —— 从任务中心「办理」按钮<b>在新窗口打开</b>的独立页面。
+ * 任务办理页 —— 从任务中心「办理」进入的独立页面。
  *
  * <p>为什么不用弹窗：办理时要一边填表单、一边核对"这条流程走到哪、别人提了什么意见"，
  * 还常要同时开着对象详情图纸对照；弹窗被表格夹在中间，多窗口对照时互相遮挡。
+ *
+ * <p><b>2026-10-26 改为当前窗口内跳转</b>（用户要求）：原来从任务中心 {@code window.open} 新开窗口，
+ * 现在走路由 push，页头因此必须自带「返回」——浏览器后退可用，但按钮更明确。
  *
  * <h3>渲染架构（本页只做组装）</h3>
  * <pre>
@@ -196,6 +202,9 @@ async function reload() {
   notFound.value = false
   finished.value = false
   loading.value = true
+  // 先把表单模板清单注入注册表（幂等、失败静默）：标题里的表名靠它翻译，
+  // 慢一步的话标题会先闪一下兜底文案「审批处理」
+  await ensureFormTemplates()
   try {
     const res = await getTaskContext(taskId.value)
     if (res?.code === 200 && res.data) {
@@ -226,10 +235,13 @@ function onCompleted(result) {
   finished.value = true
 }
 
-/** 从任务中心点开（window.opener）时直接关窗回列表；被当成标签页打开时用路由返回 */
-function closeWindow() {
-  window.close()
-  goTaskCenter()
+/**
+ * 返回上一页 —— 来源可能是任务中心、工作台「我的待办」或消息通知，回到来源比固定回列表更符合直觉。
+ * 直接打开本页（没有历史）时退回任务中心：不留一个点了没反应的按钮。
+ */
+function goBack() {
+  if (window.history.length > 1) router.back()
+  else goTaskCenter()
 }
 
 function goTaskCenter() {
@@ -241,7 +253,9 @@ onMounted(reload)
 
 <style scoped>
 .task-handle {
-  padding: 16px 20px 24px;
+  /* 顶部留白 = 18px（2026-10-30 用户口径"红色框的间隙调整到 18px"）：
+     外层 layout-content 已经给了 16px，这里只补 2px —— 原来再叠 16px，页头离顶栏 32px，太空 */
+  padding: 2px 20px 24px;
 }
 
 /* 两列：左列（流程进度）固定宽并吸顶，右列内容自适应 */
@@ -260,7 +274,9 @@ onMounted(reload)
   flex: 0 0 320px;
   /* 吸顶：长表单往下滚时进度仍在视野里 —— 这正是把它固定在左栏的目的 */
   position: sticky;
-  top: 12px;
+  /* 必须是 0，不能是 12：sticky 的下界按滚动容器的**内容盒**算（layout-content 有 16px 上内边距），
+     top:12 会把左栏从静止位置**往下推** 10px，于是左卡片比右列页头低一截（2026-10-30 调间隙时发现） */
+  top: 0;
 }
 
 /* 进度栏自己滚：节点多（十几个）时不把整页撑长，吸顶才成立 */
@@ -331,6 +347,13 @@ onMounted(reload)
 .th-back {
   padding-left: 0;
   color: #595959;
+}
+
+/* 「任务中心」是次要出口（"返回"回来源、这里回列表），弱化成小字链接，不与主标题抢注意力 */
+.th-back-center {
+  padding: 0;
+  font-size: 12px;
+  color: #8c8c8c;
 }
 
 .th-title {

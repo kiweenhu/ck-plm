@@ -54,8 +54,12 @@ public class AuthConfig implements WebMvcConfigurer {
                         "/api/auth/verify",
                         "/api/tenants/register",
                         "/api/notifications/**",
-                        "/api/ckfiles/**",
-                        "/api/attachments/**",
+                        // ckfiles / attachments 不再整段放行：只有 GET/HEAD（预览、下载、GLB 流）匿名可读，
+                        // 由 AuthInterceptor 按请求方法判断。上传若匿名，CKFile 会落到默认租户，
+                        // 之后按当前租户查不到 → CAD 转换报"源文件不存在"（2026-10-23）。
+                        // CAD 转换器回调：调用方是转换器进程，没有用户会话。
+                        // 不走 token 校验，改用服务间共享令牌在控制器内校验（见 CadConvertCallbackController）。
+                        "/api/internal/cad/**",
                         "/error"
                 );
     }

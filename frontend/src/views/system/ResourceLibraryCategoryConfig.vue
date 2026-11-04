@@ -49,13 +49,13 @@
         </a-spin>
       </a-tab-pane>
 
-      <!-- 页签二：通用件阈值配置（从左侧导航搬进来的整页） -->
-      <a-tab-pane key="genpart" tab="通用件阈值配置">
+      <!-- 页签二：通用件阈值配置（从左侧导航搬进来的整页）—— 对应 GEN_PART_QUALIFY 能力 -->
+      <a-tab-pane v-if="has('GEN_PART_QUALIFY')" key="genpart" tab="通用件阈值配置">
         <GenPartThresholdConfig />
       </a-tab-pane>
 
-      <!-- 页签三：标准件入库流程 -->
-      <a-tab-pane key="stdinbound" tab="标准件入库流程">
+      <!-- 页签三：标准件入库流程 —— 对应 STD_PART_LIBRARY 能力 -->
+      <a-tab-pane v-if="has('STD_PART_LIBRARY')" key="stdinbound" tab="标准件入库流程">
         <StdPartInboundConfig />
       </a-tab-pane>
     </a-tabs>
@@ -65,6 +65,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
+import { useCapabilities } from '@/composables/useCapabilities'
+
+// 「通用件阈值配置」「标准件入库流程」两个页签分别对应 GEN_PART_QUALIFY / STD_PART_LIBRARY 能力：
+// 能力没启用就不显示该页签（同 MPN 的入口口径 —— 宁可不显示，也不给点了发现用不了的入口）
+const { has } = useCapabilities()
 import {
   getAllCategoryBindings, bindLibraryCategory, getClassificationTree,
 } from '@/api'
@@ -171,11 +176,11 @@ onMounted(load)
 
 <style scoped>
 .clcc-page {
-  height: 100%;
+  /* 2026-10-12：去掉 height:100% + overflow:hidden ——
+     三个页签（资源库分类绑定 / 通用件阈值配置 / 标准件入库流程）内容比视口高时被整块裁掉、
+     且没有任何滚动条（用户反馈）。改为自然高度，滚动交给外层 .bc-content 的一条滚动条。 */
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 .clcc-header {
   display: flex;

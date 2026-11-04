@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:ckplm="http://www.ck.com/plm/workflow/dsl"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.ck.com/plm/workflow">
+  <process id="change-task" name="变更任务流程" isExecutable="true" ckplm:variables="[{&quot;name&quot;:&quot;taskAssignee&quot;,&quot;label&quot;:&quot;任务办理人&quot;,&quot;type&quot;:&quot;STRING&quot;,&quot;visible&quot;:true,&quot;readonly&quot;:false}]">
+    <documentation>变更任务（ECT）流程：任务下达 → 执行变更任务 → 完成。办理人取自流程变量 taskAssignee。</documentation>
+    <startEvent id="start_1" name="开始：任务下达" ckplm:nodeType="START" flowable:initiator="initiator" ckplm:initiator="{&quot;strategy&quot;:&quot;INITIATOR&quot;}"/>
+    <userTask id="task_1" name="执行变更任务" ckplm:nodeType="TASK" flowable:assignee="${taskAssignee}" ckplm:assignee="{&quot;strategy&quot;:&quot;VARIABLE&quot;,&quot;variableName&quot;:&quot;taskAssignee&quot;}"/>
+    <endEvent id="end_1" name="结束：任务完成" ckplm:nodeType="END"/>
+    <sequenceFlow id="e1" sourceRef="start_1" targetRef="task_1"/>
+    <sequenceFlow id="e2" sourceRef="task_1" targetRef="end_1"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="change-task">
+    <bpmndi:BPMNShape id="Shape_start_1" bpmnElement="start_1">
+      <omgdc:Bounds x="296" y="-8" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_task_1" bpmnElement="task_1">
+      <omgdc:Bounds x="240" y="66" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_end_1" bpmnElement="end_1">
+      <omgdc:Bounds x="296" y="156" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNEdge id="Edge_e1" bpmnElement="e1">
+      <omgdi:waypoint x="311" y="22"/>
+      <omgdi:waypoint x="311" y="66"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e2" bpmnElement="e2">
+      <omgdi:waypoint x="311" y="110"/>
+      <omgdi:waypoint x="311" y="156"/>
+    </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

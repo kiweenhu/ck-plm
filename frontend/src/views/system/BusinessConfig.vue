@@ -100,6 +100,13 @@
           </div>
         </template>
 
+        <!-- 轻量化转换子模块：转换器对接参数（库表 ck_cad_forge_config，改完即生效） -->
+        <template v-else-if="activeModule === 'lightweight'">
+          <div class="bc-embedded-page">
+            <LightweightConfig />
+          </div>
+        </template>
+
 
         <!-- 占位模块 -->
         <template v-else>
@@ -116,7 +123,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
   ClusterOutlined,
@@ -143,15 +151,18 @@ import StageTemplateConfig from '@/views/system/StageTemplateConfig.vue'
 import FormTemplateConfig from '@/views/system/FormTemplateConfig.vue'
 import UnitConfig from '@/views/system/UnitConfig.vue'
 import ResourceLibraryCategoryConfig from '@/views/system/ResourceLibraryCategoryConfig.vue'
+import LightweightConfig from '@/views/system/LightweightConfig.vue'
+import { getOnboardingState } from '@/api'
 
 // ---- 模块定义 ----
 const modules = [
+  // 方法论排在最前：企业先定「按什么方法论干活」，再谈模型 / 生命周期等基础配置
+  { key: 'stagetemplate', label: '方法论配置', icon: RocketOutlined,    desc: '方法论内容：研发阶段 / 交付件 / 阶段门 / 评审 / 检查规则 / 问题类型 / 指标 / 驾驶舱，八类按页签组织。由行业包按企业所选方法论装入企业一份，可在此裁剪（含停用）—— 导航项按实际导入的方法论显名（如 IPD 方法论）' },
   { key: 'datamodel',  label: '模型定义',     icon: ClusterOutlined,    desc: '业务对象建模、属性定义、IBA 软属性扩展与关系映射' },
   { key: 'lifecycle',  label: '生命周期',     icon: RetweetOutlined,    desc: '定义对象生命周期阶段、状态与流转规则，含审批流程集成' },
   { key: 'view',       label: '视图定义',     icon: EyeOutlined,        desc: '按业务角色定义数据视图，控制字段可见性与布局切换' },
   { key: 'versionrule',label: '版本规则',    icon: NumberOutlined,     desc: '大版本/小版本编码模板，含 CheckIn/CheckOut 版本号生成策略' },
   { key: 'numberrule',  label: '编码规则',    icon: BarcodeOutlined,    desc: '物料、文档等业务对象的编码段组合模板，支持分类码与流水号' },
-  { key: 'stagetemplate', label: '模板管理',  icon: RocketOutlined,     desc: '研发阶段模板管理，创建产品线/型号时按模板生成阶段节点' },
   { key: 'formtemplate', label: '流程表单',   icon: FormOutlined,       desc: '流程节点办理表单：内置表单启动时自动登记；同一节点类型可挂多张模板（含企业自定义），流程节点按需选用' },
   { key: 'platform',   label: '平台成员',     icon: TeamOutlined,       desc: '平台级角色（管理员/企业管理员）成员分配与管理' },
   { key: 'dict',       label: '数据字典',     icon: BookOutlined,       desc: '枚举值、代码表与标准化参考数据集中维护' },
@@ -159,19 +170,52 @@ const modules = [
   // 与资源库相关的配置统一收在「资源库配置」里，按页签分（分类绑定 / 通用件阈值…），不再各占一个导航项
   { key: 'componentlib', label: '资源库配置', icon: ApiOutlined,       desc: '资源库相关配置：分类根节点绑定（元器件库/标准件库/通用件库）、通用件阈值与认定流程等，按页签组织' },
   { key: 'cad',        label: 'CAD 集成',     icon: ToolOutlined,       desc: 'AutoCAD / SolidWorks / CATIA 设计工具连接与数据同步配置' },
-  { key: 'lightweight',label: '轻量化转换',   icon: ThunderboltOutlined,desc: '3D 模型轻量化处理、多格式转换引擎与服务端点配置' },
+  { key: 'lightweight',label: '轻量化转换',   icon: ThunderboltOutlined,desc: '数模转换队列（排队位次 / 当前阶段 / 失败原因）与转换服务对接配置（地址、超时、回调令牌、看门狗），按页签组织' },
 ]
 
 const userStore = useUserStore()
 const isPlatformAdmin = computed(() => userStore.roles?.includes('PLATFORM_ADMIN'))
 
+// ---- 导航项按企业实际导入的方法论显名（IPD 方法论 / MILITARY 方法论…）----
+// 用词说明：这一项底下是"八类"方法论内容（研发阶段 / 交付件 / 阶段门 / 评审 / 检查规则 /
+// 问题类型 / 指标 / 驾驶舱），不是"一个模板"，故不用「模板」二字；平台对这一概念的既有用词
+// 就是「方法论」（devMethodCode、引导页"研发方法论 IPD"）。
+// 口径：GET /api/onboarding/state 的 devMethodCode —— 引导页选定、平台权威；
+// 它与八类模板的 industry 同源（ck_stage_template.industry 就是它），所以菜单名与内容永远一致。
+// 未引导 / 取不到 / 无权限 → 静默退回通用的「方法论配置」：导航不能因取数失败破相。
+const methodology = ref('')
+async function loadMethodology() {
+  try {
+    const res = await getOnboardingState()
+    if (res.code === 200 && res.data) {
+      methodology.value = res.data.devMethodCode || ''
+    }
+  } catch { /* 静默：拿不到就用通用名 */ }
+}
+onMounted(loadMethodology)
+
 // 过滤后的模块列表：平台成员仅平台管理员可见
 const visibleModules = computed(() => {
-  if (isPlatformAdmin.value) return modules
-  return modules.filter(m => m.key !== 'platform')
+  const list = isPlatformAdmin.value
+    ? modules
+    : modules.filter(m => m.key !== 'platform')
+  return list.map(m => m.key === 'stagetemplate' && methodology.value
+    ? { ...m, label: `${methodology.value} 方法论` }
+    : m)
 })
 
-const activeModule = ref('datamodel')
+// 深链：/org/config?module=versionrule（版本规则用尽的通知点进来直接落在对应页签）
+const route = useRoute()
+const moduleFromQuery = () => {
+  const key = route.query.module
+  return typeof key === 'string' && modules.some(m => m.key === key) ? key : ''
+}
+const activeModule = ref(moduleFromQuery() || 'datamodel')
+// 已经停留在本页时再点通知，组件不会重建，靠 watch 切页签
+watch(() => route.query.module, () => {
+  const key = moduleFromQuery()
+  if (key) activeModule.value = key
+})
 const activeModDef = computed(() => modules.find(m => m.key === activeModule.value))
 
 function switchModule(mod) {
@@ -303,10 +347,18 @@ function switchModule(mod) {
 .bc-content :deep(.bc-page-fill .st-tree-panel) { min-height: 0; max-height: 100%; }
 .bc-content :deep(.bc-page-fill .st-tree-spin) { min-height: 0; overflow-y: auto; }
 
-/* 嵌入子页面通用样式 */
+/* 嵌入子页面通用样式
+   2026-10-12 二次修订（同日内第二次）：恢复 height:100%。
+   · 上一版为修"资源库配置页没有滚动条"，把它连同 overflow:auto 一起删成"自然高度"——
+     但**撑满型**子页（生命周期 / 视图定义 / 单位配置…：根类自带 height:100%，表格用 DataTable
+     的 stretch 模式）因此失去确定的高度参照 → 表格塌成一两行、下方大片空白（用户截图反馈：
+     "生命周期状态清单没有获取本租户的状态清单"，实为表格高度塌陷，数据本身是好的）。
+   · 现在的组合两头兼顾：
+       height:100%    → 撑满型页面拿到确定高度（表格正常撑开、表体内部滚动条生效）；
+       不设 overflow  → 自然高型页面（资源库配置）内容溢出到 .bc-content，由它那条外层滚动条兜住。
+     即：撑满型自己滚、自然型交给外层 —— 两种页面各得其所，且各自只有一条滚动条。 */
 .bc-embedded-page {
   height: 100%;
-  overflow: auto;
   padding: 16px 24px;
 }
 </style>

@@ -11,6 +11,7 @@
  */
 
 import {
+  adoptProcessTemplate,
   copyProcessTemplate,
   createProcessTemplate,
   deleteProcessTemplateVersions,
@@ -20,12 +21,14 @@ import {
   getProcessTemplate,
   getProcessTemplateVersion,
   listProcessTemplates,
+  listProcessTemplateMarket,
   listProcessTemplateVersions,
   saveProcessTemplate,
 } from '@/api'
 import type {
   ApiEnvelope,
   DeployOutcome,
+  MarketItem,
   TemplateHttp,
   TemplateSummary,
   TemplateVersion,
@@ -57,5 +60,7 @@ export function createTemplateHttp(): TemplateHttp {
     versions: (oid) => asEnvelope<TemplateVersion[]>(listProcessTemplateVersions(oid)),
     version: (oid, version) => asEnvelope<TemplateVersion>(getProcessTemplateVersion(oid, version)),
     deploy: (oid, payload) => asEnvelope<DeployOutcome>(deployProcessTemplate(oid, payload)),
+    market: () => asEnvelope<MarketItem[]>(listProcessTemplateMarket()),
+    adopt: (payload) => asEnvelope<TemplateSummary>(adoptProcessTemplate(payload)),
   }
 }

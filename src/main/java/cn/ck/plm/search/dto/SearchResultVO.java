@@ -12,7 +12,7 @@ package cn.ck.plm.search.dto;
  */
 public class SearchResultVO {
 
-    /** 对象类型：PRODUCT_LINE / PRODUCT_MODEL / PART / DOCUMENT */
+    /** 对象类型：PRODUCT_LINE / PRODUCT_MODEL / PART / DOCUMENT / ENG_DOCUMENT / CHANGE_REQUEST / CHANGE_NOTICE */
     private String type;
 
     /** 对象 OID */

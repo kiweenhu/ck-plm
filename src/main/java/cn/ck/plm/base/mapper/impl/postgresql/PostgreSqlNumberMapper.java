@@ -26,9 +26,11 @@ public interface PostgreSqlNumberMapper extends NumberMapper {
             "VALUES (#{code}, #{oid}, #{name}, #{description}, #{enabled}, #{tenantOid}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(Number number);
 
+    // 2026-10-11 起按租户隔离：SET 不再写 tenant_oid —— 否则拦截器见 SQL 含 tenant_oid 会跳过注入，
+    // WHERE code 便跨租户更新（平台+各租户同 code 行全改）。去掉后由拦截器追加 AND tenant_oid = 本租户。
     @Override
     @Update("UPDATE ck_number SET name = #{name}, description = #{description}, enabled = #{enabled}, " +
-            "tenant_oid = #{tenantOid}, updater = #{updater}, updated_at = #{updatedAt} WHERE code = #{code}")
+            "updater = #{updater}, updated_at = #{updatedAt} WHERE code = #{code}")
     int update(Number number);
 
     @Override

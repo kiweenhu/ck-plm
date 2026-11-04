@@ -32,6 +32,7 @@
         <!-- 表格 -->
         <div class="vc-table-wrap">
           <DataTable
+            scroll-x="max-content"
             :columns="viewColumns"
             :data-source="views"
             :loading="viewLoading"
@@ -113,6 +114,7 @@
         <!-- 表格 -->
         <div class="vc-table-wrap">
           <DataTable
+            scroll-x="max-content"
             :columns="transitionColumns"
             :data-source="filteredTransitions"
             :loading="transitionLoading"

@@ -82,6 +82,7 @@
       <!-- 右侧：元器件清单（ELECTRONIC 软类型的 Part） -->
       <div class="cl-content">
         <DataTable
+          scroll-x="max-content"
           :columns="componentColumns"
           :data-source="componentList"
           :loading="componentLoading"
@@ -159,7 +160,7 @@
       </div>
     </div>
 
-    <!-- 元器件申请弹窗（ELECTRONIC 软类型的 Part，规格参数按所选分类 IBA 动态渲染） -->
+    <!-- 新建IPN 弹窗（ELECTRONIC 软类型的 Part，规格参数按所选分类 IBA 动态渲染） -->
     <a-modal
       v-model:visible="createModalVisible"
       :title="`${libLabel}${libAction}`"
@@ -219,17 +220,24 @@ const props = defineProps({
   libCode: { type: String, default: 'COMPONENT' },
 })
 
-/** 资源库中文名（用于按钮 / 弹窗文案） */
+/**
+ * 资源库按钮 / 弹窗标题的**前半段**（只用于这两处）。
+ *
+ * <p>三处合起来读作：元器件库「新建IPN」、标准件库「标准件入库」、通用件库「通用件入库」。
+ * 元器件库那一份 2026-10-14 由「IPN申请」改为「新建IPN」（用户要求）：这个动作实际产出的
+ * 就是一条新的 IPN（内部物料号），"新建"比"申请"更贴近它真正发生的事；
+ * 名字该说明"做了什么"，而不是"在哪个库"。
+ */
 const libLabel = computed(() => {
-  const map = { COMPONENT: '元器件', STD_PART: '标准件', GEN_PART: '通用件' }
-  return map[props.libCode] || '元器件'
+  const map = { COMPONENT: '新建IPN', STD_PART: '标准件', GEN_PART: '通用件' }
+  return map[props.libCode] || map.COMPONENT
 })
 
 /**
- * 入库动作文案：
- * 元器件走「申请」（由设计/采购发起申请），标准件与通用件走「入库」（采购/标准化后直接入库）。
+ * 动作文案：元器件库的「新建IPN」已自带动作，故为空串；
+ * 标准件与通用件走「入库」（采购/标准化后直接入库）。
  */
-const libAction = computed(() => (props.libCode === 'COMPONENT' ? '申请' : '入库'))
+const libAction = computed(() => (props.libCode === 'COMPONENT' ? '' : '入库'))
 
 /** 当前资源库的对象类型中文名（基于后端返回的 typeCode） */
 const typeCodeName = computed(() => {
@@ -480,7 +488,7 @@ async function loadComponents() {
   finally { componentLoading.value = false }
 }
 
-// ==================== 元器件申请（Part 动态表单，类型固定 ELECTRONIC） ====================
+// ==================== 新建IPN（Part 动态表单，类型固定 ELECTRONIC） ====================
 const createModalVisible = ref(false)
 const createSaving = ref(false)
 const dynamicFormRef = ref(null)
@@ -535,7 +543,7 @@ async function confirmCreate() {
 
     const res = await createPart(payload)
     if (res?.code === 200) {
-      message.success(`元器件申请已提交：${res.data?.number || res.data?.name || ''}`)
+      message.success(`IPN 已创建：${res.data?.number || res.data?.name || ''}`)
       createModalVisible.value = false
       await loadComponents()
     } else {

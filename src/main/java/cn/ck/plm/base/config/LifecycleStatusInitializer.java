@@ -7,7 +7,6 @@
 
 package cn.ck.plm.base.config;
 
-import cn.ck.plm.base.entity.LifecycleStatus;
 import cn.ck.plm.base.mapper.LifecycleStatusMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,12 +14,17 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-
 /**
- * 应用启动时初始化预置的 5 个标准生命周期状态到数据库。
- * 仅在数据不存在时插入，已存在的状态不会覆盖。
- * 同时使用数据库 now() 函数修复历史数据中 created_at / updated_at 为 NULL 的记录。
+ * 生命周期状态的<b>存量修复</b>（面向老库；新库执行等于空转）。
+ *
+ * <p><b>播种已迁出</b>：6 个预置状态（{@code DRAFT/WORKING/APPROVING/PUBLISHED/OFFLINE/ARCHIVED}）
+ * 原先由本类在代码里写入，现已随 {@code platform-base} 行业包播种
+ * （{@code resources: LIFECYCLE → lifecycles.json}，由 {@code LifecycleStatusInstaller} 落地）
+ * —— 口径是"行业/平台配置只留一处来源"，也便于别的行业包追加自己的状态。
+ *
+ * <p>本类只剩三件针对<b>历史数据</b>的修复：补齐 name/display_name、补齐审计时间、
+ * 回填迭代 status 为 NULL 的记录（两个内置模板的初始状态均为 DRAFT）。
+ * 这些属于"不做老库迁移"口径之外的历史遗留，是否退场待定 —— 保留不影响新库。
  */
 @Component
 public class LifecycleStatusInitializer implements CommandLineRunner {
@@ -37,42 +41,12 @@ public class LifecycleStatusInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        log.info("开始初始化标准生命周期状态...");
-        // DRAFT 必须存在：内置模板 STANDARD / SIMPLE 的 initial_state_code 均为 DRAFT。
-        // 该状态此前缺失，导致 initLifecycle 查不到真实对象而静默跳过，新建对象 status 恒为 NULL。
-        initStatus("DRAFT", "草稿");
-        initStatus("WORKING", "工作中");
-        initStatus("APPROVING", "审核中");
-        initStatus("PUBLISHED", "已发布");
-        initStatus("OFFLINE", "已下线");
-        initStatus("ARCHIVED", "已归档");
-        log.info("标准生命周期状态初始化完成");
-
         // 修复存量数据：name 和 display_name 为空时用已知值填充
         fixMissingDisplayData();
         // 修复历史数据中 created_at / updated_at 为 NULL 的记录
         fixNullTimestamps();
         // 回填历史迭代中 status 为 NULL 的记录（两个内置模板的初始状态均为 DRAFT）
         fixNullIterationStatus();
-    }
-
-    private void initStatus(String code, String name) {
-        if (mapper.existsByCode(code) == 0) {
-            LifecycleStatus status = new LifecycleStatus(code, name);
-            status.setDisplayName(name);
-            // 显式归属「平台租户」：状态字典是系统预置、全租户共享的数据。
-            // 不写这一行时会落到 TenantContext.get() 的兜底值（默认租户 …0001）——
-            // 而查询侧是 tenant_oid IN (平台租户 …, 当前租户)，于是这 6 个状态在界面上
-            // 永远读不到（状态列表空白），只能靠人工改库救回。
-            status.setTenantOid(cn.ck.plm.base.util.TenantContext.PLATFORM_TENANT_OID);
-            LocalDateTime now = LocalDateTime.now();
-            status.setCreatedAt(now);
-            status.setUpdatedAt(now);
-            mapper.insert(status);
-            log.info("  新增状态: {} ({})", code, name);
-        } else {
-            log.debug("  状态已存在: {}", code);
-        }
     }
 
     /**

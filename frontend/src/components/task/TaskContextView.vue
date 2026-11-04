@@ -25,6 +25,16 @@
           <a-tag v-if="statusOf(entity)" size="small" color="green">{{ statusOf(entity) }}</a-tag>
           <!-- 这里原先还显示 entityOid：一串 36 位 uuid 既没人读，又把这一行挤成两行；
                要认对象看编码/名称就够，真需要 oid 的地方是接口与日志，不是给人看的界面 -->
+          <!-- 查看详情：按实体类型路由 —— 零组件走独立详情页，文档/工程数据走统一的详情抽屉。
+               办理时要核对对象属性，从这里直接过去，不必先回列表再找一遍 -->
+          <a-button
+            type="link" size="small" class="tcv-entity-detail"
+            :loading="detailLoadingOid === entity.entityOid"
+            @click="openDetail(entity)"
+          >
+            <template #icon><FileSearchOutlined /></template>
+            查看详情
+          </a-button>
         </div>
       </div>
     </div>
@@ -73,10 +83,18 @@
       </a-descriptions>
     </div>
   </a-card>
+
+  <!-- 文档/工程数据详情：与列表页「详情」同一个抽屉，避免两处信息口径不一致 -->
+  <DocumentViewer v-model:visible="detailVisible" :doc="detailDoc" @close="detailVisible = false" />
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
+import { FileSearchOutlined } from '@ant-design/icons-vue'
+import DocumentViewer from '@/views/product/DocumentViewer.vue'
+import { getDocument, getEngineeringDocument, resolveEntityApiPath } from '@/api'
 import { effectiveFormCode, hasOwnTaskForm, taskFormLabel } from './taskForms'
 
 /**
@@ -111,6 +129,49 @@ const process = computed(() => props.context?.process || null)
 /** 实际生效的表单 code：没写 formKey 的老实例按节点类型派生（否则这里会显示成"未配置"） */
 const formCode = computed(() => effectiveFormCode(props.context?.form) || task.value?.formKey || '')
 const entities = computed(() => props.context?.entities || [])
+
+// ==================== 查看详情 ====================
+
+const router = useRouter()
+const detailVisible = ref(false)
+const detailDoc = ref(null)
+/** 正在加载详情的实体 oid：只让被点的那一行转圈 */
+const detailLoadingOid = ref('')
+
+/**
+ * 打开业务对象详情。
+ *
+ * <p>类型分派复用 {@code resolveEntityApiPath}（与修订/检出同一张表）：子类型
+ * （ELECTRONIC、FOOTPRINT…）跟随宿主，不必在页面里再维护一份类型 → 页面的映射。
+ * 零组件有独立详情页（当前窗口跳转，返回用浏览器后退）；文档/工程数据用与列表页「详情」同一个抽屉，信息口径一致。
+ */
+async function openDetail(entity) {
+  const oid = entity?.entityOid
+  if (!oid) return
+  const apiPath = resolveEntityApiPath(entity.typeCode || entity.rootTypeCode || '')
+  if (apiPath === 'parts') {
+    router.push({ name: 'PartDetail', params: { oid } })
+    return
+  }
+  if (apiPath !== 'documents' && apiPath !== 'eng-documents') {
+    message.info('该业务对象类型暂未提供详情页')
+    return
+  }
+  detailLoadingOid.value = oid
+  try {
+    const res = apiPath === 'documents' ? await getDocument(oid) : await getEngineeringDocument(oid)
+    if (res?.code === 200 && res.data) {
+      detailDoc.value = { ...res.data, oid }
+      detailVisible.value = true
+    } else {
+      message.error(res?.message || '加载详情失败')
+    }
+  } catch (e) {
+    message.error('加载详情失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+  } finally {
+    detailLoadingOid.value = ''
+  }
+}
 
 /** 实体显示名：名称优先，回查不到就显示编码，再不行给一句占位（不显示空白） */
 function labelOf(entity) {
@@ -208,5 +269,13 @@ function statusColor(status) {
   font-size: 12px;
   color: #595959;
   font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* 「查看详情」贴到行尾：实体信息读起来是一条，操作扫一眼就能找到 */
+.tcv-entity-detail {
+  margin-left: auto;
+  padding: 0 4px;
+  height: 22px;
+  font-size: 12px;
 }
 </style>

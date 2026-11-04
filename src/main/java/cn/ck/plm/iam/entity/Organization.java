@@ -30,6 +30,14 @@ public class Organization extends cn.ck.plm.base.entity.BaseEntity implements cn
     /** 父组织 oid（null 表示根组织） */
     private String parentOid;
 
+    /**
+     * 部门主管（引用 {@code ck_user.oid}，null 表示未设置）。
+     *
+     * <p>流程的「发起人上级」策略按其所属组织的这个字段解析审批人；
+     * 为空时该策略无法解析，流程会在那一步留一条"无人可办"的节点日志（见 ProcessServiceImpl）。
+     */
+    private String leaderOid;
+
     /** 组织描述 */
     private String description;
 
@@ -77,6 +85,14 @@ public class Organization extends cn.ck.plm.base.entity.BaseEntity implements cn
 
     public void setParentOid(String parentOid) {
         this.parentOid = parentOid;
+    }
+
+    public String getLeaderOid() {
+        return leaderOid;
+    }
+
+    public void setLeaderOid(String leaderOid) {
+        this.leaderOid = leaderOid;
     }
 
     public String getDescription() {

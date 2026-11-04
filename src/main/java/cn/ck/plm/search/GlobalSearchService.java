@@ -10,7 +10,7 @@ import cn.ck.plm.search.dto.SearchResultVO;
 import java.util.List;
 
 /**
- * 全局搜索服务 —— 跨产品系列/产品型号/零组件/文档四类核心业务对象
+ * 全局搜索服务 —— 跨产品系列/产品型号/零组件/文档/工程文档/变更单（ECR·ECN）
  * 按 name / number(code) 模糊搜索。
  */
 public interface GlobalSearchService {

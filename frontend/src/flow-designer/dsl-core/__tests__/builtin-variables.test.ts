@@ -100,8 +100,9 @@ describe('内置变量清单', () => {
     expect(BUILTIN_VARIABLE_NAMES).toContain(RUNTIME_VARIABLES.INITIATOR)
   })
 
-  it('只登记运行期真的有人写的变量：契约里那几个尚未实现的运行期变量不收', () => {
-    // 这几个在 namespaces.ts 里是"待运行期实现"的契约，后端目前没有组件写入它们：
+  it('只登记运行期真的有人写的变量：契约里那几个不经过变量的运行期变量不收', () => {
+    // 这几个在 namespaces.ts 里只是"导入旧产物"用的名字，后端根本不写它们
+    //（发起人上级 / 部门主管走 ckplm:assignee 的声明式解析，不落变量）：
     // 收进清单会让用户配出永远取不到值的流程，所以必须"不在清单里"
     for (const name of [
       RUNTIME_VARIABLES.DEPT_LEADER,

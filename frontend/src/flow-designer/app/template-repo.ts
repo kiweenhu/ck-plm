@@ -66,6 +66,30 @@ export interface TemplateVersion {
   createdAt?: string | null
 }
 
+/**
+ * 预置流程模板市场的条目（对应后端 ProcessTemplateMarketItem）。
+ *
+ * <p>数据源是<b>行业包目录</b>里的 {@code processes/*.dsl.json}，不是模板表 ——
+ * 取用（{@link TemplateRepository.adopt}）后才在本租户生成模板行。
+ */
+export interface MarketItem {
+  /** 包坐标 code@version */
+  packId: string
+  packName?: string | null
+  packVersion?: string | null
+  /** 包内相对路径 */
+  file: string
+  key: string
+  name: string
+  displayName?: string | null
+  description?: string | null
+  nodeCount: number
+  /** 本租户是否已有同 key 的模板 */
+  installed: boolean
+  /** 引用了但本租户没有的表单 code（非空表示依赖没装齐） */
+  missingForms: string[]
+}
+
 /** 部署返回（ProcessTemplateDeployResult，字段以后端为准，故保留原样透出） */
 export interface DeployOutcome extends Record<string, unknown> {
   deploymentId?: string | null
@@ -101,6 +125,10 @@ export interface TemplateHttp {
   save(oid: string, payload: { dslJson: string; changeNote?: string }): Promise<ApiEnvelope<TemplateSummary>>
   /** 按版本删除（流程删除的唯一方式） */
   removeVersions(oid: string, versions: number[]): Promise<ApiEnvelope<VersionDeleteOutcome>>
+  /** 预置流程市场清单（行业包里的 DSL，只读） */
+  market(): Promise<ApiEnvelope<MarketItem[]>>
+  /** 取用一个预置流程到本租户 */
+  adopt(payload: { packId: string; file: string; key?: string; name?: string }): Promise<ApiEnvelope<TemplateSummary>>
   copy(oid: string, payload: { key: string; name?: string }): Promise<ApiEnvelope<TemplateSummary>>
   setEnabled(oid: string, enabled: boolean): Promise<ApiEnvelope<TemplateSummary>>
   versions(oid: string): Promise<ApiEnvelope<TemplateVersion[]>>
@@ -247,6 +275,15 @@ export interface TemplateRepository {
    * 删完最后一个版本 → 该流程整体消失。
    */
   removeVersions(oid: string, versions: number[]): Promise<Result<VersionDeleteOutcome>>
+  /**
+   * 预置流程市场：行业包里可取的流程清单（只读）。
+   *
+   * <p>条目是对包内 DSL 的投影，不落库；`installed` 表示本租户已有同 key 模板，
+   * `missingForms` 表示该流程引用了本租户还没有的表单（依赖没装齐）。
+   */
+  market(): Promise<Result<MarketItem[]>>
+  /** 取用一个预置流程：在本租户生成模板（第 1 版）与分组，不自动部署 */
+  adopt(payload: { packId: string; file: string; key?: string; name?: string }): Promise<Result<TemplateSummary>>
   /** 编译预览（与部署走同一编译入口，避免两处产物不一致） */
   compile(dsl: FlowDsl, options?: CompileOptions): Result<{ xml: string; warnings: string[]; processId: string | null }>
 }
@@ -359,6 +396,24 @@ export function createTemplateRepository(http: TemplateHttp): TemplateRepository
         return fail('请选择要删除的版本')
       }
       return unwrap(await http.removeVersions(oid, versions))
+    },
+
+    async market() {
+      return unwrap(await http.market())
+    },
+
+    async adopt(payload) {
+      // key 由用户改过才传：不传时后端沿用包内 DSL 的 key
+      const trimmedKey = payload?.key?.trim()
+      const trimmedName = payload?.name?.trim()
+      return unwrap(
+        await http.adopt({
+          packId: payload.packId,
+          file: payload.file,
+          ...(trimmedKey ? { key: trimmedKey } : {}),
+          ...(trimmedName ? { name: trimmedName } : {}),
+        }),
+      )
     },
 
     compile(dsl, options) {

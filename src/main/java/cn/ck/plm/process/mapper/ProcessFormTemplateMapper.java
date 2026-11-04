@@ -14,15 +14,15 @@ import java.util.List;
 /**
  * 流程表单模板（{@code ck_process_form_template}）数据访问接口。
  *
- * <p>本表在 {@code TenantStatementInterceptor} 里登记为 <b>PLATFORM_SHARED</b>：
- * <ul>
- *   <li>SELECT → 自动注入 {@code tenant_oid IN (平台, 当前租户)}，因此 SQL 里<b>不写</b>租户条件
- *       —— 平台内置模板对所有租户可见，租户自定义只对自己可见；</li>
- *   <li>INSERT → 自动注入当前租户（内置模板由初始化器显式设为平台租户）。</li>
- * </ul>
+ * <p><b>本表按租户隔离</b>（2026-10-10 由 PLATFORM_SHARED 改来）：
+ * 查询侧 SQL **不写**租户条件，由 {@code TenantStatementInterceptor} 注入 {@code tenant_oid = 当前租户}；
+ * INSERT 显式写 {@code #{tenantOid}}（内置副本由 {@code FormInstaller} 从平台那份补齐到本租户）。
  *
- * <p>平台行的"不可改不可删"由服务层用 {@code TenantContext.requireEditPermission} 把关，
- * 不能指望 SQL 拦住 —— UPDATE/DELETE 的租户条件与 SELECT 同宽。
+ * <p>隔离的缘由：内置 3 张是引擎与前端的**渲染契约**（运行期按 code 派发），
+ * 原先靠"平台一行全员可见"满足；改为隔离后必须**每个租户各有一份**，
+ * 否则租户既看不到、也无法按需停用自己那张。详见 {@code FormInstaller} 的类注释。
+ *
+ * <p>行的"不可改不可删"由服务层把关（内置模板不可删、契约字段不可改），不能指望 SQL 拦住。
  */
 public interface ProcessFormTemplateMapper {
 
@@ -36,9 +36,9 @@ public interface ProcessFormTemplateMapper {
 
     ProcessFormTemplate selectByCode(String code);
 
-    /** 全部模板（平台内置 + 当前租户自定义），按 sort_order、code 排序 */
+    /** 本租户全部模板（内置 + 自定义），按 sort_order、code 排序 */
     List<ProcessFormTemplate> selectList();
 
-    /** code 是否已被占用（excludeOid 用于编辑时排除自身） */
+    /** code 是否已被占用（excludeOid 用于编辑时排除自身）—— 只看本租户 */
     int countByCode(String code, String excludeOid);
 }

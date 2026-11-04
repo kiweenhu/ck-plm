@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:ckplm="http://www.ck.com/plm/workflow/dsl"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.ck.com/plm/workflow">
+  <process id="change-notice" name="变更通告流程（仅 ECN）" isExecutable="true">
+    <documentation>独立变更通告：影响面评审 → 变更审批 → 变更管理员终审 → 派发变更任务。</documentation>
+    <startEvent id="start_1" name="开始：发起变更通告" ckplm:nodeType="START" flowable:initiator="initiator" ckplm:initiator="{&quot;strategy&quot;:&quot;INITIATOR&quot;}"/>
+    <serviceTask id="set_approving" name="进入审批：审批中" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="change.setRequestStatus" ckplm:serviceParams="{&quot;status&quot;:&quot;APPROVING&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>change.setRequestStatus</flowable:string></flowable:field><flowable:field name="status"><flowable:string>APPROVING</flowable:string></flowable:field></extensionElements></serviceTask>
+    <userTask id="setup_1" name="设置审批人" ckplm:nodeType="SET_ASSIGNEE" flowable:assignee="${initiator}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="CKPLM_SETUP_ASSIGNEE" ckplm:formRef="CKPLM_SETUP_ASSIGNEE"/>
+    <userTask id="assess_1" name="影响面评审" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_assess_1}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR_LEADER&quot;}" ckplm:approvalMode="&quot;SINGLE&quot;" ckplm:commentRequired="true" flowable:formKey="change-notice-review" ckplm:formRef="change-notice-review"/>
+    <userTask id="approve_1" name="变更审批" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_approve_1}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR_LEADER&quot;}" ckplm:approvalMode="&quot;SINGLE&quot;" ckplm:commentRequired="true" flowable:formKey="change-notice-review" ckplm:formRef="change-notice-review"/>
+    <userTask id="final_1" name="变更管理员终审" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_final_1}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR_LEADER&quot;}" ckplm:approvalMode="&quot;SINGLE&quot;" ckplm:commentRequired="true" flowable:formKey="change-notice-review" ckplm:formRef="change-notice-review"/>
+    <serviceTask id="set_approved" name="审批通过：已批准" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="change.setRequestStatus" ckplm:serviceParams="{&quot;status&quot;:&quot;APPROVED&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>change.setRequestStatus</flowable:string></flowable:field><flowable:field name="status"><flowable:string>APPROVED</flowable:string></flowable:field></extensionElements></serviceTask>
+    <serviceTask id="set_rejected" name="审批驳回：已驳回" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="change.setRequestStatus" ckplm:serviceParams="{&quot;status&quot;:&quot;REJECTED&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>change.setRequestStatus</flowable:string></flowable:field><flowable:field name="status"><flowable:string>REJECTED</flowable:string></flowable:field></extensionElements></serviceTask>
+    <callActivity id="sub_task" name="派发变更任务（子流程）" ckplm:nodeType="SUB_PROCESS" calledElement="change-task" ckplm:variableMap="{&quot;initiator&quot;:&quot;${initiator}&quot;,&quot;taskAssignee&quot;:&quot;${task.assignee}&quot;}" ckplm:multiInstance="{&quot;collection&quot;:&quot;changeTaskList&quot;,&quot;elementVariable&quot;:&quot;task&quot;,&quot;sequential&quot;:false,&quot;businessKey&quot;:&quot;oid&quot;}" flowable:businessKey="${task.oid}"><extensionElements><flowable:in sourceExpression="${initiator}" target="initiator"/><flowable:in sourceExpression="${task.assignee}" target="taskAssignee"/></extensionElements><multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${changeTaskList}" flowable:elementVariable="task"/></callActivity>
+    <endEvent id="end_done" name="结束：变更已实施" ckplm:nodeType="END"/>
+    <endEvent id="end_rejected" name="结束：审批驳回" ckplm:nodeType="END"/>
+    <sequenceFlow id="e1" sourceRef="start_1" targetRef="set_approving"/>
+    <sequenceFlow id="e2" sourceRef="set_approving" targetRef="setup_1"/>
+    <sequenceFlow id="e3" sourceRef="setup_1" targetRef="assess_1"/>
+    <sequenceFlow id="e4" sourceRef="assess_1" targetRef="approve_1" name="通过" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e5" sourceRef="assess_1" targetRef="set_rejected" name="驳回" ckplm:route="REJECT"><conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e6" sourceRef="approve_1" targetRef="final_1" name="通过" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e7" sourceRef="approve_1" targetRef="set_rejected" name="驳回" ckplm:route="REJECT"><conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e8" sourceRef="final_1" targetRef="set_approved" name="通过" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e9" sourceRef="final_1" targetRef="set_rejected" name="驳回" ckplm:route="REJECT"><conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e10" sourceRef="set_approved" targetRef="sub_task"/>
+    <sequenceFlow id="e11" sourceRef="set_rejected" targetRef="end_rejected"/>
+    <sequenceFlow id="e12" sourceRef="sub_task" targetRef="end_done"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="change-notice">
+    <bpmndi:BPMNShape id="Shape_start_1" bpmnElement="start_1">
+      <omgdc:Bounds x="296" y="-8" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_set_approving" bpmnElement="set_approving">
+      <omgdc:Bounds x="240" y="66" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_setup_1" bpmnElement="setup_1">
+      <omgdc:Bounds x="240" y="156" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_assess_1" bpmnElement="assess_1">
+      <omgdc:Bounds x="240" y="246" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_approve_1" bpmnElement="approve_1">
+      <omgdc:Bounds x="240" y="336" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_final_1" bpmnElement="final_1">
+      <omgdc:Bounds x="240" y="426" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_set_approved" bpmnElement="set_approved">
+      <omgdc:Bounds x="240" y="516" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_set_rejected" bpmnElement="set_rejected">
+      <omgdc:Bounds x="569" y="426" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_sub_task" bpmnElement="sub_task">
+      <omgdc:Bounds x="240" y="606" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_end_done" bpmnElement="end_done">
+      <omgdc:Bounds x="296" y="696" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_end_rejected" bpmnElement="end_rejected">
+      <omgdc:Bounds x="625" y="516" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNEdge id="Edge_e1" bpmnElement="e1">
+      <omgdi:waypoint x="311" y="22"/>
+      <omgdi:waypoint x="311" y="66"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e2" bpmnElement="e2">
+      <omgdi:waypoint x="311" y="110"/>
+      <omgdi:waypoint x="311" y="156"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e3" bpmnElement="e3">
+      <omgdi:waypoint x="311" y="200"/>
+      <omgdi:waypoint x="311" y="246"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e4" bpmnElement="e4">
+      <omgdi:waypoint x="311" y="290"/>
+      <omgdi:waypoint x="311" y="336"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e5" bpmnElement="e5">
+      <omgdi:waypoint x="311" y="290"/>
+      <omgdi:waypoint x="640" y="426"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e6" bpmnElement="e6">
+      <omgdi:waypoint x="311" y="380"/>
+      <omgdi:waypoint x="311" y="426"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e7" bpmnElement="e7">
+      <omgdi:waypoint x="311" y="380"/>
+      <omgdi:waypoint x="640" y="426"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e8" bpmnElement="e8">
+      <omgdi:waypoint x="311" y="470"/>
+      <omgdi:waypoint x="311" y="516"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e9" bpmnElement="e9">
+      <omgdi:waypoint x="311" y="470"/>
+      <omgdi:waypoint x="640" y="426"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e10" bpmnElement="e10">
+      <omgdi:waypoint x="311" y="560"/>
+      <omgdi:waypoint x="311" y="606"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e11" bpmnElement="e11">
+      <omgdi:waypoint x="640" y="470"/>
+      <omgdi:waypoint x="640" y="516"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e12" bpmnElement="e12">
+      <omgdi:waypoint x="311" y="650"/>
+      <omgdi:waypoint x="311" y="696"/>
+    </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

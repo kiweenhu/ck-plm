@@ -9,7 +9,13 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { buildEntityLabel, entityDetailPath, entityRefFallbackText } from '@/utils/entityRef'
+import {
+  buildChangeDocLabel,
+  buildEntityLabel,
+  changeDocPath,
+  entityDetailPath,
+  entityRefFallbackText,
+} from '@/utils/entityRef'
 
 describe('业务实体引用 → 详情页链接', () => {
   it('零组件（宿主 PART）链到大版本详情页，不带迭代 oid —— 进去就是最新版本', () => {
@@ -42,7 +48,7 @@ describe('「业务标识」展示模型（列表与详情共用）', () => {
     revision: 'A',
   }
 
-  it('编码 + 名称 + 版本 + 生命周期状态，名称带详情链接', () => {
+  it('编码 + 名称 + 版本 + 生命周期状态，编码带详情链接（2026-11-04 从名称挪到编码）', () => {
     expect(buildEntityLabel(ref, info)).toEqual({
       resolved: true,
       path: '/part/part-1',
@@ -50,6 +56,7 @@ describe('「业务标识」展示模型（列表与详情共用）', () => {
       code: 'PART-202609-0020',
       version: 'A',
       status: '已发布',
+      statusColor: 'green',
       fallback: 'ELECTRONIC · part-1',
     })
   })
@@ -86,5 +93,55 @@ describe('回查失败时的兜底文案', () => {
   it('没有类型就只给 oid；没有 oid 给空串（调用方另作处理）', () => {
     expect(entityRefFallbackText({ entityOid: 'part-1' })).toBe('part-1')
     expect(entityRefFallbackText({ typeCode: 'ELECTRONIC' })).toBe('')
+  })
+})
+
+describe('变更单据（请求 / 通告 / 任务）的详情入口', () => {
+  it('请求 / 通告打开变更控制对应面板的详情抽屉', () => {
+    expect(changeDocPath('REQUEST', 'r1')).toBe('/change?tab=request&requestOid=r1')
+    expect(changeDocPath('NOTICE', 'n1')).toBe('/change?tab=notice&noticeOid=n1')
+  })
+
+  it('变更任务没有按 oid 打开的入口，给空串（不可点好过链到打不开的地址）', () => {
+    expect(changeDocPath('TASK', 't1')).toBe('')
+  })
+
+  it('没有 oid 就不给链接', () => {
+    expect(changeDocPath('REQUEST', '')).toBe('')
+    expect(changeDocPath('REQUEST', undefined)).toBe('')
+  })
+})
+
+describe('变更单据「业务标识」展示模型', () => {
+  it('名称优先、编码兜底，状态默认蓝色，路径指向变更控制面板', () => {
+    expect(buildChangeDocLabel({ kind: 'REQUEST', oid: 'r1', code: 'ECR-202609-0007', name: '电容改型' })).toEqual({
+      resolved: true,
+      path: '/change?tab=request&requestOid=r1',
+      name: '电容改型',
+      code: 'ECR-202609-0007',
+      version: '',
+      status: '',
+      statusColor: 'blue',
+      fallback: 'ECR-202609-0007',
+    })
+  })
+
+  it('没填名称时回落编码（不显示空白）', () => {
+    expect(buildChangeDocLabel({ kind: 'NOTICE', oid: 'n1', code: 'ECN-202609-0002' })?.name).toBe('ECN-202609-0002')
+    expect(buildChangeDocLabel({ kind: 'NOTICE', oid: 'n1', code: 'ECN-202609-0002' })?.path).toBe(
+      '/change?tab=notice&noticeOid=n1',
+    )
+  })
+
+  it('状态文案与颜色由调用方翻好后透传，不写死', () => {
+    const label = buildChangeDocLabel({ kind: 'REQUEST', oid: 'r1', statusName: '已关闭', statusColor: 'red' })
+    expect(label?.status).toBe('已关闭')
+    expect(label?.statusColor).toBe('red')
+  })
+
+  it('没有 oid 时给 null（该行没有关联单据）', () => {
+    expect(buildChangeDocLabel(null)).toBeNull()
+    expect(buildChangeDocLabel({ kind: 'REQUEST' })).toBeNull()
+    expect(buildChangeDocLabel({ kind: 'REQUEST', oid: '' })).toBeNull()
   })
 })

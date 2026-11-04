@@ -10,7 +10,7 @@
  * 因此同一套操作能力对零组件列表、元器件库与封装·图符库完全一致，无需各处重复实现。
  *
  * <p>支持操作：详情 / 重命名 / 另存为 / 查看历史版本 / 检出 / 检出并编辑 / 编辑 /
- * 检入 / 取消检出 / 下载主文件 / 移动（或变更分类）/ 新建视图版本 /
+ * 检入 / 取消检出 / 下载主文件 / 移动（或变更分类）/ 修订（大版本递增）/
  * 设置生命周期状态 / 发起流程 / 删除。
  *
  * <p>仅 Part 宿主提供的操作：详情（工程数据暂无详情页）、另存为（工程数据暂无该接口）。
@@ -38,10 +38,13 @@
           <a-menu-item v-if="showDownload && record.ckfileOid" key="download"><DownloadOutlined /> 下载主文件</a-menu-item>
           <a-menu-divider />
           <a-menu-item key="move"><SwapOutlined /> {{ moveLabel }}</a-menu-item>
-          <a-menu-item key="newViewVersion"><BranchesOutlined /> 新建视图版本</a-menu-item>
+          <!-- 当前状态在模板里没开"可修订"就不出现（后端 ensureRevisable 同样会拒） -->
+          <a-menu-item v-if="record.revisable !== false" key="revise"><BranchesOutlined /> 修订</a-menu-item>
           <a-menu-divider />
           <a-menu-item v-if="!isCheckedOut" key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
-          <a-menu-item v-if="!isCheckedOut" key="workflow"><SendOutlined /> 发起流程</a-menu-item>
+          <!-- 元器件（ELECTRONIC / IPN）语境叫「发起器件认证」—— 与元器件引入（认定）流程
+               component-introduction 的语义对齐；其余类型（结构件 / 标准件 / 工程数据…）保持「发起流程」 -->
+          <a-menu-item v-if="!isCheckedOut" key="workflow"><SendOutlined /> {{ workflowLabel }}</a-menu-item>
           <a-menu-divider />
           <a-menu-item v-if="!isCheckedOut" key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
         </a-menu>
@@ -235,9 +238,11 @@
       />
     </a-modal>
 
-    <!-- 发起流程（共享弹框：按类型+状态解析该发起的流程，再经 Flowable 启动） -->
+    <!-- 发起流程（共享弹框：按类型+状态解析该发起的流程，再经 Flowable 启动）
+         标题与菜单项同一文案来源：元器件显示「发起器件认证」，其余「发起流程」 -->
     <StartProcessModal
       v-model:visible="startProcessVisible"
+      :title="workflowLabel"
       :business="startProcessTarget"
       @success="done()"
     />
@@ -265,16 +270,18 @@ import DynamicForm from '@/components/DynamicForm.vue'
 import StartProcessModal from '@/components/StartProcessModal.vue'
 import SetLifecycleStateModal from '@/components/SetLifecycleStateModal.vue'
 import {
-  renamePart, saveAsPart, getPartIterations, movePart, newViewVersionPart,
+  renamePart, saveAsPart, getPartIterations, movePart,
   checkoutPart as checkoutPartApi, checkinPart as checkinPartApi,
   undoCheckoutPart as undoCheckoutPartApi, deletePart, deletePartLatestIteration,
   updatePart, getDocumentDownloadUrl, getLibraryCategoryTree,
   // 工程数据（EngineeringDocument：CAD 设计数据 / 封装 / 图符）宿主接口
-  renameEngineeringDocument, moveEngineeringDocument, newViewVersionEngineeringDocument,
+  renameEngineeringDocument, moveEngineeringDocument,
   checkoutEngineeringDocument, checkinEngineeringDocument, undoCheckoutEngineeringDocument,
   deleteEngineeringDocument, deleteEngineeringDocumentLatestIteration,
   updateEngineeringDocument, getEngineeringDocumentIterations,
   resolveEntityApiPath,
+  // 修订：与检出/检入同构的通用入口（后端按 entityType 路由）
+  reviseObject, resolveReviseEntityType,
 } from '@/api'
 
 const props = defineProps({
@@ -292,6 +299,14 @@ const emit = defineEmits(['success'])
 const router = useRouter()
 const isCheckedOut = computed(() => !!props.record.checkedOut)
 const moveLabel = computed(() => (props.moveMode === 'category' ? '变更分类' : '移动'))
+
+/**
+ * 「发起流程」菜单项文案：元器件（IPN = ELECTRONIC 软类型）走的是元器件引入（认定）流程，
+ * 措辞用「发起器件认证」更准确（2026-10-12 用户要求）；其余类型保持「发起流程」。
+ * 本组件被三大资源库与封装·图符库共用，故按记录的类型**条件化**，而不是全局改名。
+ */
+const isElectronic = computed(() => (props.record?.typeDefinitionCode || '').toUpperCase() === 'ELECTRONIC')
+const workflowLabel = computed(() => (isElectronic.value ? '发起器件认证' : '发起流程'))
 const saving = ref(false)
 
 // ==================== 宿主分派（Part / 工程数据）====================
@@ -320,7 +335,6 @@ const api = computed(() => (isEngDoc.value
       undoCheckout: undoCheckoutEngineeringDocument,
       update: updateEngineeringDocument,
       move: moveEngineeringDocument,
-      newViewVersion: newViewVersionEngineeringDocument,
       remove: deleteEngineeringDocument,
       removeLatest: deleteEngineeringDocumentLatestIteration,
     }
@@ -332,7 +346,6 @@ const api = computed(() => (isEngDoc.value
       undoCheckout: undoCheckoutPartApi,
       update: updatePart,
       move: movePart,
-      newViewVersion: newViewVersionPart,
       remove: deletePart,
       removeLatest: deletePartLatestIteration,
     }))
@@ -365,17 +378,16 @@ function onMenuClick({ key }) {
     case 'undoCheckout': return doUndoCheckout()
     case 'download': return doDownload()
     case 'move': return openMove()
-    case 'newViewVersion': return doNewViewVersion()
+    case 'revise': return doRevise()
     case 'lifecycle': return openLifecycle()
     case 'workflow': return openStartProcess()
     case 'delete': return openDelete()
   }
 }
 
-/** 详情：新窗口打开零组件详情页 */
+/** 详情：当前窗口打开零组件详情页（返回用浏览器后退） */
 function openDetail() {
-  const href = router.resolve({ name: 'PartDetail', params: { oid: props.record.oid } }).href
-  window.open(href, '_blank')
+  router.push({ name: 'PartDetail', params: { oid: props.record.oid } })
 }
 
 // ==================== 发起流程 ====================
@@ -661,7 +673,27 @@ function openEdit() {
 async function confirmEdit() {
   saving.value = true
   try {
-    const res = await api.value.update(props.record.oid, { ...(editForm.value || {}) })
+    // 分类 IBA 值必须从顶层剔除、单独放到 clsIbaValues —— 与本组件服务各宿主页面（元器件库创建、
+    // 驾驶舱编辑）同口径。否则后端 updatePart 会把它们当成实体 IBA 存进 ck_type_iba_data，
+    // 而 ck_cls_iba_data 一条都写不到（2026-10-11 实测：元器件库"操作→编辑"保存的分类参数串表）。
+    const payload = { ...(editForm.value || {}) }
+    if (editFormRef.value) {
+      const clsIbaFieldNames = editFormRef.value.getClsIbaFieldNames() || []
+      clsIbaFieldNames.forEach(k => delete payload[k])
+      const clsIbaValues = editFormRef.value.getClsIbaValues() || {}
+      if (Object.keys(clsIbaValues).length > 0) payload.clsIbaValues = clsIbaValues
+    }
+    // 工程数据的「所属产品」在基准布局里绑 ownerOid，实体归属列却是 containerOid ——
+    // 改选后要落到容器列，否则界面上改了、存下来还是旧容器
+    const pickedOwner = payload.ownerOid || payload.productOid
+    if (isEngDoc.value && pickedOwner) {
+      payload.containerOid = pickedOwner
+      if (payload.productType) payload.containerType = payload.productType
+      delete payload.ownerOid
+      delete payload.productOid
+      delete payload.productType
+    }
+    const res = await api.value.update(props.record.oid, payload)
     if (res?.code === 200) { editVisible.value = false; done('保存成功') }
     else message.error(res?.message || '保存失败')
   } catch (e) {
@@ -671,21 +703,24 @@ async function confirmEdit() {
   }
 }
 
-// ==================== 新建视图版本 ====================
+// ==================== 修订（大版本递增） ====================
 
-function doNewViewVersion() {
+function doRevise() {
   Modal.confirm({
-    title: `确认新建视图版本 "${props.record.code || props.record.name}"？`,
-    content: '将基于当前最新版本创建一个新的大版本（版本号递增，小版本重置为 1）。',
-    okText: '确认新建',
+    title: `确认修订 "${props.record.code || props.record.name}"？`,
+    content: '将基于当前最新版本创建一个新的大版本（大版本号递增，小版本重置为 1），当前版本转为历史版本。',
+    okText: '确认修订',
     cancelText: '取消',
     onOk: async () => {
+      // 与检出/检入同构：实体类型由记录的类型编码推导，统一入口按 entityType 路由到对应 Provider
+      const entityType = resolveReviseEntityType(props.record.typeDefinitionCode)
+        || (isEngDoc.value ? 'ENG_DOCUMENT' : 'PART')
       try {
-        const res = await api.value.newViewVersion(props.record.oid)
-        if (res?.code === 200) done('已新建视图版本')
-        else message.error(res?.message || '新建视图版本失败')
+        const res = await reviseObject(entityType, props.record.oid)
+        if (res?.code === 200) done('已修订')
+        else message.error(res?.message || '修订失败')
       } catch (e) {
-        message.error('新建视图版本失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+        message.error('修订失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
       }
     },
   })

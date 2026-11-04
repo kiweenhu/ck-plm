@@ -1,5 +1,5 @@
 /**
- * 任务表单模板注册表（契约层）。
+ * 节点表单模板注册表（契约层）。
  *
  * <p><b>为什么需要注册表</b>：节点表单原先是一个手填的「表单引擎 code」文本框 ——
  * 填错一个字符设计期毫无感知，运行期才发现取不到表单；而内置表单（如「设置流程参与者」）
@@ -59,6 +59,22 @@ export const APPROVAL_OPINION_FORM_CODE = 'CKPLM_APPROVAL_OPINION'
 /** 「会签」—— 会签审批活动固定使用的内置表单 */
 export const COUNTERSIGN_FORM_CODE = 'CKPLM_COUNTERSIGN'
 
+/**
+ * 「新器件申请认证」—— 器件引入 / 认定流程的发起与补录表单（**行业表单，非内置**）。
+ *
+ * <p>为什么单独定义常量、却不放进 {@link TASK_FORM_TEMPLATES}：
+ * <ul>
+ *   <li>模板体（名称 / 适用节点 / 描述 / 字段词表）由行业包
+ *       {@code electronics-core/processes/forms/forms.json} 播种进 {@code ck_process_form_template}
+ *       表，再经 {@link registerTaskFormTemplates} 注入设计器面板 ——
+ *       只有装了该包的租户才看得见它，这才是"行业资产随包走"；</li>
+ *   <li>但它的<b>渲染组件在前端</b>（{@code components/task/taskForms/ComponentQualificationForm.vue}），
+ *       运行期登记在 {@code taskForms/index.js} 的视图注册表里。视图注册表按本文件的常量
+ *       取 code（"不重写字面量"的既有约定），所以要在这里导出。</li>
+ * </ul>
+ */
+export const COMPONENT_QUALIFICATION_FORM_CODE = 'component-qualification-apply'
+
 /** 已注册的内置表单模板。新增内置表单在此登记一处即可（面板与运行期都按 code 派发） */
 export const TASK_FORM_TEMPLATES: TaskFormTemplate[] = [
   {
@@ -87,10 +103,13 @@ export const TASK_FORM_TEMPLATES: TaskFormTemplate[] = [
     code: COUNTERSIGN_FORM_CODE,
     label: '会签',
     description:
-      '内置固定表单：显示会签通过规则（如「1 个通过即通过」）与每个参与人的办理情况'
-      + '（谁同意、谁驳回、各自意见），本人再给出自己的结论与意见',
+      '内置表单（会签节点的默认）：显示会签通过规则（如「1 个通过即通过」）与每个参与人的办理情况'
+      + '（谁同意、谁驳回、各自意见），本人再给出自己的结论与意见。'
+      + '会签节点可改用企业自己的会签表单（如行业包里的「元器件认证会签」）',
     builtin: true,
-    fixed: true,
+    // 默认而非固定：会签人往往还需要看到"在评审什么"（业务申请信息），
+    // 固定的内置表只能显示规则与各人意见，行业必须能换一张（2026-10-13）
+    fixed: false,
     component: COUNTERSIGN_FORM_CODE,
     nodeTypes: [NodeType.COUNTERSIGN_APPROVAL],
   },
@@ -161,27 +180,43 @@ export function fixedFormCodeOf(nodeType: NodeTypeT): string | undefined {
 }
 
 /**
- * 按**节点**（不只是类型）判定固定表单。
+ * 按**节点**（不只是类型）判定「**语义固定**」的表单 —— 会签**不在其列**（见下）。
  *
- * <p>为什么需要它：会签在 DSL 里有两种表达 —— 专门的「会签审批」节点，以及
- * 「审批节点 + 审批模式=会签」（见 {@code ApprovalNode.approvalMode}）。两者运行期是同一件事
- * （多人多票 + 通过规则），表单也就该是同一张；只看类型会让后者落到「审批意见」表单上，
- * 看不到会签规则与其他人的办理情况。
+ * <p>目前只有「设置审批人」是真正固定的：它的表单由代码生成（列出下游所有活动的人选），
+ * 不存在"换一个"的余地。
+ *
+ * <p><b>会签为什么不再是固定（2026-10-13 修正）</b>：原先这里把「会签审批节点」与
+ * 「审批 + 会签模式」都判成固定为内置「会签」，于是<b>编译层</b>
+ * （{@code compile.ts}：{@code fixed ?? node.formRef ?? default}）会把节点显式写的
+ * {@code formRef} **静默覆盖**成内置那张 —— 行业想给会签节点配一张"能看到业务申请信息"的
+ * 会签表（如「元器件认证会签」）就永远配不上（面板下拉里也只会显示 code：值不在选项里）。
+ * 现在内置「会签」只是**默认**（{@link defaultFormCodeOfNode}），要换就换得动。
  */
 export function fixedFormCodeOfNode(node?: { type?: NodeTypeT; approvalMode?: string } | null): string | undefined {
   if (!node?.type) {
     return undefined
   }
-  if (node.type === NodeType.APPROVAL && node.approvalMode === ApprovalMode.COUNTERSIGN) {
-    return COUNTERSIGN_FORM_CODE
-  }
   return fixedFormCodeOf(node.type)
+}
+
+/**
+ * 该节点是否属于"多人多票"的会签语义（专门节点，或审批 + 会签模式）。
+ *
+ * <p>导出给面板用：会签类节点的**表单候选**要按会签模板列（内置「会签」+ 企业/行业的会签表），
+ * 只看 `node.type` 会让「审批 + 会签模式」的节点一个会签表都看不到。
+ */
+export function isCountersignNode(node?: { type?: NodeTypeT; approvalMode?: string } | null): boolean {
+  if (!node?.type) {
+    return false
+  }
+  return node.type === NodeType.COUNTERSIGN_APPROVAL
+    || (node.type === NodeType.APPROVAL && node.approvalMode === ApprovalMode.COUNTERSIGN)
 }
 
 /**
  * 节点**未显式指定** `formRef` 时该用的默认表单。
  *
- * <p>顺序：语义固定的表单 → 类型默认（审批 → 审批意见）→ undefined（运行期兜底）。
+ * <p>顺序：语义固定的表单 → 会签类默认（内置「会签」）→ 审批默认（审批意见）→ undefined（运行期兜底）。
  * 编译器用它生成 `flowable:formKey`，面板用它做 `defaultWhenEmpty`：
  * 两处必须同源 —— 否则面板显示的和编译进 BPMN 的会是两张表单。
  */
@@ -189,6 +224,11 @@ export function defaultFormCodeOfNode(node?: { type?: NodeTypeT; approvalMode?: 
   const fixed = fixedFormCodeOfNode(node)
   if (fixed) {
     return fixed
+  }
+  // 会签类（专门节点 / 审批+会签模式）：默认内置「会签」（显示通过规则与各人办理情况），
+  // 但**可被节点显式 formRef 换掉** —— 行业会签表要能带上自己的业务信息
+  if (isCountersignNode(node)) {
+    return COUNTERSIGN_FORM_CODE
   }
   return node?.type === NodeType.APPROVAL ? APPROVAL_OPINION_FORM_CODE : undefined
 }

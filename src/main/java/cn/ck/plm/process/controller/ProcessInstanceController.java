@@ -8,9 +8,11 @@
 package cn.ck.plm.process.controller;
 
 import cn.ck.plm.iam.dto.ApiResponse;
+import cn.ck.plm.process.dto.ProcessActivityFormVO;
 import cn.ck.plm.process.dto.ProcessActivityVO;
 import cn.ck.plm.process.dto.ProcessInstanceVO;
 import cn.ck.plm.process.dto.ProcessStartConflictVO;
+import cn.ck.plm.process.dto.ProcessStartFormVO;
 import cn.ck.plm.process.dto.ProcessStartOptionVO;
 import cn.ck.plm.process.entity.ProcessEntitySet;
 import cn.ck.plm.process.entity.ProcessNodeLog;
@@ -39,6 +41,7 @@ import java.util.Map;
  * GET    /api/workflow/instance/running-entities 批量判定哪些业务对象正在流程中（发起弹窗过滤候选）
  * GET    /api/workflow/instance/{id}/activities 节点经路（走到哪了：已办 / 在办 / 未到达）
  * GET    /api/workflow/instance/{id}/node-logs 节点执行日志（某个节点后台跑了什么、报了什么错）
+ * GET    /api/workflow/instance/{id}/activity-form 节点表单填写（这一步填了什么：表单类流程变量）
  * GET    /api/workflow/instance/{id}          详情（含流程变量）
  * POST   /api/workflow/instance/{id}/suspend  挂起
  * POST   /api/workflow/instance/{id}/activate 激活
@@ -47,6 +50,7 @@ import java.util.Map;
  * POST   /api/workflow/instance/start         发起流程 {"processKey":"...","businessKey":"...",
  *                                             "entityOid":"...","typeCode":"...","entityCode":"...","variables":{...}}
  * GET    /api/workflow/instance/start-options 发起前解析（业务对象类型+状态 → 该发起哪个流程 + 最新版本信息）
+ * GET    /api/workflow/instance/start-form    发起表单上下文（开始节点配的表单 + 该部署版 DSL）
  * </pre>
  *
  * <p>租户与用户身份由 {@code AuthInterceptor} 注入的上下文提供；所有操作均按租户校验归属。
@@ -200,6 +204,31 @@ public class ProcessInstanceController {
             return ApiResponse.fail(404, e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail(500, "查询流程节点经路失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 某节点的<b>表单填写</b> —— 这一步到底填了什么。
+     *
+     * <pre>
+     * GET /api/workflow/instance/{id}/activity-form?activityId=xxx
+     * → [{ key, label, value }, …]
+     * </pre>
+     *
+     * <p>补的是详情页的一个空档：点开节点原来只有"责任人 / 结论 / 时间 + 后台执行日志"，
+     * 而办理时填的表单（如「设置审批人」节点写入的各环节审批人 {@code ckplmSetupAssignees_*}）
+     * 落在流程变量里、页面看不到。这里按"任务 id 归属 + 节点执行时间窗"把该节点的表单变量挑出来，
+     * 能确定映射的给中文标签（如「审批人 · 样品来料检验（IQC）」），其余原样露出键名。
+     */
+    @GetMapping("/{id}/activity-form")
+    public ApiResponse<List<ProcessActivityFormVO>> activityForm(@PathVariable String id,
+                                                                 @RequestParam String activityId) {
+        try {
+            return ApiResponse.ok(workflowService.findActivityForm(id, activityId));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(404, e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "查询节点表单填写失败: " + e.getMessage());
         }
     }
 
@@ -531,6 +560,56 @@ public class ProcessInstanceController {
             return ApiResponse.fail(400, e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail(500, "解析发起流程信息失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 按<b>流程 key 直传</b>解析发起选项 —— 供"不经过类型绑定"的入口使用：
+     * 产品系列页的阶段门 / 评审行自带 {@code process_key}（如 {@code technical-review} /
+     * {@code gate-decision}），点「发起」即发这条流程。
+     *
+     * <pre>
+     * GET /api/workflow/instance/start-option-by-key?processKey=technical-review
+     *     &amp;typeCode=PRODUCT_LINE&amp;statusCode=DRAFT&amp;entityOid=…
+     * </pre>
+     *
+     * <p>返回形状与 {@code /start-options} 完全一致（同一个 VO、同一份组装逻辑），
+     * 前端因此可以复用同一个发起弹框 —— 部署判定 / 冲突闸门的语义也完全一致。
+     */
+    @GetMapping("/start-option-by-key")
+    public ApiResponse<ProcessStartOptionVO> startOptionByKey(@RequestParam String processKey,
+                                                              @RequestParam(required = false) String typeCode,
+                                                              @RequestParam(required = false) String statusCode,
+                                                              @RequestParam(required = false) String entityOid) {
+        try {
+            return ApiResponse.ok(startOptionService.resolveByKey(processKey, typeCode, statusCode, entityOid));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "解析发起流程信息失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 发起表单上下文 —— 开始节点配的表单（{@code startEvent} 的 {@code flowable:formKey}
+     * = DSL 里 start 节点的 {@code formRef}）与**最新部署版**的 DSL。
+     *
+     * <pre>
+     * GET /api/workflow/instance/start-form?processKey=component-introduction
+     * </pre>
+     *
+     * <p>发起弹框在"解析出该发起哪个流程"之后调它：{@code formKey} 非空则渲染申请表单，
+     * 提交前 {@code collect()} 出的字段并入发起变量；为空则不渲染（与老流程完全一致）。
+     * 与 {@code /workflow/task/{id}/form}（办理侧）成对 —— 主体从"任务"换成"开始事件"。
+     *
+     * <p>未部署 / 无此 key 时返回 200 + 空字段：这不是错误，发起弹框本来也会因未部署而不给「发起」。
+     */
+    @GetMapping("/start-form")
+    public ApiResponse<ProcessStartFormVO> startForm(@RequestParam String processKey) {
+        try {
+            return ApiResponse.ok(workflowService.startForm(processKey));
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "查询发起表单失败: " + e.getMessage());
         }
     }
 

@@ -101,95 +101,9 @@ public class StageTemplateServiceImpl implements StageTemplateService {
         return filtered;
     }
 
-    @Override
-    @Transactional
-    public int initPlatformDefaults() {
-        int inserted = 0;
-        // 按 industry + code 唯一初始化
-        for (Map.Entry<String, Map<String, StageTemplate>> industryEntry : DEFAULT_STAGES_BY_INDUSTRY.entrySet()) {
-            String industry = industryEntry.getKey();
-            for (Map.Entry<String, StageTemplate> entry : industryEntry.getValue().entrySet()) {
-                if (mapper.existsByCode(entry.getKey(), platformOid(), platformOid()) == 0) {
-                    StageTemplate tmpl = entry.getValue();
-                    tmpl.setIndustry(industry);
-                    tmpl.setTenantOid(platformOid());
-                    mapper.insert(tmpl);
-                    inserted++;
-                    log.info("  平台阶段模板已创建: industry={}, code={}, name={}", industry, tmpl.getCode(), tmpl.getName());
-                }
-            }
-        }
-        if (inserted > 0) log.info("平台阶段模板初始化完成: 新增 {} 个", inserted);
-        return inserted;
-    }
-
-    // ==================== 4 套行业默认模板 ====================
-
-    private static final Map<String, Map<String, StageTemplate>> DEFAULT_STAGES_BY_INDUSTRY = new LinkedHashMap<>();
-
-    static {
-        // 1. TRADITIONAL（传统产品研发）
-        Map<String, StageTemplate> traditional = new LinkedHashMap<>();
-        add(traditional, "MARKET_VALIDATION", "市场验证", "ShoppingCartOutlined", "#eb2f96", 1,
-                "[\"市场调研分析\",\"目标用户验证\",\"竞品对标\",\"市场可行性评估\"]", "[\"FUNCTIONAL\",\"DOCUMENT\"]");
-        add(traditional, "REQUIREMENTS", "需求论证", "AuditOutlined", "#1677ff", 2,
-                "[\"需求分析\",\"需求评审\",\"技术可行性论证\"]", "[\"FUNCTIONAL\",\"DOCUMENT\"]");
-        add(traditional, "SOLUTION", "方案设计", "BulbOutlined", "#722ed1", 3,
-                "[\"系统架构设计\",\"方案评审\",\"关键技术选型验证\"]", "[\"FUNCTIONAL\",\"DOCUMENT\"]");
-        add(traditional, "DETAILED", "详细设计", "FundProjectionScreenOutlined", "#13c2c2", 4,
-                "[\"软件详细设计\",\"硬件原理图\",\"结构设计\",\"DFMEA分析\"]", "[\"FUNCTIONAL\",\"PART\",\"DOCUMENT\"]");
-        add(traditional, "PROCESS", "工艺规划", "ToolOutlined", "#fa8c16", 5,
-                "[\"生产工艺设计\",\"工装夹具设计\",\"BOM编制\",\"试产计划\"]", "[\"PART\",\"DOCUMENT\"]");
-        add(traditional, "TRIAL", "试产", "RocketOutlined", "#52c41a", 6,
-                "[\"小批量试产验证\",\"问题追踪\",\"试产评审\",\"转量产决策\"]", "[\"PART\",\"DOCUMENT\"]");
-        DEFAULT_STAGES_BY_INDUSTRY.put("TRADITIONAL", traditional);
-
-        // 2. IPD（电子高科/IPD 集成产品开发）
-        Map<String, StageTemplate> ipd = new LinkedHashMap<>();
-        add(ipd, "IPD_CONCEPT", "概念阶段", "BulbOutlined", "#722ed1", 1,
-                "[\"市场评估\",\"需求调研\",\"概念方案\"]", "[\"FUNCTIONAL\",\"DOCUMENT\"]");
-        add(ipd, "IPD_PLAN", "计划阶段", "CalendarOutlined", "#1677ff", 2,
-                "[\"项目计划\",\"资源分配\",\"风险评估\"]", "[\"FUNCTIONAL\",\"DOCUMENT\"]");
-        add(ipd, "IPD_DEVELOP", "开发阶段", "ToolOutlined", "#13c2c2", 3,
-                "[\"详细设计\",\"编码实现\",\"单元测试\"]", "[\"FUNCTIONAL\",\"PART\",\"DOCUMENT\"]");
-        add(ipd, "IPD_VERIFY", "验证阶段", "SafetyCertificateOutlined", "#52c41a", 4,
-                "[\"集成测试\",\"系统测试\",\"验收评审\"]", "[\"FUNCTIONAL\",\"PART\",\"DOCUMENT\"]");
-        add(ipd, "IPD_RELEASE", "发布阶段", "RocketOutlined", "#eb2f96", 5,
-                "[\"Beta测试\",\"正式发布\",\"市场投放\"]", "[\"PART\",\"DOCUMENT\"]");
-        add(ipd, "IPD_LIFECYCLE", "生命周期管理", "ReloadOutlined", "#fa541c", 6,
-                "[\"运营监控\",\"版本迭代\",\"退市管理\"]", "[\"FUNCTIONAL\",\"PART\",\"DOCUMENT\"]");
-        DEFAULT_STAGES_BY_INDUSTRY.put("IPD", ipd);
-
-        // 3. MILITARY（军工）
-        Map<String, StageTemplate> military = new LinkedHashMap<>();
-        add(military, "MIL_ARGUMENT", "论证阶段", "FileSearchOutlined", "#1677ff", 1,
-                "[\"需求论证\",\"战术技术指标\",\"可行性论证\"]", "[\"FUNCTIONAL\",\"DOCUMENT\"]");
-        add(military, "MIL_INITIATION", "立项阶段", "FileTextOutlined", "#722ed1", 2,
-                "[\"立项申请\",\"方案评审\",\"合同签订\"]", "[\"DOCUMENT\"]");
-        add(military, "MIL_SCHEME", "方案设计", "BulbOutlined", "#13c2c2", 3,
-                "[\"总体方案\",\"分系统方案\",\"关键技术攻关\"]", "[\"FUNCTIONAL\",\"PART\",\"DOCUMENT\"]");
-        add(military, "MIL_ENGINEERING", "工程研制", "ToolOutlined", "#fa8c16", 4,
-                "[\"详细设计\",\"样机研制\",\"试验验证\"]", "[\"FUNCTIONAL\",\"PART\",\"DOCUMENT\"]");
-        add(military, "MIL_DESIGN_FIX", "设计定型", "SafetyCertificateOutlined", "#52c41a", 5,
-                "[\"设计定型试验\",\"技术鉴定\",\"定型审查\"]", "[\"FUNCTIONAL\",\"PART\",\"DOCUMENT\"]");
-        add(military, "MIL_PROD_FIX", "生产定型", "RocketOutlined", "#eb2f96", 6,
-                "[\"生产工艺定型\",\"批量生产\",\"交付验收\"]", "[\"PART\",\"DOCUMENT\"]");
-        DEFAULT_STAGES_BY_INDUSTRY.put("MILITARY", military);
-
-        // 4. AUTOMOTIVE（汽车）
-        Map<String, StageTemplate> auto = new LinkedHashMap<>();
-        add(auto, "AUTO_CONCEPT", "概念设计", "BulbOutlined", "#722ed1", 1,
-                "[\"市场定位\",\"造型概念\",\"工程概念\"]", "[\"FUNCTIONAL\",\"DOCUMENT\"]");
-        add(auto, "AUTO_DEV", "开发验证", "ToolOutlined", "#13c2c2", 2,
-                "[\"详细设计\",\"样车制作\",\"性能验证\"]", "[\"FUNCTIONAL\",\"PART\",\"DOCUMENT\"]");
-        add(auto, "AUTO_PP", "生产准备", "SettingOutlined", "#fa8c16", 3,
-                "[\"工艺设计\",\"模具开发\",\"生产线建设\",\"试生产\"]", "[\"PART\",\"DOCUMENT\"]");
-        add(auto, "AUTO_SOP", "量产", "RocketOutlined", "#52c41a", 4,
-                "[\"批量生产\",\"质量控制\",\"供应链管理\"]", "[\"PART\",\"DOCUMENT\"]");
-        add(auto, "AUTO_LAUNCH", "上市", "ThunderboltOutlined", "#eb2f96", 5,
-                "[\"上市发布\",\"市场推广\",\"销售服务\"]", "[\"PART\",\"DOCUMENT\"]");
-        DEFAULT_STAGES_BY_INDUSTRY.put("AUTOMOTIVE", auto);
-    }
+    // 平台级默认阶段模板的播种已移入行业包（platform-base 三套通用方法论 + smart-hardware-ipd 的 IPD 六阶段），
+    // 由 IndustryPackBootstrap 在启动时安装；原先的静态 map 与 initPlatformDefaults() 一并退场。
+    // 本服务保留「读模板 + 克隆到租户」的职责。
 
     @Override
     public List<String> listPlatformIndustries() {
@@ -261,15 +175,4 @@ public class StageTemplateServiceImpl implements StageTemplateService {
         return mapper.selectByTenant(platformOid());
     }
 
-    private static void add(Map<String, StageTemplate> map, String code, String name, String icon, String color,
-                            int sortOrder, String defaultFolders, String managedObjectTypes) {
-        StageTemplate tmpl = new StageTemplate(code, name);
-        tmpl.setOid(UUID.randomUUID().toString());
-        tmpl.setIcon(icon);
-        tmpl.setColor(color);
-        tmpl.setSortOrder(sortOrder);
-        tmpl.setDefaultFolders(defaultFolders);
-        tmpl.setManagedObjectTypes(managedObjectTypes);
-        map.put(code, tmpl);
-    }
 }

@@ -1,0 +1,56 @@
+{
+  "note": "计量单位字典（按租户隔离：随本包在引导时装进每个选中的租户，各租户一份、互不可见；平台租户那份是母版）。搬迁自 UnitInitializer，数据逐字照搬未改动。换算口径：基准值 = 当前值 × factor + offset；基准单位的 baseUnitName 指向自己。幂等键 = (name, 租户)（本租户已有该 name 则跳过，不覆盖管理员后续的自定义修改；跨租户同名互不影响）。注意：JSON 里的 offset 对应库列 unit_shift（offset 是 PostgreSQL 保留字，故建表时改名）。",
+  "units": [
+    { "name": "ea",    "display": "个",  "quantityType": "DISCRETE",           "isSI": false, "baseUnitName": "ea", "factor": 1.0,                "offset": 0.0,              "sortOrder": 1,  "description": "离散计数基本单位（each）" },
+    { "name": "pcs",   "display": "件",  "quantityType": "DISCRETE",           "isSI": false, "baseUnitName": "ea", "factor": 1.0,                "offset": 0.0,              "sortOrder": 2,  "description": "件（pieces）" },
+    { "name": "set",   "display": "套",  "quantityType": "DISCRETE",           "isSI": false, "baseUnitName": "ea", "factor": 1.0,                "offset": 0.0,              "sortOrder": 3,  "description": "套（set）" },
+    { "name": "box",   "display": "盒",  "quantityType": "DISCRETE",           "isSI": false, "baseUnitName": "ea", "factor": 1.0,                "offset": 0.0,              "sortOrder": 4,  "description": "盒（box）" },
+    { "name": "pair",  "display": "对",  "quantityType": "DISCRETE",           "isSI": false, "baseUnitName": "ea", "factor": 1.0,                "offset": 0.0,              "sortOrder": 5,  "description": "对/双（pair）" },
+    { "name": "roll",  "display": "卷",  "quantityType": "DISCRETE",           "isSI": false, "baseUnitName": "ea", "factor": 1.0,                "offset": 0.0,              "sortOrder": 6,  "description": "卷（roll）" },
+    { "name": "sheet", "display": "张",  "quantityType": "DISCRETE",           "isSI": false, "baseUnitName": "ea", "factor": 1.0,                "offset": 0.0,              "sortOrder": 7,  "description": "张（sheet）" },
+
+    { "name": "kg",    "display": "kg",  "quantityType": "MASS",               "isSI": true,  "baseUnitName": "kg", "factor": 1.0,                "offset": 0.0,              "sortOrder": 10, "description": "千克（SI 基本单位）" },
+    { "name": "g",     "display": "g",   "quantityType": "MASS",               "isSI": false, "baseUnitName": "kg", "factor": 0.001,              "offset": 0.0,              "sortOrder": 11, "description": "克，1 g = 0.001 kg" },
+    { "name": "mg",    "display": "mg",  "quantityType": "MASS",               "isSI": false, "baseUnitName": "kg", "factor": 1e-6,               "offset": 0.0,              "sortOrder": 12, "description": "毫克，1 mg = 1e-6 kg" },
+    { "name": "t",     "display": "t",   "quantityType": "MASS",               "isSI": false, "baseUnitName": "kg", "factor": 1000.0,             "offset": 0.0,              "sortOrder": 13, "description": "吨，1 t = 1000 kg" },
+    { "name": "lb",    "display": "lb",  "quantityType": "MASS",               "isSI": false, "baseUnitName": "kg", "factor": 0.45359237,         "offset": 0.0,              "sortOrder": 14, "description": "磅，1 lb = 0.45359237 kg" },
+    { "name": "oz",    "display": "oz",  "quantityType": "MASS",               "isSI": false, "baseUnitName": "kg", "factor": 0.028349523125,     "offset": 0.0,              "sortOrder": 15, "description": "盎司，1 oz = 0.028349523125 kg" },
+
+    { "name": "m",     "display": "m",   "quantityType": "LENGTH",             "isSI": true,  "baseUnitName": "m",  "factor": 1.0,                "offset": 0.0,              "sortOrder": 20, "description": "米（SI 基本单位）" },
+    { "name": "cm",    "display": "cm",  "quantityType": "LENGTH",             "isSI": false, "baseUnitName": "m",  "factor": 0.01,               "offset": 0.0,              "sortOrder": 21, "description": "厘米，1 cm = 0.01 m" },
+    { "name": "mm",    "display": "mm",  "quantityType": "LENGTH",             "isSI": false, "baseUnitName": "m",  "factor": 0.001,              "offset": 0.0,              "sortOrder": 22, "description": "毫米，1 mm = 0.001 m" },
+    { "name": "um",    "display": "μm",  "quantityType": "LENGTH",             "isSI": false, "baseUnitName": "m",  "factor": 1e-6,               "offset": 0.0,              "sortOrder": 23, "description": "微米，1 μm = 1e-6 m" },
+    { "name": "km",    "display": "km",  "quantityType": "LENGTH",             "isSI": false, "baseUnitName": "m",  "factor": 1000.0,             "offset": 0.0,              "sortOrder": 24, "description": "千米，1 km = 1000 m" },
+    { "name": "in",    "display": "in",  "quantityType": "LENGTH",             "isSI": false, "baseUnitName": "m",  "factor": 0.0254,             "offset": 0.0,              "sortOrder": 25, "description": "英寸，1 in = 0.0254 m" },
+    { "name": "ft",    "display": "ft",  "quantityType": "LENGTH",             "isSI": false, "baseUnitName": "m",  "factor": 0.3048,             "offset": 0.0,              "sortOrder": 26, "description": "英尺，1 ft = 0.3048 m" },
+    { "name": "yd",    "display": "yd",  "quantityType": "LENGTH",             "isSI": false, "baseUnitName": "m",  "factor": 0.9144,             "offset": 0.0,              "sortOrder": 27, "description": "码，1 yd = 0.9144 m" },
+
+    { "name": "m²",    "display": "m²",  "quantityType": "AREA",               "isSI": true,  "baseUnitName": "m²", "factor": 1.0,                "offset": 0.0,              "sortOrder": 30, "description": "平方米（SI 导出单位）" },
+    { "name": "cm²",   "display": "cm²", "quantityType": "AREA",               "isSI": false, "baseUnitName": "m²", "factor": 1e-4,               "offset": 0.0,              "sortOrder": 31, "description": "平方厘米，1 cm² = 1e-4 m²" },
+    { "name": "mm²",   "display": "mm²", "quantityType": "AREA",               "isSI": false, "baseUnitName": "m²", "factor": 1e-6,               "offset": 0.0,              "sortOrder": 32, "description": "平方毫米，1 mm² = 1e-6 m²" },
+    { "name": "ft²",   "display": "ft²", "quantityType": "AREA",               "isSI": false, "baseUnitName": "m²", "factor": 0.09290304,         "offset": 0.0,              "sortOrder": 33, "description": "平方英尺，1 ft² = 0.09290304 m²" },
+
+    { "name": "m³",    "display": "m³",  "quantityType": "VOLUME",             "isSI": true,  "baseUnitName": "m³", "factor": 1.0,                "offset": 0.0,              "sortOrder": 40, "description": "立方米（SI 导出单位）" },
+    { "name": "L",     "display": "L",   "quantityType": "VOLUME",             "isSI": false, "baseUnitName": "m³", "factor": 0.001,              "offset": 0.0,              "sortOrder": 41, "description": "升，1 L = 0.001 m³" },
+    { "name": "mL",    "display": "mL",  "quantityType": "VOLUME",             "isSI": false, "baseUnitName": "m³", "factor": 1e-6,               "offset": 0.0,              "sortOrder": 42, "description": "毫升，1 mL = 1e-6 m³" },
+    { "name": "gal",   "display": "gal", "quantityType": "VOLUME",             "isSI": false, "baseUnitName": "m³", "factor": 0.003785411784,     "offset": 0.0,              "sortOrder": 43, "description": "加仑（美制），1 gal = 0.003785411784 m³" },
+
+    { "name": "s",     "display": "s",   "quantityType": "TIME",               "isSI": true,  "baseUnitName": "s",  "factor": 1.0,                "offset": 0.0,              "sortOrder": 50, "description": "秒（SI 基本单位）" },
+    { "name": "min",   "display": "min", "quantityType": "TIME",               "isSI": false, "baseUnitName": "s",  "factor": 60.0,               "offset": 0.0,              "sortOrder": 51, "description": "分钟，1 min = 60 s" },
+    { "name": "h",     "display": "h",   "quantityType": "TIME",               "isSI": false, "baseUnitName": "s",  "factor": 3600.0,             "offset": 0.0,              "sortOrder": 52, "description": "小时，1 h = 3600 s" },
+    { "name": "day",   "display": "d",   "quantityType": "TIME",               "isSI": false, "baseUnitName": "s",  "factor": 86400.0,            "offset": 0.0,              "sortOrder": 53, "description": "天，1 d = 86400 s" },
+
+    { "name": "K",     "display": "K",   "quantityType": "TEMPERATURE",        "isSI": true,  "baseUnitName": "K",  "factor": 1.0,                "offset": 0.0,              "sortOrder": 60, "description": "开尔文（SI 基本单位）" },
+    { "name": "°C",    "display": "°C",  "quantityType": "TEMPERATURE",        "isSI": false, "baseUnitName": "K",  "factor": 1.0,                "offset": 273.15,           "sortOrder": 61, "description": "摄氏度，K = °C + 273.15" },
+    { "name": "°F",    "display": "°F",  "quantityType": "TEMPERATURE",        "isSI": false, "baseUnitName": "K",  "factor": 0.5555555555555556, "offset": 255.3722222222222, "sortOrder": 62, "description": "华氏度，K = °F × 5/9 + 255.3722" },
+
+    { "name": "rad",   "display": "rad", "quantityType": "ANGLE",              "isSI": true,  "baseUnitName": "rad", "factor": 1.0,               "offset": 0.0,              "sortOrder": 70, "description": "弧度（SI 导出单位）" },
+    { "name": "deg",   "display": "°",   "quantityType": "ANGLE",              "isSI": false, "baseUnitName": "rad", "factor": 0.017453292519943295, "offset": 0.0,           "sortOrder": 71, "description": "度，1° = π/180 rad" },
+
+    { "name": "A",     "display": "A",   "quantityType": "ELECTRIC_CURRENT",   "isSI": true,  "baseUnitName": "A",  "factor": 1.0,                "offset": 0.0,              "sortOrder": 80, "description": "安培（SI 基本单位）" },
+    { "name": "mA",    "display": "mA",  "quantityType": "ELECTRIC_CURRENT",   "isSI": false, "baseUnitName": "A",  "factor": 0.001,              "offset": 0.0,              "sortOrder": 81, "description": "毫安，1 mA = 0.001 A" },
+    { "name": "uA",    "display": "μA",  "quantityType": "ELECTRIC_CURRENT",   "isSI": false, "baseUnitName": "A",  "factor": 1e-6,               "offset": 0.0,              "sortOrder": 82, "description": "微安，1 μA = 1e-6 A" },
+
+    { "name": "cd",    "display": "cd",  "quantityType": "LUMINOUS_INTENSITY", "isSI": true,  "baseUnitName": "cd", "factor": 1.0,                "offset": 0.0,              "sortOrder": 90, "description": "坎德拉（SI 基本单位）" }
+  ]
+}

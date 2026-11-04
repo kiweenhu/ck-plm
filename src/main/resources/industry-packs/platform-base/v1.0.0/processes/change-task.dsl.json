@@ -1,0 +1,77 @@
+{
+  "key": "change-task",
+  "name": "变更任务流程",
+  "displayName": "变更任务（ECT）流程",
+  "category": "变更管理",
+  "description": "变更任务（ECT）流程：任务下达 → 执行变更任务（办理人由 taskAssignee 变量指定）→ 完成。本流程是变更通告（change-notice）的子流程：一张通告按任务清单 1:M 拉起 N 个实例，全部实例结束后通告才继续，因此通告的关闭天然等待所有任务完成。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "change-task",
+      "name": "变更任务流程",
+      "displayName": "变更任务（ECT）流程",
+      "category": "变更管理",
+      "description": "变更任务（ECT）流程：任务下达 → 执行变更任务 → 完成。办理人取自流程变量 taskAssignee。",
+      "notifications": {
+        "channel": "CK_PLM"
+      }
+    },
+    "variables": [
+      {
+        "name": "taskAssignee",
+        "label": "任务办理人",
+        "type": "STRING",
+        "visible": true,
+        "readonly": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：任务下达",
+        "type": "START",
+        "description": "由变更通告派发时拉起（子流程），业务标识 = 变更任务 oid；任务办理人由 taskAssignee 变量带入",
+        "initiator": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "task_1",
+        "name": "执行变更任务",
+        "description": "按任务说明完成受影响对象的修订 / 新建 / 作废并提交验收",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "VARIABLE",
+          "variableName": "taskAssignee"
+        }
+      },
+      {
+        "id": "end_1",
+        "name": "结束：任务完成",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "start_1",
+        "target": "task_1",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "task_1",
+        "target": "end_1",
+        "kind": "NORMAL"
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": { "x": 296, "y": -8 },
+        "task_1": { "x": 240, "y": 66 },
+        "end_1": { "x": 296, "y": 156 }
+      }
+    }
+  }
+}

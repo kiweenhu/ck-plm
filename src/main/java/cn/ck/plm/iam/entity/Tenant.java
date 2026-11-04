@@ -20,6 +20,13 @@ import java.time.LocalDateTime;
  * </pre>
  *
  * <p>注册时状态为 PENDING，管理员审核通过后激活为 ACTIVE 并自动创建管理员账号。
+ *
+ * <h3>行业初始化（首登引导）</h3>
+ * 与 {@code status} 正交的第二条线：{@code onboardingState}（{@code PENDING → DONE}）。
+ * 审核通过只代表"租户被允许使用"，还没回答"用它来做什么" —— 行业与研发方法论正是这个答案，
+ * 由租户管理员首次登录时在引导页选定（{@link #industryCode} / {@link #devMethodCode}），
+ * 完成后记下 {@link #industryPackCode} 与 {@link #onboardedAt}。
+ * <b>行业一经选定不可改</b>（要换只能新开租户）—— 因为分类树、阶段、编号规则都会按它落地。
  */
 public class Tenant extends BaseEntity {
 
@@ -37,6 +44,11 @@ public class Tenant extends BaseEntity {
     public static final String STATUS_REJECTED = "REJECTED";
     public static final String STATUS_SUSPENDED = "SUSPENDED";
     public static final String STATUS_DISABLED  = "DISABLED";
+
+    /** 行业初始化状态：待引导 */
+    public static final String ONBOARDING_PENDING = "PENDING";
+    /** 行业初始化状态：已完成 */
+    public static final String ONBOARDING_DONE = "DONE";
 
     /** 租户标识（唯一，如 T001 / acme-corp） */
     private String tenantId;
@@ -75,11 +87,36 @@ public class Tenant extends BaseEntity {
     /** 驳回原因 */
     private String rejectReason;
 
+    // ==== 行业与内嵌方法论（行业包引导） ====
+
+    /** 选定行业，如 SMART_HARDWARE / ELECTRONICS_HITECH */
+    private String industryCode;
+
+    /** 选定研发方法论，如 IPD / IPD_LITE（板级四阶段） */
+    private String devMethodCode;
+
+    /** 实际采用的变体包，如 {@code smart-hardware-ipd@1.0.0} */
+    private String industryPackCode;
+
+    /** 引导状态：PENDING（待初始化）/ DONE */
+    private String onboardingState;
+
+    /** 完成引导的时间 */
+    private LocalDateTime onboardedAt;
+
+    /** 完成引导的人（租户管理员） */
+    private String onboardedBy;
+
+    /** 企业画像答案（JSON，驱动推荐与参数建议） */
+    private String profileJson;
+
     // ==================== 构造方法 ====================
 
     public Tenant() {
         super();
         this.status = STATUS_PENDING;
+        // 与库里的 NOT NULL DEFAULT 'PENDING' 保持一致：显式赋值，避免插入 NULL
+        this.onboardingState = ONBOARDING_PENDING;
     }
 
     // ==================== 便捷方法 ====================
@@ -87,6 +124,9 @@ public class Tenant extends BaseEntity {
     public boolean isPending()  { return STATUS_PENDING.equals(status); }
     public boolean isActive()   { return STATUS_ACTIVE.equals(status); }
     public boolean isRejected() { return STATUS_REJECTED.equals(status); }
+
+    /** 行业初始化是否已完成（未完成时，成员首登会被引导页拦下） */
+    public boolean isOnboarded() { return ONBOARDING_DONE.equals(onboardingState); }
 
     // ==================== Getter / Setter ====================
 
@@ -123,8 +163,30 @@ public class Tenant extends BaseEntity {
     public String getRejectReason() { return rejectReason; }
     public void setRejectReason(String rejectReason) { this.rejectReason = rejectReason; }
 
+    public String getIndustryCode() { return industryCode; }
+    public void setIndustryCode(String industryCode) { this.industryCode = industryCode; }
+
+    public String getDevMethodCode() { return devMethodCode; }
+    public void setDevMethodCode(String devMethodCode) { this.devMethodCode = devMethodCode; }
+
+    public String getIndustryPackCode() { return industryPackCode; }
+    public void setIndustryPackCode(String industryPackCode) { this.industryPackCode = industryPackCode; }
+
+    public String getOnboardingState() { return onboardingState; }
+    public void setOnboardingState(String onboardingState) { this.onboardingState = onboardingState; }
+
+    public LocalDateTime getOnboardedAt() { return onboardedAt; }
+    public void setOnboardedAt(LocalDateTime onboardedAt) { this.onboardedAt = onboardedAt; }
+
+    public String getOnboardedBy() { return onboardedBy; }
+    public void setOnboardedBy(String onboardedBy) { this.onboardedBy = onboardedBy; }
+
+    public String getProfileJson() { return profileJson; }
+    public void setProfileJson(String profileJson) { this.profileJson = profileJson; }
+
     @Override
     public String toString() {
-        return "Tenant{tenantId='" + tenantId + "', name='" + name + "', status='" + status + "'}";
+        return "Tenant{tenantId='" + tenantId + "', name='" + name + "', status='" + status
+                + "', onboarding='" + onboardingState + "'}";
     }
 }

@@ -106,7 +106,7 @@ function flow(): FlowDsl {
   } as FlowDsl
 }
 
-describe('任务表单：结构随流程自动派生', () => {
+describe('节点表单：结构随流程自动派生', () => {
   it('下游的审批 / 会签活动自动入表，按流程顺序排列', () => {
     const model = buildAssigneeSetupModel(flow(), 'set_1')
     expect(model.slots.map((s) => s.nodeId)).toEqual(['appr_1', 'cs_1'])
@@ -316,11 +316,25 @@ describe('设计期校验', () => {
     expect(issue?.level).toBe(IssueLevel.WARNING)
   })
 
-  it('设置活动没有直接跟在「开始」之后 → 提醒（它之前的活动人员不会被指派）', () => {
+  it('设置活动之前有不由发起人办理的活动 → 错误（那些活动的承办人会落空）', () => {
     const issue = validateDsl(flow()).issues.find((i) => i.code === IssueCode.SETUP_NOT_FIRST)
     expect(issue).toBeDefined()
     expect(issue?.nodeId).toBe('set_1')
-    expect(issue?.level).toBe(IssueLevel.WARNING)
+    // 2026-10-13 起由 WARNING 升为 ERROR：承办人落空没有运行期补救手段
+    expect(issue?.level).toBe(IssueLevel.ERROR)
+    expect(issue?.message).toContain('前置评审')
+  })
+
+  it('设置活动之前的活动全部由发起人办理 → 不报（原「必须紧跟开始」的结论并不必然成立）', () => {
+    const dsl = flow()
+    const patched: FlowDsl = {
+      ...dsl,
+      nodes: dsl.nodes.map((n) => (n.id === 'pre_1'
+        ? { ...n, assignee: { strategy: AssigneeStrategy.INITIATOR } }
+        : n)),
+    }
+    const issue = validateDsl(patched).issues.find((i) => i.code === IssueCode.SETUP_NOT_FIRST)
+    expect(issue).toBeUndefined()
   })
 
   it('多个设置活动且互相不重叠 → 提醒（只是多设了几个，不构成冲突）', () => {

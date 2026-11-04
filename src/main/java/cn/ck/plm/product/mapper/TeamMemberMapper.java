@@ -25,4 +25,12 @@ public interface TeamMemberMapper {
     List<TeamMember> selectByTeamOid(String teamOid);
 
     boolean existsByTeamAndUser(String teamOid, String userId);
+
+    /**
+     * 某用户（username）加入的全部团队 oid。
+     *
+     * <p>2026-10-12 新增：产品系列 / 型号的列表按团队可见性过滤用 ——
+     * "不在系列/型号的团队中，就不该看到对应记录"（用户要求）。
+     */
+    List<String> selectTeamOidsByUserId(String userId);
 }

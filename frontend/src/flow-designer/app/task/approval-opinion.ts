@@ -2,14 +2,14 @@
  * 「审批意见」表单模型 —— 审批活动的固定表单（纯函数，零 DOM，可单测）。
  *
  * <p><b>为什么需要它</b>：审批活动天然是「同意 / 驳回」两条路由，但审批节点此前没有专属模板，
- * 运行期落回通用审批表单 —— 事能办，但看不出<b>驳回会退到哪里</b>。而"驳回目标"
- * （发起人 / 上一步 / 指定节点）是设计期就定好的（见设计器节点属性「路由」一组），
+ * 运行期落回通用审批表单 —— 事能办，但看不出<b>驳回会退到哪里</b>。
  * 经办人在点下"驳回"之前必须知道这一下会把流程退回哪儿。
  *
- * <p><b>驳回目标不是让经办人挑的</b>：它是流程设计的一部分，运行期只负责如实显示。
- * 让经办人临时选，等于把设计决定搬到执行时刻，流程就不可预期了。
+ * <p><b>退回哪不是让经办人挑的</b>：它是流程设计的一部分（2026-10-13 起统一为画布上的
+ * 「驳回」出边 —— 属性面板不再有「允许驳回 / 驳回目标」，见 app/panel/node-schemas.ts），
+ * 运行期只负责如实显示。让经办人临时选，等于把设计决定搬到执行时刻，流程就不可预期了。
  *
- * <p>与「设置审批人」同一套路：节点上已声明的东西（是否允许驳回、驳回到哪、意见是否必填）
+ * <p>与「设置审批人」同一套路：节点上读得出的事实（有没有驳回出边、意见是否必填）
  * 由本文件解释，表单只做渲染与收集 —— 规则集中在这里才钉得住。
  */
 
@@ -35,29 +35,24 @@ export interface ApprovalOpinionModel {
 }
 
 /**
- * 「允许驳回」开启时写入的默认配置 —— 与设计器面板 `object-toggle` 的 `objectTemplate` 一致
- * （见 app/panel/node-schemas.ts 的 `objectTemplate`）。
+ * 「怎么算可驳回」—— 2026-10-13 起：**画了「驳回」出边就是可驳回**。
  *
- * <p>只用于"目标 / 是否必填"的缺省补齐，<b>不参与"是否允许驳回"的判断</b>：
- * 那个判断看的是节点上有没有 reject 声明（见 {@link allowsReject}）。
- */
-const DEFAULT_REJECT = {
-  enabled: true,
-  target: 'PREVIOUS' as RejectTarget,
-  commentRequired: true,
-}
-
-/**
- * 设计器里带「允许驳回」开关的节点类型。
+ * <p>驳回已统一为"画线"：设计器属性面板里不再有「允许驳回 / 驳回目标」（见
+ * app/panel/node-schemas.ts 的 `rejectFields()`），节点上也不会再有 `reject` 声明，
+ * 退回哪就等于那条出边指向哪。所以判断依据只剩一件事 ——
+ * 从本节点出发有没有一条 {@code route: 'REJECT'} 的出边。
  *
- * <p>只有这两种审批节点有该开关（见 app/panel/node-schemas.ts：`rejectFields()` 只挂在
- * APPROVAL 与 COUNTERSIGN_APPROVAL 上）。其它节点（办理节点等）本来就没有这个配置项，
- * 运行期不能因为"节点上没写"就把驳回拿走。
+ * <p>两个"仍算可驳回"的例外，都是为了不让历史数据挡住办事：
+ * <ul>
+ *   <li><b>老实例</b>：部署时刻的 DSL 里可能还带着 reject 声明（那会儿走的是运行期跳转），
+ *       后端 {@code reject/RejectRouter} 也还认它 —— 照着放行；</li>
+ *   <li><b>取不到节点</b>（老实例、DSL 缺失）：保持允许，不让数据问题把驳回拿走。</li>
+ * </ul>
+ *
+ * <p>顺带一个行为修正：<b>办理节点（TASK）不再无条件可驳回</b>。以前"节点上没有开关
+ * 就默认允许"，于是办理节点也能点驳回，而它的驳回会照走默认出边继续往前 ——
+ * 界面写着"驳回"、流程实际往前走，是最难被发现的一类错。
  */
-const REJECT_CONFIGURABLE: ReadonlySet<string> = new Set([
-  NodeType.APPROVAL,
-  NodeType.COUNTERSIGN_APPROVAL,
-])
 
 /**
  * 会"产生要人办的任务"的节点类型（审批 / 会签 / 办理 / 设置审批人）。
@@ -133,13 +128,12 @@ export function buildApprovalOpinionModel(
   nodeId: string,
 ): ApprovalOpinionModel {
   const node = nodeOf(dsl, nodeId)
-  // 有声明就用声明的：它可能**没有 target**（那是"驳回走图上的驳回边"的形态，
-  // 此时不能拿默认的"上一步"去覆盖 —— 那会把图上画的路径说成运行期跳转）
-  const reject = node?.reject
-    ? { commentRequired: DEFAULT_REJECT.commentRequired, ...node.reject }
-    : { ...DEFAULT_REJECT }
+  // 老实例可能还带着 reject 声明（那时驳回=运行期按目标跳转），有就用它；
+  // 新流程没有这个字段 —— "退回哪"由那条驳回出边决定，文案走"按图上路径"分支。
+  // 刻意**不**预填 target：拿默认的"上一步"去覆盖，会把图上画的路径说成运行期跳转。
+  const reject = node?.reject ?? {}
   return {
-    allowReject: allowsReject(node),
+    allowReject: allowsReject(dsl, nodeId, node),
     rejectTargetText: rejectTargetText(dsl, reject.target, reject.targetNodeId, nodeId),
     commentRequiredOnApprove: node?.commentRequired === true,
     // 默认必填，只有显式关掉才放开（「驳回必须说明理由」是默认口径）
@@ -148,28 +142,22 @@ export function buildApprovalOpinionModel(
 }
 
 /**
- * 该活动是否允许驳回 —— <b>以设计器的节点声明为准</b>。
- *
- * <p>这里曾经把"节点上没写 reject"当成"允许驳回"（默认 enabled=true），
- * 于是设计器里关掉「允许驳回」的审批节点，办理页照样摆着「驳回」—— 开关形同虚设。
- * 关键在于"没写"并不等于"没配"：设计器的「允许驳回」是 object-toggle，
- * <b>关掉时会把整个 reject 键删掉</b>（见 app/panel/FieldRenderer.vue）——
- * 所以"没有 reject 键"就是"不允许驳回"。
- * （编译层照 DSL 原样写：有 reject 键就写进 BPMN 的 {@code ckplm:reject}，
- * 于是运行期也能读到同一份声明，见后端 {@code reject/RejectRouter}。）
- *
- * <p>三种情形分开处理：
- * <ul>
- *   <li><b>审批类节点</b>：看有没有 reject 声明（存量数据里若只有 target 没写 enabled，按允许处理，不误伤）；</li>
- *   <li><b>非审批类节点</b>（办理节点等）：设计器里根本没有这个开关，保持允许；</li>
- *   <li><b>取不到节点</b>（老实例 / DSL 缺失）：保持允许，不让数据问题挡住办事。</li>
- * </ul>
+ * 该活动是否允许驳回（口径见文件头那段说明，这里只做判定）。
  */
-function allowsReject(node: RoutedNode | null): boolean {
-  if (!node || !REJECT_CONFIGURABLE.has(node.type)) {
+function allowsReject(dsl: FlowDsl | null | undefined, nodeId: string, node: RoutedNode | null): boolean {
+  // ① 画了「驳回」出边 → 可驳回（统一为画线之后的正规做法）
+  const hasRejectEdge = (dsl?.edges ?? []).some(
+    (edge) => edge.source === nodeId && edge.route === EdgeRoute.REJECT,
+  )
+  if (hasRejectEdge) {
     return true
   }
-  return !!node.reject && node.reject.enabled !== false
+  // ② 老实例：节点上还带着 reject 声明 → 后端 RejectRouter 仍按它跳转，放行
+  if (node?.reject) {
+    return node.reject.enabled !== false
+  }
+  // ③ 取不到节点（老实例 / DSL 缺失）：不让数据问题把驳回拿走
+  return !node
 }
 
 /**

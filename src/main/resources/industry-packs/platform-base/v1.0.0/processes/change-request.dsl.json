@@ -1,0 +1,348 @@
+{
+  "key": "change-request",
+  "name": "变更请求流程",
+  "displayName": "变更请求（ECR）流程",
+  "category": "变更管理",
+  "description": "变更请求（ECR）主流程，按六段变更流程收敛到前三段：提出（分级）→ 影响分析会签 → 评审决策。审签路径由「变更分级」分流：快速 = 单人审批（发起即进「评审中」）；标准 = 影响分析会签 + 产品经理（单人）审批；重大 = 影响分析会签 + CCB 会签。参与人一律由发起人在「设置评审人」里指定，不依赖角色配置。单据状态由流程里的「设置状态」服务节点推进（change.setRequestStatus）：影响分析中 → 评审中 → 已受理 / 已否决；退回、关闭、取消仍由人在单据上操作。派发执行（ECN）与验证放行不在本流程内 —— 变更通告在「变更通告」页按需建，仍是独立的审批与执行链路。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "change-request",
+      "name": "变更请求流程",
+      "displayName": "变更请求（ECR）流程",
+      "category": "变更管理",
+      "description": "提出（分级）→ 影响分析会签 → 评审决策；审签路径按变更分级分流。结论自动回写 ECR。",
+      "notifications": {
+        "channel": "CK_PLM"
+      }
+    },
+    "variables": [],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：提出变更请求",
+        "type": "START",
+        "description": "由变更请求（ECR）的「发起评审」动作拉起，业务标识 = ECR oid；分级与影响评估随流程变量带入",
+        "initiator": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "gw_level",
+        "name": "按变更分级分流",
+        "type": "EXCLUSIVE_GATEWAY",
+        "description": "快速变更只需一次单人对口审批，不必占会签的人力；标准与重大都要先过跨职能影响分析"
+      },
+      {
+        "id": "setup_quick",
+        "name": "设置快速通道审批人",
+        "type": "SET_ASSIGNEE",
+        "description": "快速变更只有这一个审批环节，发起人在此指定审批人",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "approve_quick",
+        "name": "快速审批",
+        "type": "APPROVAL",
+        "description": "单人对口审批：确认改动范围与风险都在可接受范围内；意见必填",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true,
+        "formRef": "CKPLM_APPROVAL_OPINION"
+      },
+      {
+        "id": "setup_multi",
+        "name": "设置会签参与人",
+        "type": "SET_ASSIGNEE",
+        "description": "标准 / 重大变更需要跨职能参与：在此指定影响分析会签成员（重大时再指定 CCB 成员）",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "cs_impact",
+        "name": "影响分析会签",
+        "type": "COUNTERSIGN_APPROVAL",
+        "description": "硬件 / 工艺 / 质量 / 采购等按各自视角确认受影响对象、认证与客户影响、在制库存处置；全票通过才进入决策，任一反对即驳回",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100
+        },
+        "commentRequired": true,
+        "formRef": "change-request-impact"
+      },
+      {
+        "id": "gw_ccb",
+        "name": "是否需要 CCB 决策",
+        "type": "EXCLUSIVE_GATEWAY",
+        "description": "重大变更（影响已发布产品 / 认证 / 客户合同）必须由 CCB 集体决策；标准变更由产品经理收口"
+      },
+      {
+        "id": "cs_ccb",
+        "name": "CCB 决策会签",
+        "type": "COUNTERSIGN_APPROVAL",
+        "description": "变更控制委员会集体决策：批准、有条件批准、驳回；表单带变更请求与影响分析结论，按九项考量逐项给结论，条件与生效方式（含是否开 ECN）随决策留痕，全票通过方为批准",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100
+        },
+        "commentRequired": true,
+        "formRef": "change-request-ccb"
+      },
+      {
+        "id": "set_analyzing",
+        "name": "进入影响分析",
+        "type": "SERVICE",
+        "description": "单据状态置为「影响分析中」（ANALYZING）：标准 / 重大变更的跨职能影响评估在此阶段完成",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "ANALYZING"
+        }
+      },
+      {
+        "id": "set_reviewing_quick",
+        "name": "进入评审",
+        "type": "SERVICE",
+        "description": "快速变更不经过影响分析，发起后直接进入「评审中」（REVIEWING）",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "REVIEWING"
+        }
+      },
+      {
+        "id": "set_reviewing",
+        "name": "影响分析通过：进入评审",
+        "type": "SERVICE",
+        "description": "影响分析会签全票通过后，单据状态置为「评审中」（REVIEWING），进入决策环节",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "REVIEWING"
+        }
+      },
+      {
+        "id": "set_accepted",
+        "name": "评审通过：已受理",
+        "type": "SERVICE",
+        "description": "单据状态置为「已受理」（ACCEPTED）",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "ACCEPTED"
+        }
+      },
+      {
+        "id": "set_rejected",
+        "name": "评审驳回：已否决",
+        "type": "SERVICE",
+        "description": "单据状态置为「已否决」（REJECTED）",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "REJECTED"
+        }
+      },
+      {
+        "id": "end_accepted",
+        "name": "结束：评审通过",
+        "type": "END"
+      },
+      {
+        "id": "end_rejected",
+        "name": "结束：评审驳回",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "start_1",
+        "target": "gw_level",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "gw_level",
+        "target": "set_reviewing_quick",
+        "kind": "CONDITION",
+        "name": "快速",
+        "condition": {
+          "mode": "FIELD",
+          "fieldKey": "changeLevel",
+          "operator": "EQ",
+          "value": "QUICK",
+          "valueType": "STRING"
+        }
+      },
+      {
+        "id": "e3",
+        "source": "gw_level",
+        "target": "set_analyzing",
+        "kind": "DEFAULT",
+        "name": "标准 / 重大"
+      },
+      {
+        "id": "e14",
+        "source": "set_reviewing_quick",
+        "target": "setup_quick",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e15",
+        "source": "set_analyzing",
+        "target": "setup_multi",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e4",
+        "source": "setup_quick",
+        "target": "approve_quick",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e5",
+        "source": "setup_multi",
+        "target": "cs_impact",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e6",
+        "source": "approve_quick",
+        "target": "set_accepted",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e7",
+        "source": "approve_quick",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT",
+        "anchor": { "source": "right", "target": "left" },
+        "waypoints": [
+          { "x": 540, "y": 502 },
+          { "x": 540, "y": 942 }
+        ]
+      },
+      {
+        "id": "e8",
+        "source": "cs_impact",
+        "target": "set_reviewing",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e9",
+        "source": "cs_impact",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT",
+        "anchor": { "source": "right", "target": "right" },
+        "waypoints": [
+          { "x": 765, "y": 502 },
+          { "x": 765, "y": 942 }
+        ]
+      },
+      {
+        "id": "e10",
+        "source": "gw_ccb",
+        "target": "cs_ccb",
+        "kind": "CONDITION",
+        "name": "重大",
+        "condition": {
+          "mode": "FIELD",
+          "fieldKey": "changeLevel",
+          "operator": "EQ",
+          "value": "MAJOR",
+          "valueType": "STRING"
+        }
+      },
+      {
+        "id": "e11",
+        "source": "gw_ccb",
+        "target": "set_accepted",
+        "kind": "DEFAULT",
+        "name": "标准",
+        "anchor": { "source": "left", "target": "left" },
+        "waypoints": [
+          { "x": 600, "y": 719 },
+          { "x": 600, "y": 770 },
+          { "x": 160, "y": 770 },
+          { "x": 160, "y": 942 }
+        ]
+      },
+      {
+        "id": "e12",
+        "source": "cs_ccb",
+        "target": "set_accepted",
+        "kind": "NORMAL",
+        "name": "批准",
+        "route": "PASS",
+        "anchor": { "source": "left", "target": "right" },
+        "waypoints": [
+          { "x": 510, "y": 832 },
+          { "x": 510, "y": 942 }
+        ]
+      },
+      {
+        "id": "e13",
+        "source": "cs_ccb",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e16",
+        "source": "set_reviewing",
+        "target": "gw_ccb",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e17",
+        "source": "set_accepted",
+        "target": "end_accepted",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e18",
+        "source": "set_rejected",
+        "target": "end_rejected",
+        "kind": "NORMAL"
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": { "x": 445, "y": 40 },
+        "gw_level": { "x": 441, "y": 150 },
+        "set_reviewing_quick": { "x": 209, "y": 260 },
+        "set_analyzing": { "x": 569, "y": 260 },
+        "setup_quick": { "x": 209, "y": 370 },
+        "setup_multi": { "x": 569, "y": 370 },
+        "approve_quick": { "x": 209, "y": 480 },
+        "cs_impact": { "x": 569, "y": 480 },
+        "set_reviewing": { "x": 569, "y": 590 },
+        "gw_ccb": { "x": 621, "y": 700 },
+        "cs_ccb": { "x": 569, "y": 810 },
+        "set_accepted": { "x": 209, "y": 920 },
+        "set_rejected": { "x": 569, "y": 920 },
+        "end_accepted": { "x": 265, "y": 1030 },
+        "end_rejected": { "x": 625, "y": 1030 }
+      }
+    }
+  }
+}

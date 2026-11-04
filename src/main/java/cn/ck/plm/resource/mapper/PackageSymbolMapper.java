@@ -34,13 +34,14 @@ public interface PackageSymbolMapper {
                                                        @Param("typeCode") String typeCode,
                                                        @Param("keyword") String keyword);
 
-    /** 查询资源子库归属阶段 oid（ck_stage，owner_type='LINE'） */
-    String selectResourceStageOid(@Param("ownerOid") String ownerOid);
+    /** 查询资源子库归属阶段 oid（ck_stage，owner_type='LINE'；**限本租户**） */
+    String selectResourceStageOid(@Param("ownerOid") String ownerOid, @Param("tenantOid") String tenantOid);
 
-    /** 兜底补建资源子库归属阶段 */
+    /** 兜底补建资源子库归属阶段（{@code tenant_oid} 显式写目标租户） */
     int insertResourceStage(@Param("oid") String oid,
                             @Param("code") String code,
                             @Param("name") String name,
                             @Param("ownerOid") String ownerOid,
+                            @Param("tenantOid") String tenantOid,
                             @Param("now") LocalDateTime now);
 }

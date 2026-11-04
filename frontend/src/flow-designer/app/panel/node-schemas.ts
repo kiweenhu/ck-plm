@@ -33,12 +33,15 @@ import {
   serviceIdsHiddenFromServiceList,
   serviceParamsAllFromList,
   UNARY_OPERATORS,
+  UNSUPPORTED_ASSIGNEE_STRATEGIES,
   ValueType,
   defaultFormCodeOfNode,
   defaultNodeSize,
   fixedFormCodeOfNode,
   findFormTemplate,
   formTemplatesFor,
+  isCountersignNode,
+  type AssigneeStrategy as AssigneeStrategyT,
   type FlowDsl,
   type FlowEdge,
   type NodeType as NodeTypeT,
@@ -50,6 +53,19 @@ import type { FieldSpec, OptionItem, SchemaContext } from './field-schema'
 /** 把 `{CODE: '中文'}` 常量映射转为下拉选项 */
 function optionsOf(labelMap: Record<string, string>): OptionItem[] {
   return Object.entries(labelMap).map(([value, label]) => ({ value, label }))
+}
+
+/**
+ * 审批人策略下拉 —— 运行期未实现的策略保留在列表里（存量模板里可能有这个值，
+ * 删掉选项会让下拉框显示空白），但标签上直说，别让人配完才发现跑不起来。
+ * 判定清单见 `UNSUPPORTED_ASSIGNEE_STRATEGIES`（与校验、编译层同一份）。
+ */
+function assigneeStrategyOptions(): OptionItem[] {
+  return optionsOf(ASSIGNEE_STRATEGY_LABEL).map((option) =>
+    UNSUPPORTED_ASSIGNEE_STRATEGIES.includes(option.value as AssigneeStrategyT)
+      ? { ...option, label: `${option.label}（运行期未实现）` }
+      : option,
+  )
 }
 
 /**
@@ -103,7 +119,7 @@ export function assigneeFields(prefix: string, group = '参与人'): FieldSpec[]
       key: `${prefix}.strategy`,
       label: '策略',
       control: 'select',
-      options: optionsOf(ASSIGNEE_STRATEGY_LABEL),
+      options: assigneeStrategyOptions(),
       required: true,
       group,
       // 与「设置审批人」的分工：本活动若位于设置活动下游，运行期的人由发起人在设置页
@@ -230,77 +246,44 @@ const deadlineFields = (): FieldSpec[] => [
 ]
 
 /**
- * 路由配置。
+ * 驳回的路由说明 —— **不再是配置项**（2026-10-13 用户口径：统一为画线）。
  *
- * <p>审批节点天然有「通过 / 驳回」两条路由，因此这里不是「要不要配」，
- * 而是「这两条路由各自通向哪里」：
+ * <p>原先这里挂着「允许驳回 + 驳回目标（上一步 / 发起人 / 指定节点）+ 驳回意见必填」，
+ * 与"从节点连一条路由为「驳回」的出边"是同一件事的两套表达：两者并存时既报
+ * {@code EDGE_ROUTE_CONFLICT}（"驳回到底听谁的"说不清），又让用户以为画了线就完事。
+ * 现在只保留一种做法 —— <b>画线</b>：
  * <ul>
- *   <li>通过 —— 是画布上连出的出边，故此处只做说明；</li>
- *   <li>驳回 —— 目标的三种语义（发起人 / 上一步 / 指定节点）在此配置，
- *       且默认要求填写驳回意见。</li>
+ *   <li>画了「驳回」出边 = 该节点可驳回（办理页出现「驳回」）；</li>
+ *   <li>没画 = 只能同意；</li>
+ *   <li>驳回意见默认必填（驳回总得说个理由）。</li>
  * </ul>
+ * 走线的另一个好处正是当初引入它的原因：驳回之后可以先走自动化节点
+ * （设置状态、撤回电子签名…）再回到某个活动。
  *
- * <p><b>驳回不走画布上的连线</b>：它由运行期按这里的目标直接退回（见后端 reject/RejectRouter）——
- * 「上一步」要按实际走过的历史判定，「发起人」没有对应的流程节点，
- * 两者都画不成回退线。所以下面这三个字段是驳回的<b>唯一</b>依据，别指望画布上再连一条。
+ * <p>老模板里残留的 {@code reject} 配置由加载归一清掉
+ * （见 dsl-core/schema.ts 的 {@code stripLegacyReject}）；依赖旧配置驳回的老流程，
+ * 需要补一条驳回出边。
  */
 const rejectFields = (): FieldSpec[] => [
   {
     key: 'hint-route',
-    label: '路由',
+    label: '驳回',
     control: 'hint',
     group: '路由',
-    help: '本节点有两条路由：「通过」＝ 画布上从节点下方圆点连出的出边；'
-      + '「驳回」有两种做法 —— ① 下方「允许驳回 + 驳回目标」：一步跳回某个位置；'
-      + '② 从节点再连一条出边、在它的属性里把「路由」设为「驳回」：'
-      + '驳回后可以先走自动化节点（设置状态、撤回电子签名…）再回来。两者二选一。',
-  },
-  {
-    key: 'reject',
-    label: '允许驳回',
-    control: 'object-toggle',
-    group: '路由',
-    // **不预填 target**：此前这里默认写死 PREVIOUS，于是"勾了允许驳回、其实什么都没选"的节点
-    // 看起来是配好的（目标＝上一步），校验也永远不会报 —— 运行期才把经办人挡住。
-    // 不预填之后，这个状态就是可见的「驳回目标」为空，校验据此拦保存（REJECT_NO_TARGET）。
-    objectTemplate: () => ({ enabled: true, commentRequired: true }),
-    help: '开启后必须二选一：在下方选「驳回目标」，或从节点连一条路由为「驳回」的出边 —— '
-      + '否则驳回之后无处可去（保存时会被校验拦下）。默认还要求驳回时填写意见。关掉后办理页不再出现「驳回」',
-  },
-  {
-    key: 'reject.target',
-    label: '驳回目标',
-    control: 'select',
-    options: optionsOf(REJECT_TARGET_LABEL),
-    group: '路由',
-    // 已经画了「驳回」出边就不再问"退回哪"：那是同一条路的另一种走法（走图），
-    // 两者并存会让"驳回到底听谁的"说不清 —— 见 validate 的 EDGE_ROUTE_CONFLICT
-    visibleIf: (t, ctx) => has(t, 'reject') && !hasRejectRouteFrom(ctx, t),
-    // 隐藏即清空：从"配目标"改成"画驳回边"时，不留下一个看不见却仍然生效的目标
-    clearOnHide: true,
-    help: '退回到哪里：「上一步」= 实际走过的上一个办理节点（不是画布上的前驱）；'
-      + '「发起人」= 由发起人办理的那个节点（流程里没有这种节点时会报错）；「指定节点」= 指定一个审批/办理活动。'
-      + '若驳回后还要先做自动化动作（设置状态、撤回电子签名…），请改用「驳回」出边（见上方「路由」）',
-  },
-  {
-    key: 'reject.targetNodeId',
-    label: '目标节点',
-    control: 'node-ref',
-    group: '路由',
-    help: '「指定节点」时需要给出回退到哪个节点（只能是审批/办理活动，且不能是本节点）',
-    visibleIf: (t, ctx) => has(t, 'reject') && is(t, 'reject.target', 'NODE') && !hasRejectRouteFrom(ctx, t),
-    clearOnHide: true,
-  },
-  {
-    key: 'reject.commentRequired',
-    label: '驳回时意见必填',
-    control: 'switch',
-    group: '路由',
-    help: '默认开启 —— 驳回必须说明理由',
-    visibleIf: (t) => has(t, 'reject'),
+    help: '「通过」＝从节点下方圆点连出的默认出边。'
+      + '「驳回」＝再连一条出边，在【连线】的属性面板里把「路由」设为「驳回」——'
+      + '这样驳回后可以先走自动化节点（设置状态、撤回电子签名…）再回到某个活动。'
+      + '没画驳回边＝该节点只能同意。',
   },
 ]
 
+/**
+ * 「绑定业务对象」字段组 —— 现在**只给开始节点用**（2026-10-13 用户口径）。
+ *
+ * <p>审批 / 会签 / 办理节点已不再提供这个开关：业务对象在流程发起时就绑定了
+ * （businessObjectSet），各节点再声明一次既没人读、又要用户多配一遍。
+ * 老模板里残留的 binding 由加载归一清掉（见 dsl-core/schema.ts 的 stripNodeBinding）。
+ */
 const bindingFields = (): FieldSpec[] => [
   {
     key: 'binding',
@@ -341,10 +324,12 @@ const bindingFields = (): FieldSpec[] => [
  * 「设置流程参与者」）：字段预先填好并**置为只读**。这类表单的结构由代码生成，
  * 不存在"换一个"的余地 —— 让它可改只可能改错。
  *
- * <p>还有一类"按节点才固定"的情形：审批节点选了「会签」模式时，它的表单必须是会签表单
- * （要显示通过规则与别人的办理情况）—— 此时下拉里只留那一项，免得用户选了却被编译层盖掉。
+ * <p><b>会签不是固定项（2026-10-13 修正）</b>：内置「会签」只是**默认**（由
+ * {@link defaultFormCodeOfNode} 兜底），会签节点与企业一样可以换用别的会签表单 ——
+ * 因为会签人常常还需要看到"在评审什么"（业务申请信息），固定的内置表只能显示规则与各人意见。
+ * 原先这里把会签锁成只读，导致行业会签表配不上、下拉里还会直接回显 code。
  */
-const formAndCommentFields = (options: { fixed?: boolean } = {}): FieldSpec[] => [
+const formAndCommentFields = (options: { fixed?: boolean; help?: string } = {}): FieldSpec[] => [
   {
     key: 'formRef',
     label: '节点表单',
@@ -358,16 +343,18 @@ const formAndCommentFields = (options: { fixed?: boolean } = {}): FieldSpec[] =>
       if (pinned) {
         return [{ value: pinned, label: `${findFormTemplate(pinned)?.label ?? pinned}（固定）` }]
       }
-      return taskFormOptionsOf(node.type)
+      return taskFormOptionsOfNode(node)
     },
     disabled: options.fixed === true,
     // DSL 里还没写过值时显示"实际会用的那张"：老模板的节点可能没写过 formRef，
     // 否则会呈现一个空框（用户不知道编译出来到底是什么表单）
     defaultWhenEmpty: (ctx) =>
       defaultFormCodeOfNode(ctx.target as { type?: NodeTypeT; approvalMode?: string }),
-    help: options.fixed
-      ? '本活动使用内置固定表单，不可修改（编译时按活动类型写入 formKey）'
-      : '留空＝按活动类型用内置默认表单（审批 → 审批意见）；要换一张，先在「业务配置 → 流程表单」里建好表单，再在这里选中它',
+    // 节点可以说自己的话（开始节点的口径与"审批/会签默认表单"完全不同，见 NODE_FIELDS[START]）
+    help: options.help
+      ?? (options.fixed
+        ? '本活动使用内置固定表单，不可修改（编译时按活动类型写入 formKey）'
+        : '留空＝按活动类型用内置默认表单（审批 → 审批意见；会签 → 会签）；要换一张，先在「业务配置 → 流程表单」里建好表单，再在这里选中它'),
   },
 ]
 
@@ -411,8 +398,15 @@ export function serviceParamFields(): FieldSpec[] {
   return fields
 }
 
-/** 表单模板下拉项（按节点类型过滤；内置模板在名字上标出） */
-function taskFormOptionsOf(nodeType?: NodeTypeT): OptionItem[] {
+/**
+ * 表单模板下拉项（按**节点**过滤；内置模板在名字上标出）。
+ *
+ * <p>为什么按节点而不是只按类型：会签在 DSL 里有两种表达 —— 专门的「会签审批」节点，
+ * 以及「审批节点 + 审批模式=会签」。后者若只按 `node.type` 过滤，就一个会签模板都列不出来，
+ * 企业/行业想给会签换一张表（如「元器件认证会签」）无从下手（2026-10-13 修）。
+ */
+function taskFormOptionsOfNode(node: { type?: NodeTypeT; approvalMode?: string }): OptionItem[] {
+  const nodeType = isCountersignNode(node) ? NodeType.COUNTERSIGN_APPROVAL : node.type
   return formTemplatesFor(nodeType).map((template) => ({
     value: template.code,
     label: template.builtin ? `${template.label}（内置）` : template.label,
@@ -432,7 +426,15 @@ const NODE_FIELDS: Record<NodeTypeT, FieldSpec[]> = {
   [NodeType.START]: [
     ...assigneeFields('initiator', '发起人'),
     { key: 'autoStart', label: '允许自动发起', control: 'switch', help: '由对象事件触发，无需人工发起' },
-    ...formAndCommentFields(),
+    // 开始节点的表单 = 发起时填的申请单，**只在"发起"这个没有任务的场景里用** ——
+    // 下拉里的模板并非都能在这儿填（2026-10-13 用户踩过：配了认证表，发起页整段显示不出来）
+    ...formAndCommentFields({
+      help: '发起时要填的申请单（在发起弹框里点「发起」后弹出填写）。'
+        + '下拉里的模板不是都能在这儿用：发起时还没有任务实例，「元器件认证申请」「技术评审申请单」'
+        + '这类靠任务带出关联器件 / 流程变量的表单，发起页无法填写（届时会给出说明）；'
+        + '请选「元器件引入申请单」「阶段门决策申请单」这类不依赖任务上下文的申请单。'
+        + '留空＝发起时不填表单（弹框只确认业务对象）。',
+    }),
     ...bindingFields(),
   ],
   [NodeType.END]: [
@@ -466,25 +468,19 @@ const NODE_FIELDS: Record<NodeTypeT, FieldSpec[]> = {
       ],
     },
   ],
-  // 设置审批人：由发起人（owner）执行，固定是流程启动后的第一个节点。
+  // 设置审批人：由发起人（owner）执行，通常就是流程启动后的第一个节点
+  //（不作硬约束 —— 它之前的活动只要都是"由发起人办理"即可，否则校验报错）。
   // 「要设置哪些活动」刻意不在这里维护 —— 下游所有审批 / 会签 / 办理活动
-  // 都会自动进入它的任务表单（见 app/task/assignee-setup.ts）
+  // 都会自动进入它的节点表单（见 app/task/assignee-setup.ts）
   [NodeType.SET_ASSIGNEE]: [
     {
       key: 'hint-setup',
       label: '设置审批人',
       control: 'hint',
       group: '基本',
-      help: '由流程发起人（owner）执行，固定是流程启动后的第一个节点：一次性指定后面所有人工活动的人员。任务表单会自动列出下游所有审批 / 会签 / 办理活动，无需在此维护清单。',
+      help: '由流程发起人（owner）执行，通常放在流程启动后的第一个节点：一次性指定后面所有人工活动的人员。它只管下游 —— 若它之前还有活动，那些活动必须自己声明由谁办（如"由发起人办理"），否则校验会拦下（承办人会落空）。节点表单会自动列出下游所有审批 / 会签 / 办理活动，无需在此维护清单。',
     },
     ...assigneeFields('assignee', '执行人'),
-    {
-      key: 'setup-preview',
-      label: '任务表单',
-      control: 'assignee-setup-preview',
-      group: '任务表单',
-      help: '产品内置的固定表单：列出下游所有审批 / 会签 / 办理活动，每项在该活动指定的角色成员中挑人（会签至少两人）。',
-    },
     { key: 'commentRequired', label: '必填说明', control: 'switch' },
     ...deadlineFields(),
     // 本活动的表单是内置固定的（设置流程参与者）：默认填好、不可修改
@@ -544,58 +540,30 @@ const NODE_FIELDS: Record<NodeTypeT, FieldSpec[]> = {
     { key: 'commentRequired', label: '必填审批意见', control: 'switch' },
     ...deadlineFields(),
     ...rejectFields(),
-    // 会签有专属的内置表单（显示通过规则 + 每个人的办理情况），同样预填并置为只读
-    ...formAndCommentFields({ fixed: true }),
+    // 会签表单：默认是内置「会签」（显示通过规则 + 每个人的办理情况），**可换** ——
+    // 行业会签表往往还要展示业务申请信息（如「元器件认证会签」）
+    ...formAndCommentFields(),
   ],
   [NodeType.APPROVAL]: [
     ...assigneeFields('assignee'),
+    /**
+     * 审批模式 —— **固定「单签」，不再让编辑者选**（2026-10-13 用户口径）。
+     *
+     * <p>原先这里是下拉（单签 / 串行 / 并行全员 / 或签 / 会签），并由它决定「会签规则」
+     * 那组字段是否出现 —— 于是"审批"这个活动承担了两种完全不同的语义（一人拍板 vs 多人多票）。
+     * 现在把它固定为单签：**需要多人集体决策就用「会签审批」节点**（它自带通过规则、
+     * 每个人的办理情况，且表单可换）。这样"审批"与"会签"各自只有一种语义，编辑者不会选错。
+     *
+     * <p>老模板里配过其它模式的节点，由加载归一统一成单签（见 dsl-core/schema.ts 的
+     * {@code normalizeApprovalMode}）。
+     */
     {
-      key: 'approvalMode',
+      key: 'hint-approval-mode',
       label: '审批模式',
-      control: 'select',
-      options: optionsOf(APPROVAL_MODE_LABEL),
-      required: true,
-      help: '会签需额外配置通过规则',
-    },
-    {
-      key: 'passRule.mode',
-      label: '通过规则',
-      control: 'select',
-      options: optionsOf(PASS_RULE_MODE_LABEL),
-      group: '会签规则',
-      required: true,
-      visibleIf: (t) => is(t, 'approvalMode', 'COUNTERSIGN'),
-    },
-    {
-      key: 'passRule.percent',
-      label: '通过比例',
-      control: 'number',
-      min: MIN_PASS_PERCENT,
-      max: 100,
-      suffix: '%',
-      group: '会签规则',
-      help: `不得低于 ${MIN_PASS_PERCENT}%`,
-      visibleIf: (t) => is(t, 'approvalMode', 'COUNTERSIGN') && is(t, 'passRule.mode', 'PERCENT'),
-      clearOnHide: true,
-    },
-    {
-      key: 'passRule.count',
-      label: '必须票数',
-      control: 'number',
-      min: 1,
-      suffix: '票',
-      group: '会签规则',
-      visibleIf: (t) => is(t, 'approvalMode', 'COUNTERSIGN') && is(t, 'passRule.mode', 'COUNT'),
-      clearOnHide: true,
-    },
-    {
-      key: 'passRule.abstain',
-      label: '弃权处理',
-      control: 'select',
-      options: optionsOf(ABSTAIN_POLICY_LABEL),
-      group: '会签规则',
-      visibleIf: (t) => is(t, 'approvalMode', 'COUNTERSIGN') && !is(t, 'passRule.mode', 'VETO'),
-      clearOnHide: true,
+      control: 'hint',
+      group: '审批规则',
+      help: '固定为「单签」：一人办理即通过。需要多人集体决策（会签）请改用「会签审批」节点 ——'
+        + '它有通过规则与每个人的办理情况。',
     },
     { key: 'commentRequired', label: '必填审批意见', control: 'switch' },
     ...deadlineFields(),
@@ -604,20 +572,36 @@ const NODE_FIELDS: Record<NodeTypeT, FieldSpec[]> = {
     // 不是固定 —— 企业可以在「业务配置 → 流程表单」里加自己的审批表单，再在这里换。
     // 只有「审批 + 会签模式」例外：那张会签表单是语义固定（下拉里会自动收窄到它）。
     ...formAndCommentFields(),
-    ...bindingFields(),
+    // 「绑定业务对象」不在这里（2026-10-13 用户口径）：审批 / 会签 / 办理节点不再声明
+    // 主对象与必填字段 —— 业务对象在流程发起时就绑定了（businessObjectSet），
+    // 各节点再声明一次既没人读、又要用户多配一遍。老模板里残留的 binding 由加载归一清掉
+    // （见 dsl-core/schema.ts 的 stripNodeBinding）
   ],
   [NodeType.TASK]: [
     ...assigneeFields('assignee', '办理人'),
+    // 交付件：先问"要不要"，要的话多选**业务对象类型**（2026-10-13 用户口径）。
+    // 原先是一个「交付物」输入框，让人手填文档类型 code —— 手填既容易错，
+    // 又说不清这件交付件是挂在哪个业务对象上的
     {
-      key: 'deliverables',
-      label: '交付物',
-      control: 'tags',
+      key: 'needDeliverables',
+      label: '是否需要交付件',
+      control: 'switch',
       group: '数据',
-      placeholder: '输入文档类型 code 后回车',
+      help: '需要时，下面指明交付件挂在哪些业务对象类型上',
+    },
+    {
+      key: 'deliverableObjectTypes',
+      label: '业务对象类型',
+      control: 'multi-select',
+      optionsSource: 'OBJECT_TYPES',
+      group: '数据',
+      placeholder: '选择业务对象类型（可多选）',
+      visibleIf: (t) => is(t, 'needDeliverables', true),
+      // 关掉开关时一并清空：不留下一个看不见却仍然生效的绑定
+      clearOnHide: true,
     },
     ...deadlineFields(),
     ...formAndCommentFields(),
-    ...bindingFields(),
   ],
   [NodeType.SERVICE]: [
     /**
@@ -737,6 +721,51 @@ const NODE_FIELDS: Record<NodeTypeT, FieldSpec[]> = {
       label: '变量映射',
       control: 'key-value',
       help: '子流程变量名 → 父流程表达式（如 ${ecrNo}）',
+    },
+    // 1:M 子流程：一张通告派生 N 个任务
+    {
+      key: 'multiInstance',
+      label: '多实例（1:M）',
+      control: 'object-toggle',
+      group: '多实例',
+      objectTemplate: () => ({ collection: '', elementVariable: 'item', sequential: false }),
+      help: '按集合变量逐个拉起独立的子流程实例，全部结束才继续 —— 用于「一张通告派生 N 个变更任务」',
+    },
+    {
+      key: 'multiInstance.collection',
+      label: '集合变量',
+      control: 'text',
+      group: '多实例',
+      required: true,
+      placeholder: 'changeTaskList',
+      visibleIf: (t) => has(t, 'multiInstance'),
+      help: '父流程里存放清单的变量名：只填名字，不要写 ${}',
+    },
+    {
+      key: 'multiInstance.elementVariable',
+      label: '元素变量',
+      control: 'text',
+      group: '多实例',
+      placeholder: 'item',
+      visibleIf: (t) => has(t, 'multiInstance'),
+      help: '每个实例取到的当前元素；业务 key 相对它取字段',
+    },
+    {
+      key: 'multiInstance.businessKey',
+      label: '业务 key 字段',
+      control: 'text',
+      group: '多实例',
+      placeholder: 'oid',
+      visibleIf: (t) => has(t, 'multiInstance'),
+      help: '元素上的字段名，编译为 ${元素变量.字段}；留空则子实例共用父流程业务 key',
+    },
+    {
+      key: 'multiInstance.sequential',
+      label: '串行执行',
+      control: 'switch',
+      group: '多实例',
+      visibleIf: (t) => has(t, 'multiInstance'),
+      help: '默认并行；并行会等待全部子实例结束后再往下走',
     },
   ],
   [NodeType.TIMER]: [
@@ -940,7 +969,8 @@ export function edgeFields(): FieldSpec[] {
       key: 'terminateSiblings',
       label: '终止同层分支',
       control: 'switch',
-      help: '触发后终止其余未完成的前驱分支',
+      help: '触发后终止其余未完成的前驱分支（仅并行 / 包容分支内有意义）；'
+        + '所在并行块必须有汇聚网关，否则运行期无法安全收口',
       visibleIf: (t) => is(t, 'kind', 'CONDITION'),
     },
     {

@@ -31,8 +31,9 @@ public interface StageTemplateService {
     /** 查询本租户指定行业的阶段模板（industry 为空返回全部） */
     List<StageTemplate> findAll(String industry);
 
-    /** 初始化平台级默认阶段模板（幂等） */
-    int initPlatformDefaults();
+    // 注：平台级默认阶段模板的播种已移入行业包
+    // （platform-base → stages.json 三套通用方法论；smart-hardware-ipd → stages.json IPD 六阶段），
+    // 由 IndustryPackBootstrap 在启动时安装。原 initPlatformDefaults() 与其静态 map 已退场。
 
     /** 租户克隆平台级模板到本租户（幂等：已存在同code的租户模板则跳过） */
     int cloneFromPlatform();

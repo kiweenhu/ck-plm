@@ -30,9 +30,11 @@ public interface PostgreSqlLifecycleTemplateMapper extends LifecycleTemplateMapp
             "VALUES (#{oid}, #{code}, #{name}, #{description}, #{active,jdbcType=BOOLEAN}, #{initialStateCode}, #{tenantOid}, #{creator}, #{createdAt,jdbcType=TIMESTAMP}, #{updater}, #{updatedAt,jdbcType=TIMESTAMP})")
     int insert(LifecycleTemplateMaster template);
 
+    // 2026-10-11 起按租户隔离：SET 不再写 tenant_oid —— 否则 SQL 含 tenant_oid 字样会使拦截器
+    // 整体跳过注入，WHERE code 变成跨租户更新。去掉后由拦截器追加 AND tenant_oid = 本租户。
     @Override
     @Update("UPDATE ck_lifecycle_template SET name = #{name}, description = #{description}, is_active = #{active,jdbcType=BOOLEAN}, " +
-            "initial_state_code = #{initialStateCode}, tenant_oid = #{tenantOid}, updater = #{updater}, updated_at = #{updatedAt,jdbcType=TIMESTAMP} WHERE code = #{code}")
+            "initial_state_code = #{initialStateCode}, updater = #{updater}, updated_at = #{updatedAt,jdbcType=TIMESTAMP} WHERE code = #{code}")
     int update(LifecycleTemplateMaster template);
 
     @Override
@@ -85,8 +87,8 @@ public interface PostgreSqlLifecycleTemplateMapper extends LifecycleTemplateMapp
     // ==================== 模板状态关联 ====================
 
     @Override
-    @Insert("INSERT INTO ck_lifecycle_template_state (oid, iteration_oid, status_code, status_display_name, sort_order) " +
-            "VALUES (#{oid}, #{iterationOid}, #{statusCode}, #{statusDisplayName}, #{sortOrder,jdbcType=INTEGER})")
+    @Insert("INSERT INTO ck_lifecycle_template_state (oid, iteration_oid, status_code, status_display_name, sort_order, revisable) " +
+            "VALUES (#{oid}, #{iterationOid}, #{statusCode}, #{statusDisplayName}, #{sortOrder,jdbcType=INTEGER}, #{revisable})")
     int insertStateRef(LifecycleTemplateStatusRef ref);
 
     @Override
@@ -94,16 +96,24 @@ public interface PostgreSqlLifecycleTemplateMapper extends LifecycleTemplateMapp
     int deleteStateRefsByIterationOid(@Param("iterationOid") String iterationOid);
 
     @Override
-    @Select("SELECT oid, iteration_oid, status_code, status_display_name, sort_order " +
+    @Select("SELECT oid, iteration_oid, status_code, status_display_name, sort_order, revisable " +
             "FROM ck_lifecycle_template_state WHERE iteration_oid = #{iterationOid} ORDER BY sort_order ASC")
     @Results(id = "stateRefResult", value = {
             @Result(property = "oid",               column = "oid"),
             @Result(property = "iterationOid",      column = "iteration_oid"),
             @Result(property = "statusCode",        column = "status_code"),
             @Result(property = "statusDisplayName", column = "status_display_name"),
-            @Result(property = "sortOrder",         column = "sort_order")
+            @Result(property = "sortOrder",         column = "sort_order"),
+            @Result(property = "revisable",         column = "revisable")
     })
     List<LifecycleTemplateStatusRef> selectStateRefsByIterationOid(@Param("iterationOid") String iterationOid);
+
+    @Override
+    @Update("UPDATE ck_lifecycle_template_state SET revisable = #{revisable} " +
+            "WHERE iteration_oid = #{iterationOid} AND status_code = #{statusCode}")
+    int updateStateRevisable(@Param("iterationOid") String iterationOid,
+                             @Param("statusCode") String statusCode,
+                             @Param("revisable") boolean revisable);
 
     // ==================== 模板流转规则 ====================
 

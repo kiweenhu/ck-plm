@@ -11,6 +11,7 @@
 import {
   ALLOWED_EXPRESSION_FUNCTIONS,
   ApprovalMode,
+  ASSIGNEE_STRATEGY_LABEL,
   AssigneeStrategy,
   ConditionMode,
   ConditionOperator,
@@ -26,10 +27,10 @@ import {
   NotifyChannel,
   OverdueAction,
   PassRuleMode,
-  RejectTarget,
   SETUP_COVERED_TYPES,
   TimerMode,
   UNARY_OPERATORS,
+  UNSUPPORTED_ASSIGNEE_STRATEGIES,
   type NodeType as NodeTypeT,
 } from './constants'
 import {
@@ -37,6 +38,7 @@ import {
   incomingEdges,
   outgoingEdges,
   reachableNodeIds,
+  setupControlledIds,
   setupNodes,
 } from './ops'
 import { builtinVariableOf, isBuiltinVariableName } from './builtin-variables'
@@ -44,13 +46,13 @@ import type {
   ApprovalNode,
   CountersignNode,
   SetAssigneeNode,
+  StartNode,
   AssigneeSpec,
   Condition,
   FlowDsl,
   FlowEdge,
   FlowNode,
   NotifyNode,
-  RejectSpec,
   ServiceNode,
   SubProcessNode,
   TaskNode,
@@ -168,6 +170,7 @@ export function validateDsl(dsl: FlowDsl, options?: ValidateOptions): Validation
   checkEdges(dsl, add)
   checkEdgeRoutes(dsl, add)
   checkSetup(dsl, add)
+  checkAssigneeStrategies(dsl, add)
   checkVariables(dsl, add)
   checkNotifications(dsl, add, options)
   dsl.nodes.forEach((node) => checkNode(dsl, node, add))
@@ -274,8 +277,10 @@ function checkCountersignAggregation(
  * <p>规则<b>天然跨节点</b>（覆盖范围要靠可达性推导），所以不放进按节点跑的
  * {@link checkNode}。
  *
- * <p>口径与业务一致：设置活动<b>固定是流程启动后的第一个节点</b>，下游的
- * 审批 / 会签 / 办理活动（{@link SETUP_COVERED_TYPES}）一律由它指定。
+ * <p>口径与业务一致：设置活动<b>管的是下游</b> —— 审批 / 会签 / 办理活动
+ * （{@link SETUP_COVERED_TYPES}）一律由它指定。它<b>通常</b>就是流程启动后的第一个节点，
+ * 但不作硬约束（2026-10-13 用户口径）：只要它**之前**的活动都是"由发起人办理"（承办人明确）
+ * 就没问题，否则报错拦下（见规则 ③）。
  * 因此这里没有"某活动声明了却没有设置活动"这类规则 ——
  * 需要人办的活动就那三类，覆盖与否由**类型 + 可达性**自动决定，不靠声明。
  */
@@ -308,7 +313,10 @@ function checkSetup(dsl: FlowDsl, add: Add): void {
   const coveredBy = new Map<string, string[]>()
   const targetsOf = new Map<string, string[]>()
   for (const setter of setters) {
-    const targets = covered.filter((node) => canReach(dsl, setter.id, node.id))
+    // 不沿「驳回」回边：驳回是回退，不代表"在它之后执行"（见 canReach 的说明）
+    const targets = covered.filter(
+      (node) => canReach(dsl, setter.id, node.id, { ignoreReject: true }),
+    )
     targetsOf.set(setter.id, targets.map((node) => node.id))
     for (const node of targets) {
       coveredBy.set(node.id, [...(coveredBy.get(node.id) ?? []), setter.name])
@@ -343,19 +351,32 @@ function checkSetup(dsl: FlowDsl, add: Add): void {
   }
 
   for (const setter of setters) {
-    // ③ 它必须是流程的第一步：否则在它之前执行的活动，人员还没被它定下来
-    const predecessors = incomingEdges(dsl, setter.id).map((edge) =>
-      dsl.nodes.find((node) => node.id === edge.source),
+    // ③ 它之前的活动必须"自己人办得了"（2026-10-13 按用户口径修正）：
+    //    原先一刀切要求"必须直接跟在「开始」之后"，结论并不必然成立 ——
+    //    在它之前执行的活动人员确实不会被它指派，但这些活动只要**全部由发起人办理**
+    //    （strategy=INITIATOR：承办人明确就是发起人），就不构成问题。
+    //    真正该拦的是：之前有"责任人不是发起人"的人力活动 —— 那个活动的承办人没有任何人
+    //    指定，任务建出来是空的（跑到那一步才发现"没人可办"）。所以：
+    //      · 上游（含间接）人力活动全部为发起人策略 → 不报；
+    //      · 只要有一个不是 → ERROR（拦保存），并在提示里点名是哪几个。
+    // 同样**不沿「驳回」回边**（2026-10-13 实测反馈）：一条"驳回回到上游填报节点"的边，
+    // 会让那条路径上的审批节点**反过来**变成"可达设置审批人"，于是被误判成"它之前的活动"
+    // —— 用户画完驳回边就存不了盘。驳回是回退，不代表执行先后。
+    const upstream = dsl.nodes.filter(
+      (node) => node.id !== setter.id && canReach(dsl, node.id, setter.id, { ignoreReject: true }),
     )
-    const rightAfterStart = predecessors.length === 1 && predecessors[0]?.type === NodeType.START
-    if (!rightAfterStart) {
+    const offenders = upstream.filter((node) =>
+      SETUP_COVERED_TYPES.includes(node.type)
+      && node.assignee?.strategy !== AssigneeStrategy.INITIATOR)
+    if (offenders.length > 0) {
       add({
         code: IssueCode.SETUP_NOT_FIRST,
-        level: IssueLevel.WARNING,
+        level: IssueLevel.ERROR,
         nodeId: setter.id,
         message:
-          `「${setter.name}」应直接跟在「开始」之后` +
-          '（它是流程启动后的第一个节点）：在它之前执行的活动，人员不会被它指派',
+          `「${setter.name}」之前有不由发起人办理的活动（${offenders.map((n) => `「${n.name}」`).join('、')}）：` +
+          '它们的人员不会被「设置审批人」指定，承办人会落空。' +
+          '把它们改为「由发起人办理」，或把「设置审批人」移到它们之前',
       })
     }
 
@@ -367,7 +388,68 @@ function checkSetup(dsl: FlowDsl, add: Add): void {
         code: IssueCode.SETUP_NO_TARGET,
         level: IssueLevel.WARNING,
         nodeId: setter.id,
-        message: `「${setter.name}」下游没有任何审批 / 会签 / 办理活动（它的任务表单会是空的）`,
+        message: `「${setter.name}」下游没有任何审批 / 会签 / 办理活动（它的节点表单会是空的）`,
+      })
+    }
+  }
+}
+
+// ==================== 审批人策略的运行期可用性 ====================
+
+/** 该节点"声明承办人"的那一处（与编译层输出 assignee 的位置一一对应） */
+function declaredAssigneeOf(node: FlowNode): { spec?: AssigneeSpec; label: string } {
+  switch (node.type) {
+    case NodeType.START:
+      return { spec: (node as StartNode).initiator, label: '发起人' }
+    case NodeType.SET_ASSIGNEE:
+      return { spec: (node as SetAssigneeNode).assignee, label: '执行人' }
+    case NodeType.APPROVAL:
+    case NodeType.COUNTERSIGN_APPROVAL:
+      return { spec: (node as ApprovalNode).assignee, label: '审批人' }
+    case NodeType.TASK:
+      return { spec: (node as TaskNode).assignee, label: '办理人' }
+    default:
+      return { spec: undefined, label: '' }
+  }
+}
+
+/**
+ * 运行期未实现的审批人策略 —— 选了它，任务建不出来（清单见 {@link UNSUPPORTED_ASSIGNEE_STRATEGIES}）。
+ *
+ * <p>不是"指派不到人"的软问题：这类策略的产物会引用一个没人写入的变量，
+ * 而 Flowable 解析不到标识符是**抛异常**，任务创建失败会把上一步的办理一起回滚 ——
+ * 用户看到的是"点同意报错 / 流程卡死"，且从界面上完全看不出原因。
+ *
+ * <p>当前清单是<b>空的</b>（两个"由组织解析"的策略都已落地），这条规则留着当护栏：
+ * 新增策略而运行期没跟上时，把 code 加进清单即可拦住。
+ *
+ * <p>例外：**被「设置审批人」覆盖**的活动不拦 —— 那里的人员由发起人在设置页指定，
+ * 策略只作候选范围的声明，编译层不会输出那个表达式（拦它会把跑得通的流程判死）。
+ */
+function checkAssigneeStrategies(dsl: FlowDsl, add: Add): void {
+  if (UNSUPPORTED_ASSIGNEE_STRATEGIES.length === 0) {
+    return
+  }
+  const controlled = setupControlledIds(dsl)
+  for (const node of dsl.nodes) {
+    if (controlled.has(node.id)) {
+      continue
+    }
+    const { spec, label } = declaredAssigneeOf(node)
+    for (const candidate of [spec, spec?.fallback]) {
+      if (!candidate || !UNSUPPORTED_ASSIGNEE_STRATEGIES.includes(candidate.strategy)) {
+        continue
+      }
+      add({
+        code: IssueCode.ASSIGNEE_STRATEGY_UNSUPPORTED,
+        level: IssueLevel.ERROR,
+        nodeId: node.id,
+        message:
+          `节点「${node.name}」的${label}策略「${ASSIGNEE_STRATEGY_LABEL[candidate.strategy]}」运行期未实现：` +
+          '放行会写出一个引用空变量的产物 —— Flowable 解析不到标识符是抛异常，' +
+          '任务建不出来，上一步的办理也会一起回滚（流程卡死）。' +
+          '请改用已实现的策略（发起人上级 / 部门主管 / 指定角色 / 指定用户），' +
+          '或把该活动放到「设置审批人」下游、由发起人在设置页指定人员',
       })
     }
   }
@@ -533,7 +615,6 @@ function checkEdgeRoutes(dsl: FlowDsl, add: Add): void {
     }
     const routed = outgoing.filter((edge) => !!edge.route)
     const isApproval = node.type === NodeType.APPROVAL || node.type === NodeType.COUNTERSIGN_APPROVAL
-    const rejectEnabled = (node as { reject?: { enabled?: boolean } }).reject?.enabled === true
 
     if (routed.length > 0 && !isApproval) {
       add({
@@ -573,28 +654,12 @@ function checkEdgeRoutes(dsl: FlowDsl, add: Add): void {
       }
     }
 
-    const hasRejectRoute = routed.some((edge) => edge.route === EdgeRoute.REJECT)
-    const rejectTarget = (node as { reject?: { target?: string } }).reject?.target
-    if (hasRejectRoute && !rejectEnabled) {
-      add({
-        code: IssueCode.EDGE_ROUTE_WITHOUT_REJECT,
-        level: IssueLevel.ERROR,
-        nodeId: node.id,
-        message: `节点「${node.name}」画了「驳回」路由，但节点没有开启「允许驳回」—— 这条边永远走不到；`
-          + '请开启「允许驳回」，或删掉这条出边',
-      })
-    }
-    if (hasRejectRoute && rejectTarget) {
-      add({
-        code: IssueCode.EDGE_ROUTE_CONFLICT,
-        level: IssueLevel.ERROR,
-        nodeId: node.id,
-        message: `节点「${node.name}」既画了「驳回」路由、又配了「驳回目标」：两者是同一件事的两种做法`
-          + '（走图 vs 一步跳回），请二选一 —— 要"驳回后先做自动化动作"就保留驳回路由并清空「驳回目标」',
-      })
-    }
-    // 「允许驳回但无处可去」（REJECT_NO_TARGET）由 checkRejectTarget 判定 —— 那里与出边无关，
-    // 没有出边的孤立方块也报；此处只负责"出边声明"相关的几条
+    // 画了「驳回」出边就是"可驳回"（2026-10-13 用户口径：驳回统一为画线）。
+    // 节点上不再有「允许驳回 / 驳回目标」这类配置，因此下面两条判定一并退场：
+    //   · EDGE_ROUTE_WITHOUT_REJECT（画了线却没开开关）—— 开关本身没了；
+    //   · EDGE_ROUTE_CONFLICT（画了线又配了目标）—— 目标字段本身没了。
+    // 老模板里残留的 reject 配置在加载时就被清掉（见 schema.ts 的 stripLegacyReject），
+    // 所以这里不必再防御"两套机制并存"。
     if (routed.length > 0 && !routed.some((edge) => edge.route === EdgeRoute.PASS)) {
       add({
         code: IssueCode.EDGE_ROUTE_NO_PASS,
@@ -733,8 +798,99 @@ function parallelBranchNodes(dsl: FlowDsl, startId: string, forkId: string): Set
   return result
 }
 
+/** 能开出并行分支的网关（分叉） */
+function isBranchGateway(node: FlowNode | undefined, dsl: FlowDsl): boolean {
+  if (!node) {
+    return false
+  }
+  if (node.type !== NodeType.PARALLEL_GATEWAY && node.type !== NodeType.INCLUSIVE_GATEWAY) {
+    return false
+  }
+  return outgoingEdges(dsl, node.id).length >= 2
+}
+
+/**
+ * 并行 / 包容分支的<b>作用域</b>：从每个分叉网关的下游一路标记，遇到同层汇聚网关就停在那里。
+ *
+ * <p>为什么要算这个，而不是只判断"出边是不是网关发的"：终止同层分支的开关在面板上对
+ * <b>任意条件边</b>可见，而实际使用时经常挂在分支内部的审批节点出边上
+ * （"这一支批完就先收口"）。只看源节点类型会把这种正确配置判成没意义。
+ *
+ * <p>没有显式汇聚网关的流程（并行分支各自走到结束）也应当算在块内 —— 所以标记会一直
+ * 延伸到结束 / 汇聚点，而不是要求必须找到 join。
+ */
+function parallelScopeOf(dsl: FlowDsl): Set<string> {
+  const scope = new Set<string>()
+  const forks = dsl.nodes.filter((node) => isBranchGateway(node, dsl))
+  for (const fork of forks) {
+    const queue = outgoingEdges(dsl, fork.id).map((edge) => edge.target)
+    const seen = new Set<string>()
+    while (queue.length > 0) {
+      const id = queue.shift()
+      if (id === undefined || seen.has(id)) {
+        continue
+      }
+      seen.add(id)
+      const node = dsl.nodes.find((item) => item.id === id)
+      if (!node) {
+        continue
+      }
+      scope.add(id)
+      // 汇聚网关是这一层的出口：它自己算块内，但不再往深处走
+      //（否则会把汇聚之后的整条主干都标成"分支内"，开关就永远不报错了）
+      const isJoin =
+        (node.type === NodeType.PARALLEL_GATEWAY || node.type === NodeType.INCLUSIVE_GATEWAY) &&
+        incomingEdges(dsl, id).length >= 2
+      if (isJoin) {
+        continue
+      }
+      // 内层分叉：它自己的作用域由外层循环标记，这里不重复深入
+      if (isBranchGateway(node, dsl)) {
+        continue
+      }
+      if (node.type === NodeType.END) {
+        continue
+      }
+      for (const edge of outgoingEdges(dsl, id)) {
+        queue.push(edge.target)
+      }
+    }
+  }
+  return scope
+}
+
+/**
+ * 「终止同层分支」只对并行 / 包容分支内的连线有意义。
+ *
+ * <p>它表达的是"这一支先到，就收掉同层其它还在走的支路"—— 没有并行结构就没有可收的分支。
+ * 勾在别处不会报错、也不会打断流程，但那个开关什么都不会做，所以报 WARNING 说清楚
+ * （属"配了没效果"，不是"配了一定炸"，不该拦保存）。
+ *
+ * @param inParallelScope {@link parallelScopeOf} 的结果，见 {@link checkEdges} 里只算一次的原因
+ */
+function checkTerminateSiblings(
+  edge: FlowEdge,
+  inParallelScope: Set<string>,
+  add: Add,
+): void {
+  if (!edge.terminateSiblings || inParallelScope.has(edge.target)) {
+    return
+  }
+  add({
+    code: IssueCode.TERMINATE_OUTSIDE_BRANCH,
+    level: IssueLevel.WARNING,
+    edgeId: edge.id,
+    nodeId: edge.source,
+    message:
+      `连线「${edge.name ?? edge.id}」勾了「终止同层分支」，但它不在并行 / 包容分支内：` +
+      '没有同层分支可终止，这个开关不会生效',
+  })
+}
+
 function checkEdges(dsl: FlowDsl, add: Add): void {
   const nodeIds = new Set(dsl.nodes.map((n) => n.id))
+  // 并行作用域只算一次：每条边都重算的话是 O(E×N)，模板一大就白花时间
+  const inParallelScope = parallelScopeOf(dsl)
   for (const edge of dsl.edges) {
     if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
       add({
@@ -746,6 +902,7 @@ function checkEdges(dsl: FlowDsl, add: Add): void {
     }
     checkCondition(edge, add)
     checkDefaultBranchEdge(dsl, edge, add)
+    checkTerminateSiblings(edge, inParallelScope, add)
   }
 
   for (const node of dsl.nodes) {
@@ -999,117 +1156,14 @@ function checkNotifications(dsl: FlowDsl, add: Add, options?: ValidateOptions): 
 // ==================== 节点业务规则 ====================
 
 /**
- * 驳回目标的可用性 —— 把"配了也一定跑不通"的组合在设计期拦下。
+ * 驳回目标的可用性校验 —— **已退场**（2026-10-13 用户口径：驳回统一为画线）。
  *
- * <p>三条规则不是凭空定的，而是照着<b>运行期的真实口径</b>写的（见后端
- * {@code process/reject/RejectRouter}）：驳回在运行期是"按目标跳转"，跳不到就明确失败。
- * 设计期不说，用户就会在办理时才发现 —— 那时人已经在流程里等着了。
- *
- * <ul>
- *   <li><b>「上一步」</b>＝该实例实际走过的上一个办理节点；本节点之前没有任何人工活动时，
- *       "上一步"无处可退（它是第一步）；</li>
- *   <li><b>「发起人」</b>＝退回到"由发起人办理"的那个节点（发起本身不是流程节点）；
- *       流程里没有这样的节点时，退回去没有人能办；</li>
- *   <li><b>「指定节点」</b>必须是一个能产生任务的人工活动，且不能是自己（退回原地等于不动）。</li>
- * </ul>
+ * <p>原先这里照后端 {@code RejectRouter} 的"按目标跳转"口径，校验「上一步 / 发起人 /
+ * 指定节点」三种目标各自是否可用（目标存不存在、有没有人能办、是不是自己）。
+ * 现在"驳回"只由画布上的「驳回」出边表达 —— 退回哪就等于那条边指向哪，
+ * 目标能不能有人办由图上的节点类型决定，设计器打开时就能看见，
+ * 不再需要第二套针对"配置项"的判定。
  */
-function checkRejectTarget(dsl: FlowDsl, node: FlowNode, reject: RejectSpec | undefined, add: Add): void {
-  if (!reject?.enabled) {
-    return
-  }
-  const humanTypes: NodeTypeT[] = [
-    NodeType.APPROVAL,
-    NodeType.COUNTERSIGN_APPROVAL,
-    NodeType.TASK,
-    // 「设置审批人」也要算：它确实产生一个要人办的任务（编译成 userTask），
-    // 「驳回 → 重新指派审批人 → 重走审批」是常见且合理的编排。
-    // 漏掉它会让这类流程在设计期报"退回去没有人能办理"，而运行期明明能跳过去 ——
-    // 设计期与运行期必须同一口径，否则用户被自己的设计器挡住
-    NodeType.SET_ASSIGNEE,
-  ]
-  const isHuman = (candidate: FlowNode) => humanTypes.includes(candidate.type as NodeTypeT)
-
-  // 「允许驳回」开着，却既没选目标、也没画驳回边 → 驳回之后无处可去。
-  //
-  // 放在这里（而不是出边校验里）是因为它**与出边无关**：还没连线的孤立方块同样要报 ——
-  // 出边校验开头 `if (outgoing.length === 0) continue` 会把整段跳过，
-  // 于是"勾了允许驳回、什么都没配"的节点此前一声不响（运行期才报错把经办人挡住）。
-  const hasRejectRoute = dsl.edges.some(
-    (edge) => edge.source === node.id && edge.route === EdgeRoute.REJECT,
-  )
-  if (!reject.target && !hasRejectRoute) {
-    add({
-      code: IssueCode.REJECT_NO_TARGET,
-      level: IssueLevel.ERROR,
-      nodeId: node.id,
-      message: `节点「${node.name}」开启了「允许驳回」，但既没选「驳回目标」、也没画「驳回」出边：`
-        + '驳回之后无处可去。请二选一：选一个退回目标，或连一条路由为「驳回」的出边',
-    })
-    return
-  }
-
-  if (reject.target === RejectTarget.NODE) {
-    const target = dsl.nodes.find((candidate) => candidate.id === reject.targetNodeId)
-    if (!target) {
-      add({
-        code: IssueCode.REJECT_NODE_NOT_FOUND,
-        level: IssueLevel.ERROR,
-        nodeId: node.id,
-        message: `节点「${node.name}」的驳回目标节点不存在`,
-      })
-    } else if (target.id === node.id) {
-      add({
-        code: IssueCode.REJECT_TARGET_SELF,
-        level: IssueLevel.ERROR,
-        nodeId: node.id,
-        message: `节点「${node.name}」的驳回目标是它自己，退回去等于原地不动；请改选其它目标`,
-      })
-    } else if (!isHuman(target)) {
-      add({
-        code: IssueCode.REJECT_TARGET_NOT_HUMAN,
-        level: IssueLevel.ERROR,
-        nodeId: node.id,
-        message: `节点「${node.name}」的驳回目标「${target.name}」不是人工活动，退回去没有人能办理；`
-          + '请改选审批 / 会签 / 办理 / 设置审批人这类会产生任务的节点',
-      })
-    }
-    return
-  }
-
-  if (reject.target === RejectTarget.INITIATOR) {
-    const hasInitiatorNode = dsl.nodes.some((candidate) =>
-      isHuman(candidate) && assigneeOf(candidate)?.strategy === AssigneeStrategy.INITIATOR)
-    if (!hasInitiatorNode) {
-      add({
-        code: IssueCode.REJECT_NO_INITIATOR_NODE,
-        level: IssueLevel.ERROR,
-        nodeId: node.id,
-        message: `节点「${node.name}」的驳回目标是「发起人」，但流程里没有由发起人办理的节点，`
-          + '退回去没有人能办；请改选「上一步」或「指定节点」，或加一个由发起人办理的节点',
-      })
-    }
-    return
-  }
-
-  if (reject.target === RejectTarget.PREVIOUS) {
-    const hasPrevious = dsl.nodes.some((candidate) =>
-      candidate.id !== node.id && isHuman(candidate) && canReach(dsl, candidate.id, node.id))
-    if (!hasPrevious) {
-      add({
-        code: IssueCode.REJECT_NO_PREVIOUS_NODE,
-        level: IssueLevel.ERROR,
-        nodeId: node.id,
-        message: `节点「${node.name}」的驳回目标是「上一步」，但它之前没有任何办理活动，无处可退`,
-      })
-    }
-  }
-}
-
-/** 取人工活动的审批人/执行人声明（不同节点类型的字段名不同，这里统一取） */
-function assigneeOf(node: FlowNode): AssigneeSpec | undefined {
-  const candidate = node as { assignee?: AssigneeSpec; initiator?: AssigneeSpec }
-  return candidate.assignee ?? candidate.initiator
-}
 
 function checkNode(dsl: FlowDsl, node: FlowNode, add: Add): void {
   const variableNames = new Set((dsl.variables ?? []).map((v) => v.name))
@@ -1167,7 +1221,6 @@ function checkNode(dsl: FlowDsl, node: FlowNode, add: Add): void {
       const countersign = node as CountersignNode
       checkAssignee(countersign.assignee, true, '会签参与人')
       checkCountersignAggregation(node, countersign.assignee, countersign.passRule, add)
-      checkRejectTarget(dsl, node, countersign.reject, add)
       checkDeadline(node, countersign.deadline, add)
       break
     }
@@ -1179,7 +1232,6 @@ function checkNode(dsl: FlowDsl, node: FlowNode, add: Add): void {
         // 与「会签审批」类型共用同一实现（见 checkCountersignAggregation）
         checkCountersignAggregation(node, approval.assignee, approval.passRule, add)
       }
-      checkRejectTarget(dsl, node, approval.reject, add)
       checkDeadline(node, approval.deadline, add)
       break
     }
@@ -1219,8 +1271,9 @@ function checkNode(dsl: FlowDsl, node: FlowNode, add: Add): void {
       checkAssignee((node as NotifyNode).recipients, true, '通知接收人')
       break
 
-    case NodeType.SUB_PROCESS:
-      if (!(node as SubProcessNode).processKey) {
+    case NodeType.SUB_PROCESS: {
+      const sub = node as SubProcessNode
+      if (!sub.processKey) {
         add({
           code: IssueCode.SUB_PROCESS_NO_KEY,
           level: IssueLevel.ERROR,
@@ -1228,7 +1281,39 @@ function checkNode(dsl: FlowDsl, node: FlowNode, add: Add): void {
           message: `子流程节点「${node.name}」未选择被调用流程`,
         })
       }
+      // 多实例（1:M 子流程）：集合必须是变量名 —— 编译器要拼成 ${<name>}，
+      // 用户自己再写一层 ${} 会得到 $${...}，部署后集合取不到值
+      if (sub.multiInstance) {
+        const collection = (sub.multiInstance.collection || '').trim()
+        const businessKey = (sub.multiInstance.businessKey || '').trim()
+        if (!collection) {
+          add({
+            code: IssueCode.SUB_PROCESS_MULTI_INSTANCE_INVALID,
+            level: IssueLevel.ERROR,
+            nodeId: node.id,
+            message: `子流程节点「${node.name}」开启了多实例，但没有指定集合变量`,
+          })
+        } else if (collection.includes('${') || collection.includes('}')) {
+          add({
+            code: IssueCode.SUB_PROCESS_MULTI_INSTANCE_INVALID,
+            level: IssueLevel.ERROR,
+            nodeId: node.id,
+            message:
+              `子流程节点「${node.name}」的集合变量只填变量名（如 changeTaskList），不要写 \${} 表达式`,
+          })
+        }
+        if (businessKey && (businessKey.includes('${') || businessKey.includes('}'))) {
+          add({
+            code: IssueCode.SUB_PROCESS_MULTI_INSTANCE_INVALID,
+            level: IssueLevel.ERROR,
+            nodeId: node.id,
+            message:
+              `子流程节点「${node.name}」的业务 key 只填元素上的属性名（如 oid），不要写 \${} 表达式`,
+          })
+        }
+      }
       break
+    }
 
     case NodeType.TIMER: {
       const timer = node as TimerNode

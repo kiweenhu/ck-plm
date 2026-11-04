@@ -57,9 +57,13 @@
       :pagination="computedPagination"
       :row-key="rowKey"
       :size="size"
+      :locale="{ emptyText }"
       :scroll="computedScroll"
-      :expandable="computedExpandable"
+      :expanded-row-render="expandedRowRender"
+      :row-expandable="rowExpandable"
+      :expanded-row-keys="expandedRowKeys"
       :row-selection="rowSelection"
+      @expand="handleExpand"
       :children-column-name="childrenColumnName"
       :default-expand-all-rows="!!childrenColumnName"
       @change="handleTableChange"
@@ -106,18 +110,37 @@ const props = defineProps({
   emptyText: { type: String, default: '暂无数据' },
   showQuickJumper: { type: Boolean, default: false },
   showTotal: { type: Function, default: (t) => `共 ${t} 条` },
-  scrollX: { type: Number, default: undefined },
+  /**
+   * 横向滚动宽度：传数字 = 表宽至少这么多 px；传 'max-content' = 随列宽自然变宽、
+   * 超出容器时表体自己出横向滚动条（宽表请用后者 —— 列宽合计超过容器时，
+   * 不传会被直接裁掉右半边，连滚动条都没有）。
+   */
+  scrollX: { type: [Number, String], default: undefined },
   /** 表格内容区最大高度（px），超出后表体可滚动，表头/分页固定 */
   maxHeight: { type: Number, default: undefined },
   /** 撑满父容器高度：表体自动滚动、分页器固定在底部（优先级高于 maxHeight） */
   stretch: { type: Boolean, default: false },
   expandedRowRender: { type: Function, default: null },
+  /**
+   * 哪些行可展开 —— 不传 = 全部行都可展开（沿用 a-table 默认）。
+   * 典型用法：阶段门表格里只有「技术门」能展开看它名下的评审，决策门没有下级内容，
+   * 给每个决策门都挂一个点了没反应的箭头只会误导。
+   */
+  rowExpandable: { type: Function, default: null },
+  /**
+   * 受控的展开行 key 列表。传了就由调用方决定展开哪些行（`@expand` 回来自己改）。
+   * 不传 = a-table 内部状态（点一下展一下）。
+   */
+  expandedRowKeys: { type: Array, default: null },
   rowSelection: { type: Object, default: null },
   /** 树形数据子节点字段名（如 'children'），设置后启用树形表格 */
   childrenColumnName: { type: String, default: undefined },
 })
 
-const emit = defineEmits(['update:pagination', 'update:search', 'change'])
+const emit = defineEmits(['update:pagination', 'update:search', 'change', 'expand'])
+
+/** 插槽：展开行内容可以由调用方用 #expandedRowRender 给（不必再传函数 prop） */
+const slots = useSlots()
 
 // ==================== 搜索 ====================
 const searchText = ref('')
@@ -204,6 +227,22 @@ const frontendTotal = computed(() => {
   if (props.childrenColumnName) return 0
   return sortedData.value.length
 })
+
+// 数据变少时收敛页码 —— 否则会切出空表，且症状极易被误判成"筛选没生效"。
+// 真实案例：46 条 / 每页 10 条，用户翻到第 2~5 页后再选阶段筛选；总数掉到 5 条，
+// 但 current 仍停在第 2 页 → slice(10,20) 切一个只有 5 条的数组 → 表体 "No data"，
+// 而分页器因总数变小只画得出 1 页、还写着"共 5 条" —— 三个现象同时出现。
+// 只在"前端分页"模式下收敛；后端分页由服务端负责（这里不动）。
+watch(
+  () => [frontendTotal.value, innerPagination.pageSize],
+  () => {
+    if (props.paginationMode !== 'frontend') return
+    if (props.pagination === false) return
+    const maxPage = Math.max(1, Math.ceil(frontendTotal.value / innerPagination.pageSize))
+    if (innerPagination.current > maxPage) innerPagination.current = maxPage
+  },
+  { immediate: true }
+)
 
 const pagedData = computed(() => {
   if (props.pagination === false) return sortedData.value
@@ -344,15 +383,19 @@ const computedScroll = computed(() => {
 })
 
 // ==================== 展开行 ====================
-const computedExpandable = computed(() => {
-  if (props.expandedRowRender) {
-    return { expandedRowRender: props.expandedRowRender }
-  }
-  return undefined
-})
+/**
+ * 展开行的开法（a-table v3 是**扁平 props**，没有 React 那套 `expandable` 对象）：
+ * 给 `expandedRowRender`（函数 prop 或 `#expandedRowRender` 插槽）即出展开列；
+ * `rowExpandable` 只让部分行可展开；`expandedRowKeys` 受控"哪几行展开"。
+ *
+ * <p>曾经的 `:expandable="{...}"` 绑定是无效的 —— rc-table 不认这个 prop，
+ * 展开列从未真正出现过（本项目此前也没有调用方用到它）。改成扁平写法后才生效。
+ */
+function handleExpand(expanded, record) {
+  emit('expand', expanded, record)
+}
 
 // ==================== 工具栏可见 ====================
-const slots = useSlots()
 const toolbarVisible = computed(() =>
   props.searchable || props.showColumnToggle || !!slots.toolbar || !!slots['toolbar-left']
 )
@@ -527,6 +570,9 @@ defineExpose({
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* 仅兜底：没传 scroll-x 的窄表若偶尔溢出，由 wrapper 滚（工具栏有 sticky 吸附兜着）。
+     传了 scroll-x 的宽表走 a-table 内部滚动（见下方对 min-width 的说明），
+     wrapper 不会产生横向滚动条。 */
   overflow-x: auto;
 }
 
@@ -538,9 +584,12 @@ defineExpose({
   /* 保持 flex column 让 toolbar + a-table 堆叠 */
 }
 
-/* 确保 a-table 自身不裁剪分页; 列溢出由父容器 overflow-x 处理 */
+/* 列溢出交给 a-table 内部滚动（scroll.x → .ant-table-content/.ant-table-body 出横向
+   滚动条，表头由 vc-table 自动同步）。此前这里写 min-width: fit-content 把 .ant-table
+   撑到内容宽、让 wrapper 滚 —— 工具栏跟着被拖走，右侧的筛选/搜索/视图按钮不再与
+   可视区右缘对齐（用户反馈），故移除。 */
 .data-table-wrapper :deep(.ant-table) {
-  min-width: fit-content;
+  min-width: 0;
 }
 
 
@@ -553,6 +602,11 @@ defineExpose({
   /* 内容过多时换行，避免工具栏撑宽容器产生横向滚动条 */
   flex-wrap: wrap;
   gap: 8px 12px;
+  /* wrapper 兜底横向滚动时（无 scroll-x 的表格），工具栏吸附在可视区左缘 ——
+     右侧的筛选/搜索/视图按钮始终与可视区右缘对齐，不随表格被拖走 */
+  position: sticky;
+  left: 0;
+  z-index: 1;
 }
 
 .dt-toolbar-left {

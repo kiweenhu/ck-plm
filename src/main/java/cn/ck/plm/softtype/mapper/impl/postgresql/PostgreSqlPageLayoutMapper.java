@@ -19,13 +19,22 @@ import java.util.List;
 @Mapper
 public interface PostgreSqlPageLayoutMapper extends PageLayoutMapper {
 
+    /**
+     * 某实体的全部操作布局 —— <b>只查本租户</b>（2026-10-10 起由"平台共享 + 租户可覆写"改为按租户隔离）。
+     *
+     * <p>原先 {@code IN (#{tenantOid}, #{platformOid})} + {@code DISTINCT ON} + "本租户优先"排序，
+     * 是实现"平台一份布局 + 租户可覆写一份"的手段；隔离后每租户随包各装一份自己的布局。
+     * 参数 {@code platformOid} <b>已废弃</b>（保留仅为不改动接口与服务层签名）。
+     * 注意 {@link #selectByTenant} 是"按指定租户精确取一份"（参数即目标租户，与"当前租户可见性"不同义）——
+     * 克隆路径（{@code PageLayoutServiceImpl.cloneFromRootType}）2026-10-11 起改为读【本租户的根类型】，
+     * 不再读平台租户那份；{@code selectByTenant} 的租户参数由调用方按需传入。
+     */
     @Override
-    @Select("SELECT DISTINCT ON (operation_code) oid, entity_oid, entity_code, operation_code, operation_name, " +
+    @Select("SELECT oid, entity_oid, entity_code, operation_code, operation_name, " +
             "layout_json::text, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_page_layout " +
-            "WHERE entity_oid=#{entityOid} " +
-            "AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY operation_code, CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END")
+            "WHERE entity_oid=#{entityOid} AND tenant_oid = #{tenantOid} " +
+            "ORDER BY operation_code")
     List<PageLayout> selectAllByEntity(@Param("entityOid") String entityOid,
                                        @Param("entityCode") String entityCode,
                                        @Param("tenantOid") String tenantOid,
@@ -36,9 +45,7 @@ public interface PostgreSqlPageLayoutMapper extends PageLayoutMapper {
             "layout_json::text, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_page_layout " +
             "WHERE entity_oid=#{entityOid} AND operation_code=#{operationCode} " +
-            "AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END " +
-            "LIMIT 1")
+            "AND tenant_oid = #{tenantOid} LIMIT 1")
     PageLayout selectByEntityAndOperation(@Param("entityOid") String entityOid,
                                           @Param("operationCode") String operationCode,
                                           @Param("tenantOid") String tenantOid,
@@ -49,9 +56,7 @@ public interface PostgreSqlPageLayoutMapper extends PageLayoutMapper {
             "layout_json::text, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_type_page_layout " +
             "WHERE entity_code=#{entityCode} AND operation_code=#{operationCode} " +
-            "AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END " +
-            "LIMIT 1")
+            "AND tenant_oid = #{tenantOid} LIMIT 1")
     PageLayout selectByEntityCodeAndOperation(@Param("entityCode") String entityCode,
                                               @Param("operationCode") String operationCode,
                                               @Param("tenantOid") String tenantOid,

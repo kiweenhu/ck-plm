@@ -56,6 +56,8 @@ public class EngineeringDocumentVO {
     private String statusCode;
     /** 生命周期状态显示名 */
     private String statusName;
+    /** 当前状态是否允许修订（来自模板状态配置；未知时按允许处理） */
+    private Boolean revisable = true;
 
     // ===== 文件信息 =====
     private String ckfileOid;
@@ -148,6 +150,9 @@ public class EngineeringDocumentVO {
 
     public String getStatusName() { return statusName; }
     public void setStatusName(String statusName) { this.statusName = statusName; }
+
+    public Boolean getRevisable() { return revisable; }
+    public void setRevisable(Boolean revisable) { this.revisable = revisable; }
 
     public String getCkfileOid() { return ckfileOid; }
     public void setCkfileOid(String ckfileOid) { this.ckfileOid = ckfileOid; }

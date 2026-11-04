@@ -8,7 +8,10 @@
 package cn.ck.plm.bom.controller;
 
 import cn.ck.plm.bom.dto.BomCostReportVO;
+import cn.ck.plm.bom.dto.BomMaterialVO;
 import cn.ck.plm.bom.dto.BomTreeNode;
+import cn.ck.plm.bom.dto.BomUsedByVO;
+import cn.ck.plm.bom.dto.ContainerCostTrendVO;
 import cn.ck.plm.bom.entity.BomLinks;
 import cn.ck.plm.bom.service.BomExportService;
 import cn.ck.plm.bom.service.api.BomLinksService;
@@ -80,6 +83,19 @@ public class BomLinksController {
     }
 
     /**
+     * 容器（产品系列 / 型号）的「物料清单」—— 系列/型号页的独立页签。
+     *
+     * <p>只列 {@code container_oid} 等于该容器的零件，<b>不回溯父系列</b>。
+     *
+     * <p>与 {@code /tree} 是两种视角：那个回答"某个件的结构长什么样"（可展开层级），
+     * 这个回答"这个产品下有哪些件、各用多少、装在哪几个件上"（面向采购/成本）。
+     */
+    @GetMapping("/materials/{containerOid}")
+    public ApiResponse<List<BomMaterialVO>> materials(@PathVariable String containerOid) {
+        return ApiResponse.ok(bomLinksService.materialsByContainer(containerOid));
+    }
+
+    /**
      * BOM 成本报告（卷积）：每一层「数量 × 单位成本」递归累加，含总成本与逐层明细。
      *
      * <p>入参用<b>父件迭代 oid</b>而不是零件主对象 oid：成本是有版本的口径，
@@ -88,6 +104,17 @@ public class BomLinksController {
     @GetMapping("/cost-report/{parentIterationOid}")
     public ApiResponse<BomCostReportVO> getCostReport(@PathVariable String parentIterationOid) {
         return ApiResponse.ok(bomLinksService.costReport(parentIterationOid));
+    }
+
+    /**
+     * 容器（产品系列 / 型号）的<b>成本趋势</b> —— 系列/型号页「成本趋势」分组件。
+     *
+     * <p>给三样东西：当前卷积总成本、历史快照点（同口径的本层直接成本）、数据缺口提示。
+     * 系列页会自动并入旗下型号的零件；没有快照时就只有当前值，{@code warnings} 里说明还缺什么。
+     */
+    @GetMapping("/cost-trend/{containerOid}")
+    public ApiResponse<ContainerCostTrendVO> costTrend(@PathVariable String containerOid) {
+        return ApiResponse.ok(bomLinksService.containerCostTrend(containerOid));
     }
 
     /**
@@ -134,6 +161,17 @@ public class BomLinksController {
     @GetMapping("/by-child-part/{childPartOid}")
     public ApiResponse<List<BomLinks>> listByChildPart(@PathVariable String childPartOid) {
         return ApiResponse.ok(bomLinksService.listByChildPartOid(childPartOid));
+    }
+
+    /**
+     * 「被使用情况」：某个零件被哪些父件引用（父件已解析成编码 / 名称 / 版本）。
+     *
+     * <p>一行 = 一条 BOM 行；{@code parentPartOid} 是"上一层"的入口 ——
+     * 拿它再调一次本接口，就是往 where-used 链的上方走一层。
+     */
+    @GetMapping("/used-by/{childPartOid}")
+    public ApiResponse<List<BomUsedByVO>> listUsedBy(@PathVariable String childPartOid) {
+        return ApiResponse.ok(bomLinksService.listUsedBy(childPartOid));
     }
 
     @GetMapping("/by-child-iteration/{childIterationOid}")

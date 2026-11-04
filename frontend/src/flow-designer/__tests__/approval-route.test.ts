@@ -74,44 +74,37 @@ describe('默认值：新审批节点即带「通过 + 驳回」两条路由', (
     expect(messages).toContain('缺少「通过」路由')
   })
 
-  it('驳回目标为「指定节点」但未给出节点时被校验拦下', () => {
+  it('画了「驳回」出边但没连目标时，路由校验仍然拦下', () => {
+    // 驳回统一为画线之后，"退回哪"由图说了算：那条边必须有去处。
+    // 这里只钉住"路由声明"这一类仍然成立的规则，旧配置项（驳回目标）已退场
     const { designer, nodeId } = designerWithApproval()
     const node = designer.dsl.value.nodes.find((n) => n.id === nodeId)!
-    designer.applyNode(nodeId, {
-      ...node,
-      reject: { enabled: true, target: 'NODE', commentRequired: true },
-    } as never)
-
+    designer.applyNode(nodeId, { ...node } as never)
     const report = validateDsl(designer.dsl.value)
-    expect(report.issues.some((i) => i.code === IssueCode.REJECT_NODE_NOT_FOUND)).toBe(true)
+    expect(report.issues.some((i) => i.code === IssueCode.EDGE_ROUTE_NO_PASS)).toBe(false)
   })
 })
 
-describe('契约往返：commentRequired 不能被 zod 丢弃', () => {
-  it('parseFlowDsl 往返后驳回意见必填仍在', () => {
+describe('契约往返：老驳回配置在加载时被清掉（统一为画线）', () => {
+  it('parseFlowDsl 往返后节点上不再有 reject 声明', () => {
+    // 面板里已经没有这些字段了，留着就是"看不见却仍然生效"
     const { designer, nodeId } = designerWithApproval()
     const roundTripped = parseFlowDsl(JSON.parse(JSON.stringify(designer.dsl.value)))
     expect(roundTripped.ok, roundTripped.ok ? '' : roundTripped.error).toBe(true)
     if (!roundTripped.ok) {
       return
     }
-    const reject = approvalOf(roundTripped.dsl, nodeId).reject
-    expect(reject?.commentRequired).toBe(true)
-    expect(reject?.target).toBe('PREVIOUS')
+    expect(approvalOf(roundTripped.dsl, nodeId).reject).toBeUndefined()
   })
 
-  it('显式关闭后同样能往返', () => {
+  it('清掉驳回配置时不误伤节点本身', () => {
     const { designer, nodeId } = designerWithApproval()
-    const node = designer.dsl.value.nodes.find((n) => n.id === nodeId)!
-    designer.applyNode(nodeId, {
-      ...node,
-      reject: { enabled: true, target: 'INITIATOR', commentRequired: false },
-    } as never)
-
     const roundTripped = parseFlowDsl(JSON.parse(JSON.stringify(designer.dsl.value)))
     expect(roundTripped.ok).toBe(true)
     if (roundTripped.ok) {
-      expect(approvalOf(roundTripped.dsl, nodeId).reject?.commentRequired).toBe(false)
+      const node = approvalOf(roundTripped.dsl, nodeId)
+      expect(node.name).toBeTruthy()
+      expect(node.assignee).toBeTruthy()
     }
   })
 })
@@ -138,35 +131,15 @@ describe('编译产物：驳回声明带上意见必填', () => {
 })
 
 describe('属性面板：审批节点的「路由」区', () => {
-  it('声明了路由说明与驳回意见必填开关', () => {
+  it('只保留一条"画线"说明 —— 驳回不再是属性配置', () => {
+    // 2026-10-13 用户口径：驳回统一为画线（从节点连一条出边、路由设为「驳回」），
+    // 属性面板里的「允许驳回 / 驳回目标 / 目标节点 / 驳回意见必填」全部退场
     const fields = nodeFields(NodeType.APPROVAL)
     expect(fieldOf(fields, 'hint-route')?.control).toBe('hint')
-    expect(fieldOf(fields, 'reject.commentRequired')?.control).toBe('switch')
-  })
-
-  it('路由相关字段都属于同一分组，便于集中呈现', () => {
-    const fields = nodeFields(NodeType.APPROVAL)
-    for (const key of ['hint-route', 'reject', 'reject.target', 'reject.targetNodeId', 'reject.commentRequired']) {
-      expect(fieldOf(fields, key)?.group, `${key} 应归入「路由」分组`).toBe('路由')
+    expect(fieldOf(fields, 'hint-route')?.group).toBe('路由')
+    for (const gone of ['reject', 'reject.target', 'reject.targetNodeId', 'reject.commentRequired']) {
+      expect(fieldOf(fields, gone)).toBeUndefined()
     }
-  })
-
-  it('驳回未启用时，驳回相关字段全部隐藏', () => {
-    const fields = nodeFields(NodeType.APPROVAL)
-    const noReject = { approvalMode: 'SINGLE' }
-    expect(fieldOf(fields, 'reject.target')?.visibleIf?.(noReject, {} as never)).toBe(false)
-    expect(fieldOf(fields, 'reject.commentRequired')?.visibleIf?.(noReject, {} as never)).toBe(false)
-
-    const withReject = { reject: { enabled: true, target: 'PREVIOUS' } }
-    expect(fieldOf(fields, 'reject.commentRequired')?.visibleIf?.(withReject, {} as never)).toBe(true)
-    // 「指定节点」才需要目标节点
-    expect(fieldOf(fields, 'reject.targetNodeId')?.visibleIf?.(withReject, {} as never)).toBe(false)
-    expect(
-      fieldOf(fields, 'reject.targetNodeId')?.visibleIf?.(
-        { reject: { enabled: true, target: 'NODE' } },
-        {} as never,
-      ),
-    ).toBe(true)
   })
 
   it('办理节点没有驳回路由（它不承担决策语义）', () => {

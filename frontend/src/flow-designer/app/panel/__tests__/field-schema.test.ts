@@ -10,7 +10,9 @@ import {
   NodeType,
   addNode,
   createEmptyDsl,
+  defaultFormCodeOfNode,
   parseFlowDsl,
+  registerTaskFormTemplates,
   replaceNode,
   updateNode,
   type FlowDsl,
@@ -20,7 +22,6 @@ import {
   assignByPath,
   getByPath,
   pruneHidden,
-  visibleFields,
   type FieldSpec,
   type SchemaContext,
 } from '../field-schema'
@@ -207,26 +208,42 @@ describe('节点表单：注册表驱动的下拉 + 内置固定表单只读', (
     expect(field.defaultWhenEmpty?.(ctxOf(dsl, target))).toBe(APPROVAL_OPINION_FORM_CODE)
   })
 
-  it('审批 + 会签模式：下拉收窄到会签表单（编译层同样以它为准，给别的选项就是误导）', () => {
-    const dsl = emptyDsl()
-    const target = { type: NodeType.APPROVAL, approvalMode: 'COUNTERSIGN' }
-    const field = fieldOf(nodeFields(NodeType.APPROVAL), 'formRef')
-
-    const options = field.optionsFromDsl?.(ctxOf(dsl, target)) ?? []
-    expect(options.map((o) => o.value)).toEqual([COUNTERSIGN_FORM_CODE])
-    expect(field.defaultWhenEmpty?.(ctxOf(dsl, target))).toBe(COUNTERSIGN_FORM_CODE)
-  })
-
-  it('会签节点：只读下拉，且默认指向内置的「会签」', () => {
+  it('会签节点：下拉可换（不再固定），默认仍指向内置「会签」', () => {
     const dsl = emptyDsl()
     const target = { type: NodeType.COUNTERSIGN_APPROVAL }
     const field = fieldOf(nodeFields(NodeType.COUNTERSIGN_APPROVAL), 'formRef')
 
     expect(field.control).toBe('select')
-    expect(field.disabled).toBe(true)
+    // 2026-10-13 起不再固定：会签人往往还要看到业务申请信息（如「元器件认证会签」）
+    expect(field.disabled).toBeFalsy()
     const options = field.optionsFromDsl?.(ctxOf(dsl, target)) ?? []
     expect(options.map((o) => o.value)).toEqual([COUNTERSIGN_FORM_CODE])
     expect(field.defaultWhenEmpty?.(ctxOf(dsl, target))).toBe(COUNTERSIGN_FORM_CODE)
+  })
+
+  it('会签节点能选到企业/行业的会签表（注入后进候选，且默认值不被它顶掉）', () => {
+    registerTaskFormTemplates([
+      {
+        code: 'component-qualification-countersign',
+        label: '元器件认证会签',
+        description: '行业会签表：申请信息 + 会签规则 + 我的意见',
+        builtin: false,
+        nodeTypes: [NodeType.COUNTERSIGN_APPROVAL],
+      },
+    ])
+    try {
+      const dsl = emptyDsl()
+      const target = { type: NodeType.COUNTERSIGN_APPROVAL }
+      const field = fieldOf(nodeFields(NodeType.COUNTERSIGN_APPROVAL), 'formRef')
+      const options = field.optionsFromDsl?.(ctxOf(dsl, target)) ?? []
+      // 行业会签表出现在候选里 —— 这才是"能换上一张看得到业务信息的会签表"
+      expect(options.map((o) => o.value)).toContain('component-qualification-countersign')
+      // 未指定时仍默认内置「会签」（不是"什么都不用"）
+      expect(field.defaultWhenEmpty?.(ctxOf(dsl, target))).toBe(COUNTERSIGN_FORM_CODE)
+      expect(defaultFormCodeOfNode(target)).toBe(COUNTERSIGN_FORM_CODE)
+    } finally {
+      registerTaskFormTemplates([])
+    }
   })
 
   it('没有专属模板的节点（办理节点）仍是可选下拉，不做固定、也没有默认表单', () => {
@@ -298,29 +315,30 @@ describe('可见性：审批人策略', () => {
 })
 
 describe('可见性：会签规则与截止时间', () => {
-  it('仅会签模式显示通过规则', () => {
-    const dsl = emptyDsl()
+  it('审批节点已固定单签：不再有「审批模式」下拉与会签规则字段', () => {
+    // 2026-10-13 用户口径：审批模式只能是单签、禁止编辑者选择；
+    // 需要多人集体决策就用「会签审批」节点（它自带通过规则）
     const fields = nodeFields(NodeType.APPROVAL)
-    const single = { approvalMode: ApprovalMode.SINGLE }
-    expect(visible(fieldOf(fields, 'passRule.mode'), dsl, single)).toBe(false)
-    const countersign = { approvalMode: ApprovalMode.COUNTERSIGN }
-    expect(visible(fieldOf(fields, 'passRule.mode'), dsl, countersign)).toBe(true)
-    // visibleFields 是渲染器实际使用的入口，此处顺带锁定其行为
-    expect(visibleFields(fields, ctxOf(dsl, countersign)).map((f) => f.key)).toContain('passRule.mode')
+    expect(fields.some((field) => field.key === 'approvalMode')).toBe(false)
+    for (const gone of ['passRule.mode', 'passRule.percent', 'passRule.count', 'passRule.abstain']) {
+      expect(fields.some((field) => field.key === gone), `审批节点不该有 ${gone}`).toBe(false)
+    }
+    // 只留一条说明，让编辑者知道"为什么没有这个开关"
+    expect(fieldOf(fields, 'hint-approval-mode')?.control).toBe('hint')
   })
 
-  it('通过比例 / 票数 互斥显示，一票否决时不显示弃权处理', () => {
+  it('通过比例 / 票数 互斥显示，一票否决时不显示弃权处理（会签审批节点）', () => {
     const dsl = emptyDsl()
-    const fields = nodeFields(NodeType.APPROVAL)
-    const percent = { approvalMode: ApprovalMode.COUNTERSIGN, passRule: { mode: 'PERCENT' } }
+    const fields = nodeFields(NodeType.COUNTERSIGN_APPROVAL)
+    const percent = { passRule: { mode: 'PERCENT' } }
     expect(visible(fieldOf(fields, 'passRule.percent'), dsl, percent)).toBe(true)
     expect(visible(fieldOf(fields, 'passRule.count'), dsl, percent)).toBe(false)
 
-    const count = { approvalMode: ApprovalMode.COUNTERSIGN, passRule: { mode: 'COUNT' } }
+    const count = { passRule: { mode: 'COUNT' } }
     expect(visible(fieldOf(fields, 'passRule.count'), dsl, count)).toBe(true)
     expect(visible(fieldOf(fields, 'passRule.percent'), dsl, count)).toBe(false)
 
-    const veto = { approvalMode: ApprovalMode.COUNTERSIGN, passRule: { mode: 'VETO' } }
+    const veto = { passRule: { mode: 'VETO' } }
     expect(visible(fieldOf(fields, 'passRule.abstain'), dsl, veto)).toBe(false)
   })
 
@@ -338,13 +356,45 @@ describe('可见性：会签规则与截止时间', () => {
     expect(visible(fieldOf(fields, 'deadline.reassignTo.strategy'), dsl, reassign)).toBe(true)
   })
 
-  it('驳回目标节点仅在 target=NODE 时显示', () => {
-    const dsl = emptyDsl()
+  it('驳回不再有属性配置：面板只剩一条"画线"说明', () => {
+    // 2026-10-13 用户口径：驳回统一为画线（从节点连一条出边、路由设为「驳回」），
+    // 属性面板里的「允许驳回 / 驳回目标 / 目标节点 / 驳回意见必填」全部退场
     const fields = nodeFields(NodeType.APPROVAL)
-    const previous = { reject: { enabled: true, target: 'PREVIOUS' } }
-    expect(visible(fieldOf(fields, 'reject.targetNodeId'), dsl, previous)).toBe(false)
-    const node = { reject: { enabled: true, target: 'NODE' } }
-    expect(visible(fieldOf(fields, 'reject.targetNodeId'), dsl, node)).toBe(true)
+    expect(fieldOf(fields, 'hint-route').group).toBe('路由')
+    for (const gone of ['reject', 'reject.target', 'reject.targetNodeId', 'reject.commentRequired']) {
+      expect(fields.some((field) => field.key === gone)).toBe(false)
+    }
+  })
+
+  it('审批 / 会签 / 办理节点不再有「绑定业务对象」开关（开始节点保留）', () => {
+    // 业务对象在流程发起时就绑定了（businessObjectSet），各节点再声明一次既没人读、
+    // 又要用户多配一遍（2026-10-13 用户口径）
+    for (const type of [NodeType.APPROVAL, NodeType.COUNTERSIGN_APPROVAL, NodeType.TASK]) {
+      const fields = nodeFields(type)
+      for (const gone of ['binding', 'binding.objectType', 'binding.requiredFields']) {
+        expect(fields.some((field) => field.key === gone), `${type} 不该有 ${gone}`).toBe(false)
+      }
+    }
+    // 开始节点保留：发起时确定业务对象是它的职责
+    expect(nodeFields(NodeType.START).some((field) => field.key === 'binding')).toBe(true)
+  })
+
+  it('办理节点：交付件改成「是否需要」开关 + 「业务对象类型」多选（关着时不显示）', () => {
+    // 2026-10-13 用户口径：原先的「交付物」（手填文档类型 code）退场
+    const dsl = emptyDsl()
+    const fields = nodeFields(NodeType.TASK)
+    expect(fieldOf(fields, 'needDeliverables')?.control).toBe('switch')
+
+    const multi = fieldOf(fields, 'deliverableObjectTypes')
+    expect(multi.control).toBe('multi-select')
+    expect(multi.optionsSource).toBe('OBJECT_TYPES')
+    // 关着 → 不显示；开着 → 显示；关掉时清掉残留（不留"看不见却生效"的绑定）
+    expect(visible(multi, dsl, { needDeliverables: false })).toBe(false)
+    expect(visible(multi, dsl, { needDeliverables: true })).toBe(true)
+    expect(multi.clearOnHide).toBe(true)
+
+    // 旧的「交付物」输入框已退场
+    expect(fields.some((field) => field.key === 'deliverables')).toBe(false)
   })
 
   it('object-toggle 模板与 dsl-core 结构一致', () => {
@@ -353,13 +403,6 @@ describe('可见性：会签规则与截止时间', () => {
       anchor: 'NODE_START',
       durationHours: 24,
       action: 'SKIP',
-    })
-    // 开启「允许驳回」时**不预填驳回目标**：预填 PREVIOUS 会让"其实什么都没配"的节点
-    // 看起来是配好的（目标＝上一步），校验也就永远不报 —— 驳回到运行期才把经办人挡住。
-    // 不预填之后它是可见的空目标，由 REJECT_NO_TARGET 拦保存。
-    expect(fieldOf(fields, 'reject').objectTemplate?.()).toEqual({
-      enabled: true,
-      commentRequired: true,
     })
   })
 })

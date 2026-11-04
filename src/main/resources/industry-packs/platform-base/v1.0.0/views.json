@@ -1,0 +1,8 @@
+{
+  "note": "默认视图（设计 / 制造 / 服务）。搬迁自 ViewInitializer，数据逐字照搬未改动。幂等键 = code。视图行归属平台租户（tenant_oid = 安装目标租户，平台安装即 00000000…），与搬迁前一致 —— 注意 ck_view 在租户拦截器的表名单里，即读侧按租户过滤，这是既有行为，本次不动。Part 等版本控制实体创建迭代时需要 Design 视图，否则 view 字段为空。",
+  "views": [
+    { "code": "Design",        "name": "设计视图", "description": "展示最新工作中的迭代",   "sortOrder": 1 },
+    { "code": "Manufacturing", "name": "制造视图", "description": "展示已发布的制造数据",   "sortOrder": 2 },
+    { "code": "Service",       "name": "服务视图", "description": "展示售后服务数据",       "sortOrder": 3 }
+  ]
+}

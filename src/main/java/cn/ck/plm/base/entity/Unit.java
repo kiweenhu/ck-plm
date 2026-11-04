@@ -58,6 +58,15 @@ public class Unit extends BaseEntity {
     /** 备注 */
     private String description;
 
+    /**
+     * 所属租户。
+     *
+     * <p>单位**按租户隔离**（2026-10-10 由"全租户共享"改为此口径）：随 platform-base 包
+     * 按租户各装一份，租户可自建 / 改名 / 删除自己那份，互不可见；平台租户那份是母版。
+     * 唯一键是 {@code (name, tenant_oid)} —— 单位名只在租户内唯一。
+     */
+    private String tenantOid;
+
     // ==================== 构造方法 ====================
 
     public Unit() {}
@@ -90,6 +99,9 @@ public class Unit extends BaseEntity {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public String getTenantOid() { return tenantOid; }
+    public void setTenantOid(String tenantOid) { this.tenantOid = tenantOid; }
 
     @Override
     public String toString() {

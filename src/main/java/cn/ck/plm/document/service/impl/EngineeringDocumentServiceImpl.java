@@ -13,6 +13,7 @@ import cn.ck.plm.base.service.api.LifecycleStatusService;
 import cn.ck.plm.base.service.api.LifecycleTemplateService;
 import cn.ck.plm.base.service.api.NumberService;
 import cn.ck.plm.base.service.api.VersionRuleService;
+import cn.ck.plm.base.service.impl.RevisionRuleGuard;
 import cn.ck.plm.document.dto.EngineeringDocumentVO;
 import cn.ck.plm.document.entity.EngineeringDocument;
 import cn.ck.plm.document.entity.EngineeringDocumentIteration;
@@ -20,6 +21,7 @@ import cn.ck.plm.document.mapper.EngineeringDocumentIterationMapper;
 import cn.ck.plm.document.mapper.EngineeringDocumentMapper;
 import cn.ck.plm.document.service.api.EngineeringDocumentService;
 import cn.ck.plm.softtype.entity.TypeDefinition;
+import cn.ck.plm.base.entity.LifecycleStatus;
 import cn.ck.plm.cls.service.api.ClsIbaDataService;
 import cn.ck.plm.cls.service.impl.ClsIbaDataSupport;
 import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
@@ -36,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,6 +72,7 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
     private final EngineeringDocumentIterationMapper iterationMapper;
     private final NumberService numberService;
     private final VersionRuleService versionRuleService;
+    private final RevisionRuleGuard revisionRuleGuard;
     private final LifecycleTemplateService lifecycleTemplateService;
     /** 状态 code → 显示名（详情给"人看得懂"的那个字，见 LifecycleStatusService#displayName） */
     private final LifecycleStatusService lifecycleStatusService;
@@ -82,6 +86,7 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
                                           EngineeringDocumentIterationMapper iterationMapper,
                                           NumberService numberService,
                                           VersionRuleService versionRuleService,
+                                          RevisionRuleGuard revisionRuleGuard,
                                           LifecycleTemplateService lifecycleTemplateService,
                                           LifecycleStatusService lifecycleStatusService,
                                           TypeDefinitionService typeDefinitionService,
@@ -93,6 +98,7 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
         this.iterationMapper = iterationMapper;
         this.numberService = numberService;
         this.versionRuleService = versionRuleService;
+        this.revisionRuleGuard = revisionRuleGuard;
         this.lifecycleTemplateService = lifecycleTemplateService;
         this.lifecycleStatusService = lifecycleStatusService;
         this.typeDefinitionService = typeDefinitionService;
@@ -427,12 +433,17 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
 
     @Override
     @Transactional
-    public void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode) {
+    public void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode,
+                                          String migrateToTemplateIterationOid) {
         EngineeringDocument document = engDocumentMapper.selectByOid(oid);
         if (document == null) {
             throw new IllegalArgumentException("工程数据不存在: " + oid);
         }
         EngineeringDocumentIteration iter = resolveVersion(oid, entityVersion);
+        // 同一个事务里先迁模板再设状态：中间失败一起回滚，不会出现"迁了模板、状态没设上"
+        if (migrateToTemplateIterationOid != null && !migrateToTemplateIterationOid.trim().isEmpty()) {
+            lifecycleTemplateService.rebindLifecycle(iter, migrateToTemplateIterationOid);
+        }
         lifecycleTemplateService.moveToState(iter, targetStateCode);
         iter.setUpdatedAt(LocalDateTime.now());
         iterationMapper.update(iter);
@@ -443,18 +454,27 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
 
     @Override
     @Transactional
-    public void resetLifecycleStateInstance(String oid, String entityVersion) {
+    public void resetLifecycleStateInstance(String oid, String entityVersion,
+                                            String migrateToTemplateIterationOid) {
         EngineeringDocument document = engDocumentMapper.selectByOid(oid);
         if (document == null) {
             throw new IllegalArgumentException("工程数据不存在: " + oid);
         }
         EngineeringDocumentIteration iter = resolveVersion(oid, entityVersion);
+        if (migrateToTemplateIterationOid != null && !migrateToTemplateIterationOid.trim().isEmpty()) {
+            lifecycleTemplateService.rebindLifecycle(iter, migrateToTemplateIterationOid);
+        }
         lifecycleTemplateService.moveToInitialState(iter);
         iter.setUpdatedAt(LocalDateTime.now());
         iterationMapper.update(iter);
         log.info("退回初始状态: engDocumentOid={}, version={}.{}, status={}", oid,
                 iter.getRevision(), iter.getIteration(),
                 iter.getStatus() != null ? iter.getStatus().getCode() : null);
+    }
+
+    @Override
+    public String lifecycleTemplateIterationOfInstance(String oid, String entityVersion) {
+        return resolveVersion(oid, entityVersion).getLifecycleTemplateIterationOid();
     }
 
     /**
@@ -497,6 +517,16 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
         if (currentIter == null) {
             throw new IllegalArgumentException("工程数据没有可用版本: " + oid);
         }
+        // 检出中的工作副本不能作为修订基线（同文档：避免复制未定稿内容并留下孤版本）
+        if (currentIter.isCheckedOut()) {
+            throw new IllegalStateException(
+                    "工程数据已被 " + currentIter.getCheckedOutBy() + " 检出，请先检入或取消检出后再修订");
+        }
+        // 版本规则用尽时不再回退字符顺延：通知租户管理员改规则，并阻止修订
+        revisionRuleGuard.ensureRevisionAllowed(document.getTypeDefinitionCode(), currentIter.getRevision(),
+                document.getNumber(), document.getName());
+        // 当前生命周期状态是否允许修订（模板状态上的 revisable，配置缺失不阻断）
+        lifecycleTemplateService.ensureRevisable(currentIter);
 
         // 1. 原最新版本 latest → false
         currentIter.setLatest(false);
@@ -515,8 +545,16 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
         copy.setUpdatedAt(LocalDateTime.now());
         copy.setCreator(currentIter.getCreator());
         copy.setTenantOid(currentIter.getTenantOid());
-        copy.setStatus(currentIter.getStatus());
         copy.setLifecycleTemplateIterationOid(currentIter.getLifecycleTemplateIterationOid());
+        // 修订出的新大版本要重新初始化生命周期：回到该对象固化模板的初始状态，不继承旧版本的状态。
+        // 未绑定模板（历史数据）时保持原状态
+        LifecycleStatus initialStatus = lifecycleTemplateService.initialStatus(
+                currentIter.getLifecycleTemplateIterationOid());
+        copy.setStatus(initialStatus != null ? initialStatus : currentIter.getStatus());
+        if (initialStatus == null && currentIter.getLifecycleTemplateIterationOid() != null) {
+            log.warn("修订未能解析模板初始状态，沿用原状态: engDocOid={}, templateIteration={}",
+                    oid, currentIter.getLifecycleTemplateIterationOid());
+        }
         // 继承 CAD 专有属性
         copy.setCkfileOid(currentIter.getCkfileOid());
         copy.setCadName(currentIter.getCadName());
@@ -556,6 +594,8 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
     public List<EngineeringDocumentVO> findVOsByFolder(String folderOid) {
         List<EngineeringDocument> docs = engDocumentMapper.selectByFolderOid(folderOid);
         List<EngineeringDocumentVO> vos = new java.util.ArrayList<>();
+        // 同一文件夹的工程数据通常共用模板：按模板子版本缓存"状态 → 可修订"
+        Map<String, Map<String, Boolean>> revisableCache = new HashMap<>();
         for (EngineeringDocument doc : docs) {
             EngineeringDocumentVO vo = new EngineeringDocumentVO();
             vo.setOid(doc.getOid());
@@ -597,6 +637,11 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
                     // 显示名要走解析器：迭代上的 status 只带 code，界面显示用"草稿/已发布"
                     vo.setStatusName(lifecycleStatusService.displayName(
                             latestIter.getLifecycleTemplateIterationOid(), latestIter.getStatus().getCode()));
+                    // 行内「修订」是否出现，由该状态在模板里的 revisable 决定（未知按允许）
+                    Map<String, Boolean> flags = revisableCache.computeIfAbsent(
+                            latestIter.getLifecycleTemplateIterationOid(),
+                            lifecycleTemplateService::revisableFlags);
+                    vo.setRevisable(flags.getOrDefault(latestIter.getStatus().getCode(), true));
                 }
             }
             vos.add(vo);

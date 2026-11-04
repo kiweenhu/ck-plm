@@ -7,8 +7,11 @@
 
 package cn.ck.plm.process.service.api;
 
+import cn.ck.plm.process.dto.ProcessActivityFormVO;
 import cn.ck.plm.process.dto.ProcessActivityVO;
+import cn.ck.plm.process.dto.ProcessAddSignerVO;
 import cn.ck.plm.process.dto.ProcessCommentVO;
+import cn.ck.plm.process.dto.ProcessStartFormVO;
 import cn.ck.plm.process.dto.ProcessTaskContextVO;
 import cn.ck.plm.process.dto.ProcessInstanceVO;
 import cn.ck.plm.process.dto.ProcessTaskFormVO;
@@ -96,11 +99,47 @@ public interface ProcessService {
      */
     ProcessTaskFormVO taskForm(String taskId);
 
-    /** 委派任务（处理后任务回到委派人，assignee 变为受托人） */
-    void delegateTask(String taskId, String targetAssignee);
+    /**
+     * 发起表单上下文：该流程**最新部署版**里开始节点配的表单（{@code startEvent} 的
+     * {@code flowable:formKey} = DSL 里 start 节点的 {@code formRef}），
+     * 以及该部署版的 DSL。
+     *
+     * <p>供「发起流程」弹框在提交前渲染申请表单；{@code formKey} 为空 = 开始节点没配表单，
+     * 弹框不渲染表单区（与老流程完全一致）。未部署时各字段为空。
+     *
+     * <p>取的是<b>部署产物</b>：发起总是启动最新部署版，模板主档可能比它更新/更旧。
+     */
+    ProcessStartFormVO startForm(String processKey);
 
-    /** 转办任务（把任务彻底交给他人） */
+    /**
+     * 转办任务（把任务彻底交给他人）。
+     *
+     * <p><b>为什么没有委派</b>：Flowable 6.8 里委派出去的任务（{@code delegationState=PENDING}）
+     * 不能 {@code complete()}，必须先 {@code resolveTask()} 交还原办理人；本项目没有 resolve
+     * 这条链路，委派出去的待办在原办理人那里消失、在受托人那里又办不完 —— 等于把任务卡死。
+     * 与其留着一个会把单卡住的入口，不如只保留语义完整、没有回退负担的转办。
+     */
     void transferTask(String taskId, String targetAssignee);
+
+    /**
+     * 加签：给当前任务<b>加一个人</b>（不是换人 —— 换人见委派 / 转办）。
+     *
+     * <p>按任务所在活动自动分派两种语义：
+     * <ul>
+     *   <li><b>并行会签</b> → {@code COUNTERSIGN}：向多实例追加一个实例，
+     *       原办理人的待办不动，新人也拿到待办，<b>所有人都办完</b>这个节点才结束；</li>
+     *   <li><b>单实例 / 串行会签</b> → {@code OR_SIGN}：追加候选人并释放 assignee，
+     *       双方都从「可认领」进入，<b>谁先办谁算过</b>。</li>
+     * </ul>
+     *
+     * <p>为什么不是全都会签：会签的实例数在进入活动时由引擎定死，只有
+     * {@code RuntimeService#addMultiInstanceExecution} 这一条路能扩容；串行多实例只有一个
+     * 活动执行在跑，插进去会打乱 {@code loopCounter} 的队列语义，本期不碰。
+     * 无法扩容的场景退回或签，并在返回值里<b>如实标明</b> —— 语义降级必须让用户看见。
+     *
+     * @return 本次实际采用的模式与（会签时的）应到人数
+     */
+    ProcessAddSignerVO addSigner(String taskId, String targetAssignee);
 
     /** 查询任务评论 */
     List<ProcessCommentVO> findTaskComments(String taskId);
@@ -156,6 +195,18 @@ public interface ProcessService {
      * @throws IllegalArgumentException 实例不存在或不属于当前租户
      */
     List<ProcessActivityVO> findInstanceActivities(String instanceId);
+
+    /**
+     * 某节点（活动）的「表单填写」：该节点办理时写入流程变量的键值清单（带可读标签）。
+     *
+     * <p>归因两条线：变量的 {@code taskId} 命中该活动的历史任务；或变量的写入时间落在该活动的
+     * 执行时间窗内（「设置审批人」这类流程作用域变量没有 taskId，只能靠时间窗）。
+     * 平台内部变量（businessObjectSet / initiator / approved / lastAction / ckplmDecision…）
+     * 不算"用户填的表单"，一律不返回。
+     *
+     * @throws IllegalArgumentException 实例不存在或不属于当前租户
+     */
+    List<ProcessActivityFormVO> findActivityForm(String instanceId, String activityId);
 
     /** 挂起流程实例 */
     void suspendInstance(String instanceId);

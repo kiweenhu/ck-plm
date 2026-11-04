@@ -13,10 +13,23 @@ spring:
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
-#  sql:
-#    init:
-#      mode: never
-#      schema-locations: classpath:schema.sql
+  # 启动时自动补齐业务表结构。
+  #
+  # 为什么打开：本工程没有迁移框架，schema.sql 不会自己执行 —— 新增的表（如 ck_change_*）
+  # 不手工重跑就永远不存在，接口一调就是 "relation does not exist"。让建表跟着应用启动走，
+  # 才能避免"代码发了、表没建"这类问题。
+  #
+  # 为什么是安全的：脚本全幂等（CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS /
+  # CREATE INDEX IF NOT EXISTS），重跑无副作用；并且全是普通 DDL，不含 $$ 函数体或 DO 块
+  # （Spring 按分号切句，函数体会被切碎）。将来若要写函数/触发器，请改用 Flyway。
+  #
+  # continue-on-error=false：脚本有任何一条失败就让启动失败，不要静默跳过 ——
+  # 否则"表建了一半"的应用比"起不来"更难查。
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: false
   servlet:
     multipart:
       max-file-size: 50MB
@@ -143,6 +156,34 @@ plm:
     timeout-seconds: ${PLM_INTEGRATION_TIMEOUT_SECONDS:10}
   media:
     upload-dir: ${plm.storage.media.path}
+  # CAD 轻量化可视化 —— 依赖独立部署的转换器 CK-CADForge。
+  # 为什么不在本进程里做：转换器依赖 pythonocc-core（LGPL-3.0），本工程是 Apache-2.0，
+  # 两者只能通过网络协作，不能把它的代码或产物打进本工程的镜像。
+  cad:
+    forge:
+      # 未部署转换器时保持 false：触发转换直接返回 SKIPPED，前端隐藏 3D 入口，
+      # 而不是给用户一个永远转不完的加载圈。
+      enabled: ${PLM_CAD_FORGE_ENABLED:false}
+      base-url: ${PLM_CAD_FORGE_BASE_URL:http://localhost:8090}
+      # 服务间共享令牌：转换器回调时必须带回，防止内网任意程序伪造转换结果
+      callback-token: ${PLM_CAD_FORGE_CALLBACK_TOKEN:}
+      # 转换器要能访问到 CK-PLM，容器部署时填服务名，不要留 localhost
+      callback-url: ${PLM_CAD_FORGE_CALLBACK_URL:http://localhost:8082/api/internal/cad/convert/callback}
+      # 没有共享存储时，转换器靠 sourceUrl 回拉源件（主机取自 callback-url）。
+      # 这个地址会落进转换器的任务文件与日志，所以用签名 + 有效期限制寿命。
+      # 取得太短会让"排队 + 几百 MB 下载"的慢任务取不到文件。
+      source-url-ttl-minutes: ${PLM_CAD_FORGE_SOURCE_URL_TTL:60}
+      # 产物下载的读超时。提交任务那套 10 秒对"几百 MB 的流式下载"太短，
+      # 会在中途被掐断而只表现为"产物为空"。没有共享卷时每次回传都走这条路径。
+      artifact-read-timeout-ms: ${PLM_CAD_FORGE_ARTIFACT_READ_TIMEOUT:120000}
+      max-source-size-bytes: ${PLM_CAD_FORGE_MAX_SOURCE_SIZE:209715200}
+      max-attempts: ${PLM_CAD_FORGE_MAX_ATTEMPTS:3}
+      # 内网部署注意：OutboundUrlGuard 默认拦私网/回环地址（防 SSRF），
+      # 需把转换器主机加进 plm.integration.allowed-hosts，或设 allow-private-hosts=true。
+      # 显式放行，不要指望"恰好没被拦住"。
+      watchdog-enabled: ${PLM_CAD_FORGE_WATCHDOG:true}
+      stale-after-minutes: ${PLM_CAD_FORGE_STALE_MINUTES:15}
+      watchdog-interval-ms: ${PLM_CAD_FORGE_WATCHDOG_INTERVAL:120000}
 
 # Springdoc OpenAPI 配置
 springdoc:

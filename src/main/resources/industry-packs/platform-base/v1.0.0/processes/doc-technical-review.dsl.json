@@ -1,0 +1,168 @@
+{
+  "key": "doc-technical-review",
+  "name": "技术文档评审流程",
+  "displayName": "技术文档评审流程",
+  "category": "文档管理",
+  "description": "技术文档评审流程：发起人设置评审人 → 进入审核中 → 技术评审（会签、一票否决）→ 通过自动发布 / 驳回自动退回草稿并由发起人重提。流程内用 object.setLifecycleState 服务节点驱动文档生命周期状态（审核中 / 已发布 / 草稿），与生命周期模板 DOC_REVIEW 的状态迁移一一对应。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "doc-technical-review",
+      "name": "技术文档评审流程",
+      "displayName": "技术文档评审流程",
+      "category": "文档管理",
+      "description": "技术文档评审流程：发起人设置评审人 → 进入审核中 → 技术评审（会签）→ 通过自动发布 / 驳回退回草稿重提。"
+    },
+    "variables": [],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：发起技术评审",
+        "type": "START",
+        "initiator": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "set_assignee_1",
+        "name": "设置评审人",
+        "description": "发起人指定本次技术评审的评审人（会签成员）",
+        "type": "SET_ASSIGNEE",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "service_approving",
+        "name": "进入审核中",
+        "description": "文档生命周期状态置为「审核中」（APPROVING）",
+        "type": "SERVICE",
+        "serviceRef": "object.setLifecycleState",
+        "params": {
+          "state": "APPROVING"
+        }
+      },
+      {
+        "id": "n_review",
+        "name": "技术评审（会签）",
+        "description": "评审人按通过规则集体评审；一票否决，全部通过方为通过",
+        "type": "COUNTERSIGN_APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "PROJECT_MANAGER",
+            "SYSTEM_ENGINEER",
+            "QUALITY_ENGINEER"
+          ]
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100
+        },
+        "commentRequired": true
+      },
+      {
+        "id": "service_published",
+        "name": "评审通过：发布",
+        "description": "文档生命周期状态置为「已发布」（PUBLISHED）",
+        "type": "SERVICE",
+        "serviceRef": "object.setLifecycleState",
+        "params": {
+          "state": "PUBLISHED"
+        }
+      },
+      {
+        "id": "service_draft",
+        "name": "评审驳回：退回草稿",
+        "description": "文档生命周期状态退回「草稿」（DRAFT）",
+        "type": "SERVICE",
+        "serviceRef": "object.setLifecycleState",
+        "params": {
+          "state": "DRAFT"
+        }
+      },
+      {
+        "id": "task_resubmit",
+        "name": "重新提交",
+        "description": "发起人补齐材料后重新提交评审",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "n_end",
+        "name": "结束：评审完成",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "source": "start_1",
+        "target": "set_assignee_1",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e1",
+        "source": "set_assignee_1",
+        "target": "service_approving",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "service_approving",
+        "target": "n_review",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e3",
+        "source": "n_review",
+        "target": "service_published",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e4",
+        "source": "n_review",
+        "target": "service_draft",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e5",
+        "source": "service_published",
+        "target": "n_end",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e6",
+        "source": "service_draft",
+        "target": "task_resubmit",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e7",
+        "source": "task_resubmit",
+        "target": "service_approving",
+        "kind": "NORMAL"
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": { "x": 296, "y": -8, "width": 30, "height": 30 },
+        "set_assignee_1": { "x": 240, "y": 66, "width": 142, "height": 44 },
+        "service_approving": { "x": 240, "y": 156, "width": 142, "height": 44 },
+        "n_review": { "x": 240, "y": 246, "width": 180, "height": 70 },
+        "service_published": { "x": 240, "y": 336, "width": 142, "height": 44 },
+        "n_end": { "x": 296, "y": 426, "width": 30, "height": 30 },
+        "service_draft": { "x": 576, "y": 246, "width": 142, "height": 44 },
+        "task_resubmit": { "x": 540, "y": 66, "width": 142, "height": 44 }
+      }
+    }
+  }
+}

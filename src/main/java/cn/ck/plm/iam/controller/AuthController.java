@@ -64,12 +64,17 @@ public class AuthController {
             return ApiResponse.fail(401, "用户名或密码错误");
         }
 
-        if (!user.isEnabled()) {
-            return ApiResponse.fail(403, "用户已被禁用");
-        }
-
-        if (user.isLocked()) {
-            return ApiResponse.fail(403, "用户已被锁定");
+        // 账号自身不可用时，先把"企业侧"的原因摆上来。
+        // 注册租户时管理员账号就是按 enabled=false + locked=true 建的（审核通过前不可登录，
+        // 见 TenantServiceImpl.register；审核通过时由 approve 打开）—— 所以这两面旗子常常只是
+        // "企业还没过审"的表象。若不让租户状态先说话，用户看到的永远是"用户已被禁用"，
+        // 转头去查自己的账号，方向全错。
+        if (!user.isEnabled() || user.isLocked()) {
+            String tenantBlock = describeTenantBlock(user);
+            if (tenantBlock != null) {
+                return ApiResponse.fail(403, tenantBlock);
+            }
+            return ApiResponse.fail(403, user.isEnabled() ? "用户已被锁定" : "用户已被禁用");
         }
 
         if (!PasswordEncoder.matches(request.getPassword(), user.getPassword())) {
@@ -84,7 +89,9 @@ public class AuthController {
                 return ApiResponse.fail(403, "租户信息不存在");
             }
             if (!tenant.isActive()) {
-                return ApiResponse.fail(403, "租户未激活，请等待管理员审核");
+                // 同样是"企业侧"的原因，按真实状态说 —— 原先一律说"等待管理员审核"，
+                // 对被驳回 / 已暂停 / 已停用的租户都不成立
+                return ApiResponse.fail(403, tenantStatusMessage(tenant));
             }
             tenantName = tenant.getName();
         }
@@ -281,6 +288,47 @@ public class AuthController {
         } catch (Exception ignored) { }
 
         return ApiResponse.ok(Map.of("removed", removed));
+    }
+
+    /**
+     * 用户被禁用/锁定时，先看它所属租户是不是卡在准入环节。
+     *
+     * <p>这里最容易把人带偏：注册时管理员账号就是 {@code enabled=false + locked=true}
+     * （见 {@code TenantServiceImpl.register}），由 {@code approve} 在审核通过时打开 ——
+     * 于是"用户已被禁用"常常只是"企业还没过审"的表象。不先问租户，用户就会去查自己的账号。
+     *
+     * @return 租户侧的说明；租户正常（ACTIVE）或无租户（平台级账号）时返回 {@code null}
+     */
+    private String describeTenantBlock(User user) {
+        if (user.getTenantOid() == null) {
+            return null;
+        }
+        Tenant tenant = tenantService.getByOid(user.getTenantOid());
+        if (tenant == null) {
+            return "租户信息不存在";
+        }
+        return tenant.isActive() ? null : tenantStatusMessage(tenant);
+    }
+
+    /** 租户状态 → 给用户看的说明（把"为什么登不进去"说准，而不是一律"等审核"） */
+    private String tenantStatusMessage(Tenant tenant) {
+        String status = tenant.getStatus();
+        if (Tenant.STATUS_PENDING.equals(status)) {
+            return "您的企业申请正在平台审核中，审核通过后即可登录";
+        }
+        if (Tenant.STATUS_REJECTED.equals(status)) {
+            String reason = tenant.getRejectReason();
+            return (reason == null || reason.trim().isEmpty())
+                    ? "您的企业申请未通过审核，请联系平台管理员"
+                    : "您的企业申请未通过审核：" + reason;
+        }
+        if (Tenant.STATUS_SUSPENDED.equals(status)) {
+            return "您的企业已被暂停使用，请联系平台管理员";
+        }
+        if (Tenant.STATUS_DISABLED.equals(status)) {
+            return "您的企业已被停用，请联系平台管理员";
+        }
+        return "租户状态异常（" + status + "），请联系平台管理员";
     }
 
     /**

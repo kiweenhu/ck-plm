@@ -421,6 +421,22 @@ function sideScores(from: Rect, to: Rect): Record<PortSide, number> {
   const tc = centerOf(to)
   const nx = (tc.x - fc.x) / Math.max(1, (from.width + to.width) / 2)
   const ny = (tc.y - fc.y) / Math.max(1, (from.height + to.height) / 2)
+  /**
+   * 同层（两边垂直投影有重叠 —— 也就是"差不多在一条线上"）时，**上下方位直接判背对**。
+   *
+   * <p>2026-10-13 用户口径：这种关系里两个节点本来就该横向直连（一侧出、另一侧进，
+   * 都落在左/右的**中心锚点**上）；走上下必然先折出去、再绕回来，是最该避免的走法。
+   * 这条规则同时作用于出入边：`facingPortSides` 的 ≥0 过滤会直接排除上下，
+   * `rankPortSides` 也会把它们排到最后（只在左右都被占满时才可能兜底用到）。
+   *
+   * <p>给 -1 而不是 0：0 会与其它 0 分平局，仍可能被 {@link PORT_SIDE_ORDER} 挑中；
+   * -1 明确表达"背对"。注意左右为满时宁可**复用主方位**（两条线重叠一小段、
+   * 随后由 manhattan 自然分开），也不绕到上下 —— 与 facingPortSides 的既有取向一致。
+   */
+  const sameRow = Math.min(from.y + from.height, to.y + to.height) > Math.max(from.y, to.y)
+  if (sameRow) {
+    return { right: nx, left: -nx, bottom: -1, top: -1 }
+  }
   return { right: nx, left: -nx, bottom: ny, top: -ny }
 }
 

@@ -1,0 +1,54 @@
+{
+  "classifications": [
+    {
+      "name": "结构件",
+      "identifier": "tpl-structure",
+      "note": "结构件六大工艺类别 → 具体工艺件；定义材质/厚度/表面处理/强度等级等属性。",
+      "children": [
+        { "name": "钣金件", "slug": "sheet-metal", "children": [
+          { "name": "折弯件", "slug": "bending", "ibas": ["MATERIAL", "THICKNESS", "SURFACE_TREATMENT", "PROCESS"] },
+          { "name": "冲压件", "slug": "stamping", "ibas": ["MATERIAL", "THICKNESS", "SURFACE_TREATMENT", "PROCESS"] },
+          { "name": "拉伸件", "slug": "drawing", "ibas": ["MATERIAL", "THICKNESS", "SURFACE_TREATMENT"] }
+        ] },
+        { "name": "机加件", "slug": "machining", "children": [
+          { "name": "车削件", "slug": "turning", "ibas": ["MATERIAL", "PRECISION", "SURFACE_TREATMENT", "PROCESS"] },
+          { "name": "铣削件", "slug": "milling", "ibas": ["MATERIAL", "PRECISION", "SURFACE_TREATMENT", "PROCESS"] },
+          { "name": "钻孔件", "slug": "drilling", "ibas": ["MATERIAL", "PRECISION", "SURFACE_TREATMENT"] }
+        ] },
+        { "name": "注塑件", "slug": "injection", "children": [
+          { "name": "通用注塑件", "slug": "general", "ibas": ["MATERIAL", "COLOR", "PROCESS"] },
+          { "name": "精密注塑件", "slug": "precision", "ibas": ["MATERIAL", "COLOR", "PRECISION", "PROCESS"] }
+        ] },
+        { "name": "铸造件", "slug": "casting", "children": [
+          { "name": "砂型铸造件", "slug": "sand-casting", "ibas": ["MATERIAL", "PROCESS", "SURFACE_TREATMENT"] },
+          { "name": "压铸件", "slug": "die-casting", "ibas": ["MATERIAL", "PROCESS", "SURFACE_TREATMENT"] },
+          { "name": "精密铸造件", "slug": "investment-casting", "ibas": ["MATERIAL", "PRECISION", "SURFACE_TREATMENT"] }
+        ] },
+        { "name": "焊接件", "slug": "welding", "children": [
+          { "name": "角焊缝件", "slug": "fillet-weld", "ibas": ["MATERIAL", "PROCESS", "SURFACE_TREATMENT"] },
+          { "name": "对接焊件", "slug": "butt-weld", "ibas": ["MATERIAL", "PROCESS", "SURFACE_TREATMENT"] }
+        ] },
+        { "name": "标准件", "slug": "standard-part", "children": [
+          { "name": "螺栓", "slug": "bolt", "ibas": ["SPECIFICATION", "MATERIAL", "STRENGTH_GRADE", "SURFACE_TREATMENT"] },
+          { "name": "螺母", "slug": "nut", "ibas": ["SPECIFICATION", "MATERIAL", "STRENGTH_GRADE", "SURFACE_TREATMENT"] },
+          { "name": "垫圈", "slug": "washer", "ibas": ["SPECIFICATION", "MATERIAL", "SURFACE_TREATMENT"] },
+          { "name": "销钉", "slug": "pin", "ibas": ["SPECIFICATION", "MATERIAL", "DIAMETER", "LENGTH"] },
+          { "name": "轴承", "slug": "bearing", "ibas": ["SPECIFICATION", "MATERIAL", "PRECISION"] }
+        ] }
+      ]
+    }
+  ],
+  "ibaDefinitions": [
+    { "code": "MATERIAL",          "name": "材质",     "dataType": "STRING", "description": "材料，如 X7R、C0G、碳膜" },
+    { "code": "THICKNESS",         "name": "厚度",     "dataType": "FLOAT",  "description": "材料厚度，单位 mm" },
+    { "code": "SURFACE_TREATMENT", "name": "表面处理", "dataType": "STRING", "description": "表面处理，如 镀锌、阳极氧化" },
+    { "code": "PROCESS",           "name": "工艺",     "dataType": "STRING", "description": "加工工艺" },
+    { "code": "PRECISION",         "name": "加工精度", "dataType": "STRING", "description": "加工精度等级" },
+    { "code": "COLOR",             "name": "颜色",     "dataType": "STRING", "description": "发光颜色" },
+    { "code": "SPECIFICATION",     "name": "规格",     "dataType": "STRING", "description": "规格型号，如 M8、GB/T 5782" },
+    { "code": "STRENGTH_GRADE",    "name": "强度等级", "dataType": "STRING", "description": "强度等级，如 8.8、10.9" },
+    { "code": "DIAMETER",          "name": "直径",     "dataType": "FLOAT",  "description": "公称直径，单位 mm" },
+    { "code": "LENGTH",            "name": "长度",     "dataType": "FLOAT",  "description": "长度，单位 mm" }
+  ],
+  "note": "结构件分类树（6 大类 / 16 个工艺件）+ 其引用的属性定义。属通用机械/结构域内容，故归平台基础包；电子元器件树在 electronics-core（同名 code 的 IBA 由安装器按 code 幂等，先到先建）。"
+}

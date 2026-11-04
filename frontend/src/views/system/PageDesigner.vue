@@ -57,8 +57,8 @@
         <a-space size="4">
           <template v-if="designMode==='design'">
             <a-button size="small" ghost @click="resetLayout"><template #icon><ClearOutlined /></template>重置</a-button>
-            <a-button v-if="canClone" size="small" ghost :loading="cloning" @click="handleClonePlatformLayout">
-              <template #icon><CopyOutlined /></template>克隆平台布局
+            <a-button v-if="canClone" size="small" ghost :loading="cloning" @click="handleCloneRootTypeLayout">
+              <template #icon><CopyOutlined /></template>克隆根类型布局
             </a-button>
             <a-button type="primary" size="small" :loading="saving" @click="saveLayout">
               <template #icon><SaveOutlined /></template>
@@ -363,6 +363,7 @@
                     <!-- ========== 布局行容器 ========== -->
                     <div v-if="item.type==='layout-row'"
                       class="md-layout-row"
+                      :data-idx="idx"
                       :class="designMode==='design' ? { 'md-field-selected': isFieldSelected('form', idx) } : ''"
                       @click.stop="designMode==='design' && selectCanvasField('form', idx)"
                     >
@@ -391,7 +392,7 @@
                             :key="child.fieldName"
                             class="md-form-row"
                             :class="[designMode==='design' ? { 'md-field-selected': isFieldSelected('form', cIdx, idx) } : '', child.labelLayout === 'vertical' ? 'md-form-row-vertical' : '']"
-                            :style="{ width: layoutColWidth(item.columns || 2) }"
+                            :style="{ width: layoutColWidth(item.columns || 2, child) }"
                             :draggable="designMode==='design'"
                             @dragstart.stop="designMode==='design' && onFieldDragStart($event, 'form', cIdx, idx)"
                             @click.stop="designMode==='design' && selectCanvasField('form', cIdx, idx)"
@@ -419,6 +420,7 @@
                     <!-- ========== 分组容器 ========== -->
                     <div v-else-if="item.type==='group'"
                       class="md-form-group"
+                      :data-idx="idx"
                       :class="designMode==='design' ? { 'md-field-selected': isFieldSelected('form', idx) } : ''"
                       @click.stop="designMode==='design' && selectCanvasField('form', idx)"
                     >
@@ -473,7 +475,7 @@
                                     :key="grandChild.fieldName"
                                     class="md-form-row"
                                     :class="[designMode==='design' ? { 'md-field-selected': isFieldSelected('form', gcIdx, idx, cIdx) } : '', grandChild.labelLayout === 'vertical' ? 'md-form-row-vertical' : '']"
-                                    :style="{ width: layoutColWidth(child.columns || 2) }"
+                                    :style="{ width: layoutColWidth(child.columns || 2, grandChild) }"
                                     :draggable="designMode==='design'"
                                     @dragstart.stop="designMode==='design' && onFieldDragStart($event, 'form', gcIdx, idx, cIdx)"
                                     @click.stop="designMode==='design' && selectCanvasField('form', gcIdx, idx, cIdx)"
@@ -531,6 +533,7 @@
                     <!-- ========== 数据表格容器 ========== -->
                     <div v-else-if="item.type==='data-table'"
                       class="md-form-group"
+                      :data-idx="idx"
                       :class="designMode==='design' ? { 'md-field-selected': isFieldSelected('form', idx) } : ''"
                       @click.stop="designMode==='design' && selectCanvasField('form', idx)"
                     >
@@ -613,6 +616,7 @@
                     <!-- ========== 普通字段 ========== -->
                     <div v-else-if="!item.hidden"
                       class="md-form-row"
+                      :data-idx="idx"
                       :class="[designMode==='design' ? { 'md-field-selected': isFieldSelected('form', idx) } : '', item.labelLayout === 'vertical' ? 'md-form-row-vertical' : '']"
                       :style="{ width: '50%' }"
                       :draggable="designMode==='design'"
@@ -679,7 +683,8 @@
                 <a-radio-button :value="4">4列</a-radio-button>
               </a-radio-group>
               <div style="font-size:11px;color:#999;margin-top:4px">
-                当前：每行{{ selectedField.field.columns }}列，子字段宽度 {{ layoutColWidth(selectedField.field.columns) }}
+                当前每行 {{ selectedField.field.columns }} 列，普通字段占 {{ resolveFieldWidthPercent({}, selectedField.field.columns) }}；
+                富文本 / 文本域 / 文件上传 / 数据表格自动占满整行（可在字段属性里用 span 或 colSpan 覆盖）
               </div>
             </a-form-item>
             <a-divider style="margin:12px 0" />
@@ -962,7 +967,7 @@ import {
   EyeOutlined, EditOutlined, InsertRowBelowOutlined
 } from '@ant-design/icons-vue'
 import {
-  getAttributeDefinitions, getOperationList, getPageLayout,
+  getAttributeDefinitions, getOperationList, getPageLayoutByCode,
   savePageLayout as savePageLayoutApi, deletePageLayout as deletePageLayoutApi,
   clonePageLayout,
   getOrgTree, getAllUsers, getProductLineTree, getAllFolderTree,
@@ -973,6 +978,8 @@ import {
   WidgetToolbox, WidgetSelector, WidgetPreview,
   getWidgetIcon, getWidgetByType, createFieldFromWidget, createCompanionFields, isContainerWidget
 } from '@/widgets'
+// 画布里子字段的宽度必须和运行态同一套判定，否则"预览正常、真实表单挤坏"
+import { resolveFieldWidthPercent } from '@/widgets/layout-span'
 
 const router = useRouter()
 const route = useRoute()
@@ -998,11 +1005,18 @@ const isBuiltinOp = computed(() => {
 })
 const currentLayoutTenantOid = ref(null) // 当前加载的 layout 所属租户
 
-// 是否可克隆：租户管理员 + 系统操作 + 当前 layout 是平台级（未克隆过）
+// 是否可克隆「根类型布局」：非平台管理员 + 系统操作 + 本租户尚未保存过该操作的布局
+// （2026-10-11 起克隆源是"本租户的根类型"——如 电子元器件 → PART，不再是从平台那份复制；
+//   后端 cloneFromRootType 仍会二次校验"已有布局 / 根类型无布局"并如实报错）
+// ★ 2026-10-11：当前类型若自身就是"根类型"（OOTB，自己就是能力宿主）→ 没有可克隆的上级，
+//   不显示本按钮（如 DOCUMENT / PART 等根类型打开设计器时）。
+//   双判据：typeKind 由类型树透传、同步可用；rootTypeCode 兜底"直接改 URL 打开"（懒加载后生效）。
 const canClone = computed(() => {
+  if (typeKind.value === 'OOTB') return false
+  if (typeDefinition.value?.rootTypeCode && typeDefinition.value.rootTypeCode === entityCode.value) return false
   if (isPlatformAdmin.value) return false
   if (!isBuiltinOp.value) return false
-  // 如果已有租户级 layout（saved=true 且 tenantOid 非平台级），不可克隆
+  // 已有本租户级 layout（saved=true 且 tenantOid 非平台级）→ 不可克隆
   const op = currentOpInfo.value
   if (op?.saved === 'true' && currentLayoutTenantOid.value !== PLATFORM_TENANT_OID) return false
   return true
@@ -1256,7 +1270,11 @@ async function loadLayoutForOp() {
   if (!entityOid.value || !currentOpCode.value) return
   currentLayoutTenantOid.value = null
   try {
-    const res = await getPageLayout(entityOid.value, currentOpCode.value)
+    // ★ 2026-10-12：改为按 entityCode + operationCode 取【本租户】布局（后端 where 含 tenant_oid）。
+    // 原按 entityOid 取 —— 某行的 entity_oid 一旦与"本租户类型 oid"不一致（初始化器曾跨租户
+    // "自愈"，把它改挂到平台 oid），设计器就读不到自己的布局、显示空表单（用户实测：文档/新建页）。
+    // 类型 code 在租户内唯一，按 code 取更稳，且与"布局按租户隔离"的口径一致。
+    const res = await getPageLayoutByCode(entityCode.value, currentOpCode.value)
     if (res.code === 200 && res.data) {
       currentLayoutTenantOid.value = res.data.tenantOid || null
       const json = typeof res.data.layoutJson === 'string'
@@ -1473,20 +1491,34 @@ function onZoneDrop(e, zone) {
       let items
       if (zone === 'form') {
         const preview = e.currentTarget.querySelector('.md-form-preview')
-        items = preview ? preview.children : []
+        // children 是 HTMLCollection —— 没有 forEach（此前直接 .forEach 必抛
+        // "items.forEach is not a function"，表单内拖动排序一次都成功不了）
+        items = preview ? Array.from(preview.children) : []
       } else if (zone === 'table') {
-        items = e.currentTarget.querySelectorAll('.md-table-th')
+        items = Array.from(e.currentTarget.querySelectorAll('.md-table-th'))
       } else {
-        items = e.currentTarget.querySelectorAll('.md-field-chip')
+        items = Array.from(e.currentTarget.querySelectorAll('.md-field-chip'))
       }
-      let insertIdx = list.length
+      // null = 没落在任何元素的上半区 → 放到末尾
+      let insertIdx = null
       const dropY = e.clientY
       items.forEach((item, i) => {
         const rect = item.getBoundingClientRect()
         if (dropY < rect.top + rect.height / 2) {
-          insertIdx = Math.min(insertIdx, i)
+          // 隐藏字段不渲染 DOM，i 会与 list 索引错位 → 优先取模板上的 data-idx
+          const raw = item.dataset?.idx
+          const domIdx = raw === undefined ? i : Number(raw)
+          const hit = Number.isNaN(domIdx) ? i : domIdx
+          insertIdx = insertIdx === null ? hit : Math.min(insertIdx, hit)
         }
       })
+      if (insertIdx === null) {
+        insertIdx = list.length
+      } else if (insertIdx > srcIdx) {
+        // 此刻 DOM 还是"移除之前"的顺序：目标在被拖元素之后要减 1，
+        // 否则往后拖会多走一格（A 拖到 B、C 之间会跑到末尾）
+        insertIdx -= 1
+      }
       list.splice(Math.min(insertIdx, list.length), 0, moved)
       selectedField.value = { section: zone, field: moved, index: list.indexOf(moved) }
     } else {
@@ -1683,12 +1715,17 @@ function zoneLabel(zone) {
 }
 
 /**
- * 根据列数计算列宽度（用于布局行内的子字段）
- * 1列 → 100%, 2列 → 50%, 4列 → 25%
+ * 布局行内子字段的宽度。
+ *
+ * <p>不再是"列数一刀切"：富文本 / 文本域 / 文件上传 / 数据表格按整行渲染（半宽必然挤坏），
+ * 其余仍按列数等分；字段上写了 {@code span} / {@code colSpan} 的以它为准。
+ * 判定逻辑与运行态 `RenderFields` 共用 `widgets/layout-span.js`。
+ *
+ * @param {number} columns 列数（1/2/4）
+ * @param {object} field   子字段定义
  */
-function layoutColWidth(columns) {
-  const map = { 1: '100%', 2: '50%', 4: '25%' }
-  return map[columns] || '50%'
+function layoutColWidth(columns, field) {
+  return resolveFieldWidthPercent(field, columns)
 }
 
 function buildFieldFromAttr(attr) {
@@ -2037,7 +2074,12 @@ async function saveLayout() {
   finally { saving.value = false }
 }
 
-async function handleClonePlatformLayout() {
+/**
+ * 克隆「根类型布局」到当前类型（本租户内）：如 电子元器件 → 其 root_type_code 是 PART，
+ * 就把本租户 PART 上同名操作（新建页 / 列表页…）的布局复制给当前类型，随后可自由编辑。
+ * 后端只读本租户的根类型，不读平台那份（与全库"按租户隔离、不拿平台兜底"的口径一致）。
+ */
+async function handleCloneRootTypeLayout() {
   if (!entityOid.value || !currentOpCode.value) return
   cloning.value = true
   try {
@@ -2047,7 +2089,7 @@ async function handleClonePlatformLayout() {
       operationCode: currentOpCode.value
     })
     if (res.code === 200) {
-      message.success('平台布局已克隆到本租户，现在可以自由编辑了')
+      message.success('根类型布局已克隆到当前类型，现在可以自由编辑了')
       currentLayoutTenantOid.value = res.data?.tenantOid || null
       // 重新加载操作列表（更新下拉项标签）
       await loadOperations()

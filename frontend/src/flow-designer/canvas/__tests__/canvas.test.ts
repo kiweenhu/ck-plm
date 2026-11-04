@@ -27,6 +27,7 @@ import {
   portSlotCount,
   portSlotFraction,
   rankPortSides,
+  sideOfPortId,
   type Rect,
 } from '../node-style'
 import { BRANCH_BAND_STAGGER, geometryOf, needsReanchor, toGraphData } from '../render'
@@ -278,9 +279,10 @@ describe('DSL → 图元映射', () => {
     const back = data.edges.find((e) => e.id === 'f5')!
     const rects = dsl.nodes.map((node) => geometryOf(dsl, node))
 
-    // 三段走线：出源 → 贴车道竖着往上 → 折回目标上方
-    expect(back.vertices).toHaveLength(3)
-    const [out, top, over] = back.vertices!
+    // 两段走线：出源 → 贴车道竖到目标那一层 → **横着进目标侧边**
+    // （不再绕到目标上方再折下来：车道本来就贴着外缘，横进来的那一段压不到任何节点）
+    expect(back.vertices).toHaveLength(2)
+    const [out, turn] = back.vertices!
     // 竖段所在的那个 x 必须在所有节点之外 —— 否则这条竖线就会穿过谁（本用例的存在理由）
     for (const r of rects) {
       const outside = out.x < r.x || out.x > r.x + r.width
@@ -293,15 +295,199 @@ describe('DSL → 图元映射', () => {
       )
       expect(inside, `走线点 ${point.x},${point.y} 落在节点框内`).toBe(false)
     }
-    // 三段都轴对齐：任何路由算法都只会照走，不会再自己改道
-    expect(out.x).toBe(top.x)
-    expect(top.y).toBe(over.y)
-    // 进出方位：源从外侧出、目标从上方进（那条层间空带里没有节点）
+    // 两段都轴对齐：任何路由算法都只会照走，不会再自己改道
+    expect(out.x).toBe(turn.x)
+    // 进出方位：源从外侧出、目标从同一侧进（车道那一侧的外缘是空的）
     expect(back.source.port).toBe('left')
-    expect(back.target.port).toMatch(/^top/)
+    expect(back.target.port).toBe('left')
 
     // 顺流向下、不需要绕路的连线不该被塞走线点：路由仍有自由度
     expect(data.edges.find((e) => e.id === 'f2')!.vertices).toBeUndefined()
+  })
+
+  it('车道那一侧的入场横线被别的节点挡住时，退回从顶部进（不穿框）', () => {
+    // 目标右侧还有别的节点：若仍从车道横着进目标右侧，这段横线会穿过中间那个节点 ——
+    // 此时必须改回"绕到目标上方、从顶部落"（层间空带里没有节点）
+    const dsl = baseDsl({
+      nodes: [
+        {
+          id: 'a1',
+          type: NodeType.APPROVAL,
+          name: '上游审批',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: ApprovalMode.SINGLE,
+        },
+        {
+          id: 't1',
+          type: NodeType.TASK,
+          name: '中间节点',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+        },
+        { id: 's1', type: NodeType.SERVICE, name: '设置状态', serviceRef: 'object.setLifecycleState' },
+      ],
+      edges: [
+        { id: 'e1', source: 's1', target: 'a1', kind: EdgeKind.NORMAL, route: EdgeRoute.REJECT },
+      ],
+      layout: {
+        nodes: {
+          a1: { x: 800, y: 300 },
+          t1: { x: 1000, y: 300 },
+          s1: { x: 500, y: 620 },
+        },
+      },
+    })
+    const edge = toGraphData(dsl).edges[0]
+    const rects = dsl.nodes.map((node) => geometryOf(dsl, node))
+    // 车道在外侧（x 超过所有节点），从顶部进 = 三段折线
+    expect(edge.vertices).toHaveLength(3)
+    expect(edge.target.port).toMatch(/^top/)
+    const [out] = edge.vertices!
+    for (const r of rects) {
+      expect(out.x < r.x || out.x > r.x + r.width).toBe(true)
+    }
+  })
+
+  it('锚点背对源：先竖到目标外侧、再横进锚点，不贴着目标边沿绕一圈', () => {
+    // 用户截图那处：需求与选型初审（左上）驳回 → 设置对象状态（右下），
+    // 而目标的锚点钉在"下边沿" —— 线必须从下面进。
+    // 原做法先横到目标左侧再竖下去，第一段几乎贴着目标的顶边走（看起来像"绕着节点转"）；
+    // 正确走法是**离开源就竖下去**，在目标下方横移到锚点正下方，再抬进锚点。
+    const dsl = baseDsl({
+      nodes: [
+        {
+          id: 'd1',
+          type: NodeType.APPROVAL,
+          name: '需求与选型初审',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: ApprovalMode.SINGLE,
+        },
+        { id: 's1', type: NodeType.SERVICE, name: '设置对象状态', serviceRef: 'object.setLifecycleState' },
+      ],
+      edges: [
+        {
+          id: 'e1',
+          source: 'd1',
+          target: 's1',
+          kind: EdgeKind.NORMAL,
+          route: EdgeRoute.REJECT,
+          anchor: { source: 'right', target: 'bottom' },
+        },
+      ],
+      layout: { nodes: { d1: { x: 240, y: 252 }, s1: { x: 576, y: 284 } } },
+    })
+    const edge = toGraphData(dsl).edges[0]
+    // 出源（382,274）→ 竖到目标下方空带（402,348）→ 横到锚点正下方（647,348）→ 抬进下边沿
+    expect(edge.vertices).toEqual([
+      { x: 402, y: 274 },
+      { x: 402, y: 348 },
+      { x: 647, y: 348 },
+    ])
+    expect(edge.target.port).toBe('bottom')
+  })
+
+  it('两个节点挨得近时，侧出短横段不越进目标框（不再退回 manhattan 绕小台阶）', () => {
+    // 源右侧 382、目标左侧 398：横缝只有 16px，比默认短横段 20px 还窄。
+    // 旧走法先横到 402（已经进了目标框），自检不过 → 交回 manhattan → 在缝里绕出台阶；
+    // 正确做法是把竖段放在两框之间（396），一步下去再横 2px 进锚点。
+    const dsl = baseDsl({
+      nodes: [
+        {
+          id: 'a1',
+          type: NodeType.APPROVAL,
+          name: '技术评审（会签）',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: ApprovalMode.SINGLE,
+        },
+        { id: 's1', type: NodeType.SERVICE, name: '评审驳回：退回草稿', serviceRef: 'object.setLifecycleState' },
+      ],
+      edges: [
+        {
+          id: 'e1',
+          source: 'a1',
+          target: 's1',
+          kind: EdgeKind.NORMAL,
+          route: EdgeRoute.REJECT,
+          anchor: { source: 'right', target: 'left' },
+        },
+      ],
+      layout: { nodes: { a1: { x: 240, y: 250 }, s1: { x: 398, y: 336 } } },
+    })
+    const edge = toGraphData(dsl).edges[0]
+    expect(edge.vertices).toEqual([
+      { x: 396, y: 272 },
+      { x: 396, y: 358 },
+    ])
+  })
+
+  it('层间空带被压窄时，两条分支的水平段仍然错开（不会叠成一条线）', () => {
+    // 层距被拖近到 30px：固定留白 10 + 错开 12 会同时被夹掉，两条分支曾经叠在同一 y 上，
+    // 看上去像一条线穿过去、标签也挤在一起。留白/错开量按空带高度收，保证两者分得开。
+    const dsl = baseDsl({
+      nodes: [
+        {
+          id: 'a1',
+          type: NodeType.APPROVAL,
+          name: '技术评审（会签）',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: ApprovalMode.SINGLE,
+        },
+        { id: 's1', type: NodeType.SERVICE, name: '评审通过：发布', serviceRef: 'object.setLifecycleState' },
+        { id: 's2', type: NodeType.SERVICE, name: '评审驳回：退回草稿', serviceRef: 'object.setLifecycleState' },
+      ],
+      edges: [
+        { id: 'f1', source: 'a1', target: 's1', kind: EdgeKind.NORMAL, name: '通过', route: EdgeRoute.PASS },
+        { id: 'f2', source: 'a1', target: 's2', kind: EdgeKind.NORMAL, name: '驳回', route: EdgeRoute.REJECT },
+      ],
+      layout: {
+        nodes: {
+          a1: { x: 240, y: 250 },
+          s1: { x: 100, y: 324 },
+          s2: { x: 400, y: 324 },
+        },
+      },
+    })
+    const data = toGraphData(dsl)
+    const bands = ['f1', 'f2'].map((id) => {
+      const edge = data.edges.find((e) => e.id === id)!
+      expect(edge.vertices?.length).toBeGreaterThan(0)
+      return edge.vertices![0].y
+    })
+    expect(bands[0]).not.toBe(bands[1])
+    expect(Math.abs(bands[0] - bands[1])).toBeGreaterThanOrEqual(4)
+    // 两条水平段都还在层间空带里，谁也没压到节点
+    for (const y of bands) {
+      expect(y).toBeGreaterThan(294)
+      expect(y).toBeLessThan(324)
+    }
+  })
+
+  it('两端锚点差不到 2px 时按直线画：不在中间插一段亚像素横移', () => {
+    // 同一列的两端：源用 top-2（四等分点 611.5），目标锚点在中点（611）——
+    // 差 0.5px 属于取整噪声，照直画即可；交给路由算法会插一段 0.5px 的横移，放大后是个折
+    const dsl = baseDsl({
+      nodes: [
+        { id: 's1', type: NodeType.SERVICE, name: '设置对象状态', serviceRef: 'object.setLifecycleState' },
+        {
+          id: 't1',
+          type: NodeType.TASK,
+          name: '重新提交申请',
+          assignee: { strategy: AssigneeStrategy.INITIATOR },
+        },
+      ],
+      edges: [
+        {
+          id: 'e1',
+          source: 's1',
+          target: 't1',
+          kind: EdgeKind.NORMAL,
+          anchor: { source: 'top-2' },
+        },
+      ],
+      layout: { nodes: { s1: { x: 576, y: 284 }, t1: { x: 540, y: 66 } } },
+    })
+    const edge = toGraphData(dsl).edges[0]
+    expect(edge.vertices).toBeUndefined()
+    expect(edge.router).toEqual({ name: 'normal' })
   })
 
   it('分支线拐角落进层间空带、左右错开，且不穿任何节点（红框反馈的 1、2 处）', () => {
@@ -382,6 +568,51 @@ describe('DSL → 图元映射', () => {
         }
       }
     }
+  })
+
+  it('正上方竖线占住顶边时，侧向来边改走侧边（不与竖线交叉/并行）', () => {
+    // 用户反馈的「画线打结」：与 doc-technical-review 同形 ——
+    // t1 正上方直落进 t2（竖线，占 top 主锚点）；t3 在右上方、从侧面回到 t2。
+    // 旧实现把 t3 也排在 top 的次锚点上：水平段在层间空带里横穿那条竖线，
+    // 随后又贴着它落进同一条顶边，两条线看起来像一条。
+    const dsl = baseDsl({
+      nodes: [
+        { id: 't1', type: NodeType.TASK, name: '设置评审人', assignee: { strategy: AssigneeStrategy.INITIATOR } },
+        { id: 't2', type: NodeType.TASK, name: '进入审核中', assignee: { strategy: AssigneeStrategy.INITIATOR } },
+        { id: 't3', type: NodeType.TASK, name: '重新提交', assignee: { strategy: AssigneeStrategy.INITIATOR } },
+      ],
+      edges: [
+        { id: 'f1', source: 't1', target: 't2', kind: EdgeKind.NORMAL },
+        { id: 'f2', source: 't3', target: 't2', kind: EdgeKind.NORMAL },
+      ],
+      layout: {
+        nodes: {
+          t1: { x: 240, y: 66 },
+          t2: { x: 240, y: 156 },
+          t3: { x: 540, y: 66 },
+        },
+      },
+    })
+    const data = toGraphData(dsl)
+    const t2Rect = geometryOf(dsl, dsl.nodes.find((n) => n.id === 't2')!)
+    const vertical = data.edges.find((e) => e.id === 'f1')!
+    const lateral = data.edges.find((e) => e.id === 'f2')!
+
+    // 1) 正上方那条保持顶边主锚点、直落（无折点）
+    expect(vertical.target.port).toBe('top')
+    expect(vertical.vertices).toBeUndefined()
+
+    // 2) 侧向来边改走右侧锚点，而不是 top 的次锚点
+    expect(lateral.target.port).toBe('right')
+
+    // 3) 它的折线整段都在目标右侧之外 —— 不会横穿正上方那条竖线
+    expect(lateral.vertices).toBeDefined()
+    const targetRight = t2Rect.x + t2Rect.width
+    for (const point of lateral.vertices!) {
+      expect(point.x).toBeGreaterThanOrEqual(targetRight)
+    }
+    // 入线高度对准右侧锚点（竖直方向的中间）
+    expect(lateral.vertices!.at(-1)!.y).toBe(t2Rect.y + t2Rect.height / 2)
   })
 
   it('网关的出边与入边不重叠：同一节点上的连线各占一个锚点', () => {
@@ -489,6 +720,38 @@ describe('DSL → 图元映射', () => {
     const edge = toGraphData(dsl).edges[0]
     expect(edge.vertices).toEqual([{ x: 300, y: 120 }, { x: 300, y: 200 }])
     // 'normal' = 直接用折点连直线，路由算法不再插手
+    expect(edge.router).toEqual({ name: 'normal' })
+  })
+
+  it('同层并排且锚点对齐时走直线：不产生折点、也不交给 manhattan', () => {
+    // 用户截图那处：技术评审 → 评审驳回，两节点同一层（y 相同、高度相同）
+    // 锚点天然对齐 —— 直线就是最终走线，交给 manhattan 会在两端之间绕出一个多余的钩
+    const dsl = baseDsl({
+      nodes: [
+        {
+          id: 'a1',
+          type: NodeType.APPROVAL,
+          name: '技术评审',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: ApprovalMode.SINGLE,
+        },
+        {
+          id: 'a2',
+          type: NodeType.APPROVAL,
+          name: '评审驳回',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: ApprovalMode.SINGLE,
+        },
+      ],
+      edges: [{ id: 'e4', source: 'a1', target: 'a2', kind: EdgeKind.NORMAL, route: EdgeRoute.REJECT }],
+      layout: { nodes: { a1: { x: 100, y: 246 }, a2: { x: 400, y: 246 } } },
+    })
+    const edge = toGraphData(dsl).edges[0]
+    expect(sideOfPortId(edge.source.port)).toBe('right')
+    expect(sideOfPortId(edge.target.port)).toBe('left')
+    // 直线不需要折点
+    expect(edge.vertices).toBeUndefined()
+    // 但必须用 normal —— 交回 manhattan 才会多出折角
     expect(edge.router).toEqual({ name: 'normal' })
   })
 
@@ -807,6 +1070,80 @@ describe('DSL → 图元映射', () => {
     // 端点节点刚被静默挪过坐标：即使端口没变也必须重挂，否则线留在旧坐标上
     expect(needsReanchor(same, { cell: 'a1', port: 'right' }, true)).toBe(true)
     expect(needsReanchor(undefined, { cell: 'a1' }, false)).toBe(true)
+  })
+
+  it('回边（驳回这类）的车道朝目标那一侧：目标在右上方时不再从左边绕一圈', () => {
+    // 2026-10-13 优化：车道原先只看"源在画布中线哪侧"，目标明明在右上方也要先向左出去，
+    // 复杂流程里就是一条绕半个画布的线。现在优先按"目标在源的哪一侧"定车道。
+    const dsl = baseDsl({
+      nodes: [
+        { id: 'start_1', type: NodeType.START, name: '开始', initiator: { strategy: AssigneeStrategy.INITIATOR } },
+        {
+          id: 'up_1',
+          type: NodeType.APPROVAL,
+          name: '上游审批',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: 'SINGLE',
+        },
+        {
+          id: 'down_1',
+          type: NodeType.TASK,
+          name: '下游办理',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+        },
+        { id: 'end_1', type: NodeType.END, name: '结束' },
+      ],
+      edges: [
+        { id: 'f1', source: 'start_1', target: 'up_1', kind: EdgeKind.NORMAL },
+        { id: 'f2', source: 'up_1', target: 'down_1', kind: EdgeKind.NORMAL },
+        { id: 'f3', source: 'down_1', target: 'end_1', kind: EdgeKind.NORMAL },
+        // 回边：从下游回到上游 —— 目标在源的**右上方**，而源在画布中线左侧
+        { id: 'f_back', source: 'down_1', target: 'up_1', kind: EdgeKind.NORMAL },
+      ],
+      layout: {
+        nodes: {
+          start_1: { x: 100, y: 40 },
+          up_1: { x: 520, y: 40 },
+          down_1: { x: 100, y: 320 },
+          end_1: { x: 100, y: 520 },
+        },
+      },
+    })
+    const data = toGraphData(dsl)
+    const back = data.edges.find((edge) => edge.id === 'f_back')!
+    // 朝目标那一侧出去（右），而不是朝画布外缘那一侧（左）
+    expect(sideOfPortId(back.source.port)).toBe('right')
+  })
+
+  it('同层（差不多在一条线上）时只用左右方位：不会退到上下绕一圈', () => {
+    // 2026-10-13 用户口径：这种关系里就该横向直连，锚点落在左/右的中心锚点上
+    const size = { width: 142, height: 44 }
+    const left = { x: 100, y: 100, ...size }
+    const right = { x: 400, y: 104, ...size } // 纵向几乎完全重叠 = 同层
+
+    const facing = facingPortSides(left, right, ['top', 'right', 'bottom', 'left'])
+    expect(facing[0]).toBe('right')
+    expect(facing).not.toContain('bottom')
+    expect(facing).not.toContain('top')
+
+    // 反过来同理（目标在左边 → 从左侧出）
+    const back = facingPortSides(right, left, ['top', 'right', 'bottom', 'left'])
+    expect(back[0]).toBe('left')
+
+    // 入边侧的排序同样把上下压到最后（只在左右都占满时才可能兜底用到）
+    const ranked = rankPortSides(right, left, ['top', 'right', 'bottom', 'left'])
+    expect(ranked[0]).toBe('left')
+    // 同层时上下被压成 -1：排在朝向侧（left）之后，只在左右都被占满时才可能兜底用到
+    // （背对目标的 right 是 -2，那才是最后一名 —— 别把它和"上下"混为一谈）
+    expect(ranked.indexOf('top')).toBeGreaterThan(ranked.indexOf('left'))
+    expect(ranked.indexOf('bottom')).toBeGreaterThan(ranked.indexOf('left'))
+  })
+
+  it('不同层（上下相邻）时上下方位照常参与 —— 别把纵向连接也掐掉', () => {
+    const size = { width: 142, height: 44 }
+    const up = { x: 100, y: 100, ...size }
+    const down = { x: 110, y: 300, ...size }
+    expect(facingPortSides(up, down, ['top', 'right', 'bottom', 'left'])[0]).toBe('bottom')
   })
 
   it('分支节点：类型名不重复画在画布上，改名后标签挂到图形下方', () => {

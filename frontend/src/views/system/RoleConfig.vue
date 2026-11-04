@@ -29,6 +29,7 @@
     <!-- 角色表格 -->
     <div class="rc-table-wrapper">
       <DataTable
+        scroll-x="max-content"
         :columns="columns"
         :data-source="allRoles"
         :loading="loading"
@@ -36,7 +37,6 @@
         :search-fields="['code', 'name', 'description']"
         :enable-resize="true"
         :show-column-toggle="true"
-        :max-height="480"
         row-key="oid"
         size="middle"
       >
@@ -59,7 +59,10 @@
             <a-tag v-else color="green">自定义</a-tag>
           </template>
           <template v-else-if="column.key === 'description'">
-            <span class="rc-cell-text">{{ record.description || '-' }}</span>
+            <a-tooltip v-if="record.description" :title="record.description">
+              <span class="rc-cell-text">{{ record.description }}</span>
+            </a-tooltip>
+            <span v-else class="rc-cell-text">-</span>
           </template>
           <template v-else-if="column.key === 'createdAt'">
             {{ formatTime(record.createdAt) }}
@@ -159,7 +162,9 @@ const columns = [
   { title: '角色编码', dataIndex: 'code', key: 'code', width: 150 },
   { title: '角色名称', dataIndex: 'name', key: 'name', ellipsis: true, width: 160 },
   { title: '角色类型', key: 'roleType', width: 100 },
-  { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
+  // 描述是自由文本，个别角色写得很长：给固定宽度 + 单行省略（全文看 tooltip），
+  // 否则它会把整张表撑开、把「操作」列挤到视野外
+  { title: '描述', dataIndex: 'description', key: 'description', width: 320, ellipsis: true },
   { title: '创建时间', key: 'createdAt', width: 170 },
   { title: '修改时间', key: 'updatedAt', width: 170 },
   { title: '操作', key: 'action', width: 170 },
@@ -284,12 +289,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 本页走「整页自然高、由外层（.org-roles-page / 布局内容区）滚动」：
+   不再写 height:100% + overflow:hidden —— 父容器高度不定时它本就是惰性的（当前如此），
+   而一旦父层获得确定高度，这对组合会把自然高内容直接裁掉（裁切类老坑，2026-10-11 修过同族）。 */
 .role-config-page {
-  height: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 
 /* ===== 页头 ===== */
@@ -357,16 +362,22 @@ onMounted(() => {
 }
 
 /* ===== 表格容器 ===== */
+/* 与"表格不再限高"配套：不压缩、不裁切，让表格完整展开，滚动交给外层容器 */
 .rc-table-wrapper {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
-/* 表格内样式 */
+/* 表格内样式：描述列在固定列宽里单行省略，鼠标移上去由 a-tooltip 给全文。
+   宽度写死而非 100%：老表格是 table-layout:auto，单元格会被长文本撑开，
+   只靠列上的 width 拦不住（与 IssueTypeTemplateConfig 的「行业注解」列同一做法） */
 .rc-cell-text {
+  display: inline-block;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
   color: #595959;
 }
 

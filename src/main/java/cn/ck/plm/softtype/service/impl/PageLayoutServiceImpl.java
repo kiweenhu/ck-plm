@@ -9,7 +9,9 @@ package cn.ck.plm.softtype.service.impl;
 
 import cn.ck.plm.base.util.TenantContext;
 import cn.ck.plm.softtype.entity.PageLayout;
+import cn.ck.plm.softtype.entity.TypeDefinition;
 import cn.ck.plm.softtype.mapper.PageLayoutMapper;
+import cn.ck.plm.softtype.mapper.TypeDefinitionMapper;
 import cn.ck.plm.softtype.service.api.PageLayoutService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,9 +34,12 @@ public class PageLayoutServiceImpl implements PageLayoutService {
     }
 
     private final PageLayoutMapper mapper;
+    /** 克隆「根类型布局」时解析 root_type_code 用（本租户内查，2026-10-11 起不再读平台那份） */
+    private final TypeDefinitionMapper typeDefinitionMapper;
 
-    public PageLayoutServiceImpl(PageLayoutMapper mapper) {
+    public PageLayoutServiceImpl(PageLayoutMapper mapper, TypeDefinitionMapper typeDefinitionMapper) {
         this.mapper = mapper;
+        this.typeDefinitionMapper = typeDefinitionMapper;
     }
 
     private String currentTenantOid() {
@@ -51,15 +56,28 @@ public class PageLayoutServiceImpl implements PageLayoutService {
         if (layout.getTenantOid() == null) {
             layout.setTenantOid(currentTenantOid());
         }
-        PageLayout existing = mapper.selectByEntityAndOperation(
-                layout.getEntityOid(), layout.getOperationCode(),
-                currentTenantOid(), platformOid());
+        String tenantOid = layout.getTenantOid();
+        // ★ 2026-10-12：定位既有行改为「entity_code + operation_code + 本租户」——
+        //   与设计器的读取口径一致（按 entityCode 取），并能**自愈存量脏行**：
+        //   若某行的 entity_oid 曾指错地方（初始化器跨租户自愈留下的伤痕），按 oid 查会查不到，
+        //   于是误插第二份（同租户同操作两行，读取 LIMIT 1 命中哪行看运气）。按 code 定位后，
+        //   找到即更新、顺手把 entity_oid 对齐到本租户类型 oid。
+        PageLayout existing = layout.getEntityCode() != null
+                ? mapper.selectByEntityCodeAndOperation(layout.getEntityCode(), layout.getOperationCode(),
+                        tenantOid, platformOid())
+                : mapper.selectByEntityAndOperation(layout.getEntityOid(), layout.getOperationCode(),
+                        tenantOid, platformOid());
         if (existing != null) {
             TenantContext.requireEditPermission(existing.getTenantOid(), "页面布局");
-            existing.setEntityCode(layout.getEntityCode());
+            // 顺手对齐 entity_oid（存量脏行的自愈点；update SQL 会写回该字段）
+            if (layout.getEntityOid() != null) {
+                existing.setEntityOid(layout.getEntityOid());
+            }
+            existing.setEntityCode(layout.getEntityCode() != null
+                    ? layout.getEntityCode() : existing.getEntityCode());
             existing.setOperationName(layout.getOperationName());
             existing.setLayoutJson(layout.getLayoutJson());
-            existing.setTenantOid(layout.getTenantOid());
+            existing.setTenantOid(tenantOid);
             mapper.update(existing);
             return existing;
         } else {
@@ -102,7 +120,7 @@ public class PageLayoutServiceImpl implements PageLayoutService {
 
     @Override
     @Transactional
-    public PageLayout cloneFromPlatform(String entityOid, String entityCode, String operationCode) {
+    public PageLayout cloneFromRootType(String entityOid, String entityCode, String operationCode) {
         String tenantOid = currentTenantOid();
         if (platformOid().equals(tenantOid)) {
             throw new IllegalArgumentException("平台租户无需克隆");
@@ -111,17 +129,33 @@ public class PageLayoutServiceImpl implements PageLayoutService {
         if (existing != null) {
             throw new IllegalStateException("本租户已有该操作的页面布局，克隆功能不可用。如需重新克隆，请先删除本租户的布局");
         }
-        PageLayout platformLayout = mapper.selectByTenant(entityOid, entityCode, operationCode, platformOid());
-        if (platformLayout == null) {
-            throw new IllegalArgumentException("平台级页面布局不存在，无法克隆");
+        // 1) 当前类型 → 根类型（能力宿主 root_type_code，如 电子元器件 → PART）—— 全在本租户内解析
+        TypeDefinition self = typeDefinitionMapper.selectByCode(entityCode, tenantOid, tenantOid);
+        if (self == null) {
+            throw new IllegalArgumentException("类型不存在：" + entityCode);
         }
+        String rootCode = self.getRootTypeCode();
+        if (rootCode == null || rootCode.equals(entityCode)) {
+            throw new IllegalArgumentException("当前类型已是根类型（" + entityCode + "），没有更上层的布局可克隆");
+        }
+        TypeDefinition root = typeDefinitionMapper.selectByCode(rootCode, tenantOid, tenantOid);
+        if (root == null) {
+            throw new IllegalArgumentException("根类型不存在：" + rootCode + "（请先创建 / 安装该根类型）");
+        }
+        // 2) 取根类型在**本租户**的同名操作布局（★ 不再读平台那份 —— 与"按租户隔离、不拿平台兜底"的口径一致）
+        PageLayout rootLayout = mapper.selectByTenant(root.getOid(), root.getCode(), operationCode, tenantOid);
+        if (rootLayout == null) {
+            throw new IllegalArgumentException("根类型「" + root.getName() + "」还没有该操作的页面布局 —— 请先在它的设计器里设计并保存");
+        }
+        // 3) 复制给当前类型：entity_oid / entity_code 必须用【当前类型自己】的
+        //    （旧实现沿用平台布局的 oid —— 那是"同一实体"才成立；根类型 oid 与当前类型不同）
         PageLayout clone = new PageLayout();
         clone.setOid(UUID.randomUUID().toString());
-        clone.setEntityOid(platformLayout.getEntityOid());
-        clone.setEntityCode(platformLayout.getEntityCode());
-        clone.setOperationCode(platformLayout.getOperationCode());
-        clone.setOperationName(platformLayout.getOperationName());
-        clone.setLayoutJson(platformLayout.getLayoutJson());
+        clone.setEntityOid(entityOid);
+        clone.setEntityCode(entityCode);
+        clone.setOperationCode(rootLayout.getOperationCode());
+        clone.setOperationName(rootLayout.getOperationName());
+        clone.setLayoutJson(rootLayout.getLayoutJson());
         clone.setTenantOid(tenantOid);
         mapper.insert(clone);
         return clone;

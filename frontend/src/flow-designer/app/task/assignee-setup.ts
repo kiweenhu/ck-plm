@@ -1,8 +1,9 @@
 /**
- * 「设置审批人」活动 —— 任务表单模型（纯函数，零 DOM，可单测）。
+ * 「设置审批人」活动 —— 节点表单模型（纯函数，零 DOM，可单测）。
  *
- * <p><b>业务定位</b>：该活动固定是<b>流程启动后的第一个节点</b>，由发起人（流程 owner）
- * 执行，一次性把后面所有人工活动的人一次指定好 —— 即下游的<b>审批节点 / 会签节点 /
+ * <p><b>业务定位</b>：该活动由发起人（流程 owner）执行，通常就是<b>流程启动后的第一个节点</b>
+ *（不作硬约束，2026-10-13 用户口径：它之前的活动只要都由发起人办理即可，否则校验报错），
+ * 一次性把后面所有人工活动的人一次指定好 —— 即下游的<b>审批节点 / 会签节点 /
  * 办理节点</b>（见 {@link SETUP_COVERED_TYPES}）。
  *
  * <p><b>表单项从流程自动得出，不需要活动自己声明</b>。这里记一笔教训：最初把覆盖规则做成
@@ -26,6 +27,7 @@
 import {
   ApprovalMode,
   AssigneeStrategy,
+  EdgeRoute,
   NodeType,
   SETUP_COVERED_TYPES,
   participantSpecOf,
@@ -170,6 +172,12 @@ function flowOrderFrom(dsl: FlowDsl, fromId: string): Map<string, number> {
       if (edge.source !== current || distance.has(edge.target)) {
         continue
       }
+      // 不沿「驳回」回边（2026-10-13）：驳回是回退，不代表"在本活动之后执行"。
+      // 否则一条"驳回回到上游填报节点"的边会让那个节点也出现在本表单的槽位里 ——
+      // 它已经办过了，发起人却在"设置审批人"里又看到它（还无从下手：不该由这里指定人员）
+      if (edge.route === EdgeRoute.REJECT) {
+        continue
+      }
       distance.set(edge.target, next)
       queue.push(edge.target)
     }
@@ -178,7 +186,7 @@ function flowOrderFrom(dsl: FlowDsl, fromId: string): Map<string, number> {
 }
 
 /**
- * 构建「设置审批人」任务表单的结构。
+ * 构建「设置审批人」节点表单的结构。
  *
  * <p>下游所有审批 / 会签 / 办理活动都会自动成为槽位，按流程顺序排列，无需任何手工同步。
  */

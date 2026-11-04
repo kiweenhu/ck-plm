@@ -4,22 +4,15 @@
     <div class="pd-header">
       <div class="pd-header-main">
         <div class="pd-title">
-          <!-- 面包屑：所属产品系列/型号 + 文件夹路径 -->
-          <div class="pd-breadcrumb" v-if="productContainer || folderPath">
+          <!-- 面包屑：所属产品系列 / 型号。
+               零件管理独立于阶段与文件夹（2026-10-22），不再展示「研发阶段」「所属文件夹」 -->
+          <div class="pd-breadcrumb" v-if="productContainer">
             <ApartmentOutlined style="color:#1677ff" />
             <a-tag v-if="productContainer" color="cyan" class="pd-location-tag">
               {{ productContainer.name || productContainer.code }}
               <span v-if="productContainer.type === 'PRODUCT_MODEL'" class="pd-location-sub">型号</span>
               <span v-else class="pd-location-sub">系列</span>
             </a-tag>
-            <!-- 所属研发阶段（来自 Part.stageOid，与产品线阶段同源显示） -->
-            <template v-if="stageName">
-              <span class="pd-breadcrumb-sep">/</span>
-              <a-tag color="purple" class="pd-location-tag">{{ stageName }}</a-tag>
-            </template>
-            <span v-if="productContainer && folderPath" class="pd-breadcrumb-sep">/</span>
-            <FolderOutlined v-if="folderPath" style="color:#1677ff" />
-            <span v-if="folderPath" class="pd-breadcrumb-folder">{{ folderPath }}</span>
           </div>
           <!-- 主标题 + 编码 + meta tag（同一行） -->
           <div class="pd-title-row">
@@ -39,13 +32,13 @@
             >
               <ArrowRightOutlined /> 转至最新版本
             </a-button>
-          </div>
-          <!-- 底部时间信息 -->
-          <div class="pd-meta-time" v-if="part?.createdAt">
-            <ClockCircleOutlined style="color:#8c8c8c" />
-            <span>创建于 {{ fmtTime(part?.createdAt) }}</span>
-            <span v-if="part?.updater" class="pd-meta-time-sep">·</span>
-            <span v-if="part?.updater">{{ part.updater }} 更新于 {{ fmtTime(part?.updatedAt) }}</span>
+            <!-- 时间信息：与标题 / 标签同一行（2026-10-22 用户要求从下一行移上来） -->
+            <div class="pd-meta-time" v-if="part?.createdAt">
+              <ClockCircleOutlined style="color:#8c8c8c" />
+              <span>创建于 {{ fmtTime(part?.createdAt) }}</span>
+              <span v-if="part?.updater" class="pd-meta-time-sep">·</span>
+              <span v-if="part?.updater">{{ part.updater }} 更新于 {{ fmtTime(part?.updatedAt) }}</span>
+            </div>
           </div>
         </div>
         <a-button @click="goBack" class="pd-back-btn">
@@ -181,6 +174,15 @@
                 </a-button-group>
               </div>
 
+              <!-- 快照：把当前 BOM 行定格一份，供事后对比（BOM 改完就回不去了，快照是唯一的基线） -->
+              <div class="bom-toolbar-group">
+                <span class="bom-group-label">快照</span>
+                <a-button-group>
+                  <a-tooltip title="新增快照（保存当前 BOM 行）"><a-button size="small" @click="openSnapshotModal"><CameraOutlined /></a-button></a-tooltip>
+                  <a-tooltip title="快照记录与对比"><a-button size="small" @click="openSnapshotList"><HistoryOutlined /></a-button></a-tooltip>
+                </a-button-group>
+              </div>
+
               <div class="bom-toolbar-group">
                 <span class="bom-group-label">报告</span>
                 <a-button-group>
@@ -200,7 +202,8 @@
                     </template>
                   </a-dropdown>
                   <a-tooltip :title="roTitle('导入 BOM')"><a-button size="small" :disabled="!isLatestVersion" @click="onImportBom"><UploadOutlined /></a-button></a-tooltip>
-                  <a-tooltip title="成本报告"><a-button size="small" @click="onCostReport"><DollarOutlined /></a-button></a-tooltip>
+                  <!-- 成本报告入口受 BOM_COST 能力控制（与其它能力入口同口径：账本里没有就不显示） -->
+                  <a-tooltip v-if="has('BOM_COST')" title="成本报告"><a-button size="small" @click="onCostReport"><DollarOutlined /></a-button></a-tooltip>
                   <a-button title="对比两个版本的 BOM 差异" size="small" :disabled="historyList.length < 2" @click="onCompareBom"><DiffOutlined /></a-button>
                 </a-button-group>
               </div>
@@ -431,9 +434,80 @@
                   <a-empty v-else description="请选择左侧 BOM 项查看详情" :image-style="{ height: '48px' }" />
                 </a-tab-pane>
 
-                <!-- 轻量化 -->
+                <!--
+                  轻量化：选中 BOM 行的三维预览。
+                  链条＝零件迭代 →（工程数据关联）→ 工程数据迭代 → 轻量化 GLB；
+                  没关联 / 没转过 / 转换中 三种状态各有对应入口，不再是一句"开发中"。
+                -->
                 <a-tab-pane key="lightweight" tab="轻量化">
-                  <a-empty description="轻量化预览功能开发中" :image-style="{ height: '48px' }" />
+                  <template v-if="bomSelectedRow">
+                    <div class="bom-cad-head">
+                      <span class="bom-cad-title" :title="`${bomSelectedRow.childNumber || ''} ${bomSelectedRow.childName || ''}`">
+                        {{ bomSelectedRow.childNumber || '-' }} {{ bomSelectedRow.childName || '' }}
+                      </span>
+                      <a-tag v-if="bomCadModel?.iterationVersion" size="small">数模 {{ bomCadModel.iterationVersion }}</a-tag>
+                      <a-button size="small" type="link" :loading="bomCadLoading" @click="loadBomCad">刷新</a-button>
+                    </div>
+
+                    <a-empty
+                      v-if="!bomCadAvailable && !bomCadLoading"
+                      description="未部署三维转换器 CK-CADForge，无法生成轻量化预览"
+                      :image-style="{ height: '48px' }"
+                    />
+                    <div v-else-if="bomCadLoading" class="bom-cad-loading">
+                      <a-spin tip="读取轻量化状态..." />
+                    </div>
+                    <template v-else-if="bomCadReady">
+                      <div class="bom-cad-viewer">
+                        <!-- 右栏窄：不展示结构树、也不放右侧按钮列，模型占满整块画布 -->
+                        <CadViewer
+                          :glb-url="bomCadGlbUrl"
+                          :structure-url="bomCadStructureUrl"
+                          :stats="bomCadStats"
+                          :show-structure="false"
+                          :show-toolbar="false"
+                        />
+                      </div>
+                    </template>
+                    <template v-else-if="bomCadWorking">
+                      <CadConvertProgress
+                        :status="bomCadModel?.status || 'QUEUED'"
+                        :progress="bomCadModel?.progress ?? null"
+                        :stage="bomCadModel?.stage || ''"
+                        :updated-at="bomCadModel?.statusUpdatedAt"
+                      />
+                    </template>
+                    <!-- 没关联工程数据：说清去哪儿补，而不是只说"暂无" -->
+                    <a-empty
+                      v-else-if="!bomCadModel"
+                      description="该版本未关联可轻量化的 CAD 数模"
+                      :image-style="{ height: '48px' }"
+                    >
+                      <div style="font-size:12px;color:#8c8c8c;line-height:1.7">
+                        在「CAD 描述 → 工程数据」关联 STEP / IGES / STL 后，<br />
+                        这里就能生成三维预览（原生数模只归档、不转换）
+                      </div>
+                    </a-empty>
+                    <!-- 有数模但没转过 / 转过但失败 -->
+                    <template v-else>
+                      <a-alert
+                        v-if="bomCadMessage"
+                        type="warning"
+                        show-icon
+                        :message="bomCadMessage"
+                        style="margin-bottom:12px"
+                      />
+                      <a-empty :description="bomCadMessage ? '上次未成功' : '尚未生成轻量化预览'" :image-style="{ height: '48px' }">
+                        <a-button
+                          type="primary"
+                          size="small"
+                          :disabled="!bomCadModel?.sourceCkfileOid"
+                          @click="startBomCadConvert"
+                        >{{ bomCadMessage ? '重新生成' : '生成轻量化' }}</a-button>
+                      </a-empty>
+                    </template>
+                  </template>
+                  <a-empty v-else description="请选择左侧 BOM 项查看轻量化" :image-style="{ height: '48px' }" />
                 </a-tab-pane>
 
                 <!-- 替代情况：选中 BOM 行的局部替代明细（源表 ck_bom_substitute_link） -->
@@ -532,6 +606,7 @@
               <a-descriptions-item label="名称">{{ part?.name || '-' }}</a-descriptions-item>
               <a-descriptions-item label="编码">{{ part?.number || '-' }}</a-descriptions-item>
               <a-descriptions-item label="类型">{{ part?.typeDefinitionCode || '-' }}</a-descriptions-item>
+              <a-descriptions-item label="分类">{{ clsName || '-' }}</a-descriptions-item>
               <a-descriptions-item label="描述" :span="3">{{ part?.description || '-' }}</a-descriptions-item>
               <a-descriptions-item label="单位">{{ part?.unit || '-' }}</a-descriptions-item>
               <a-descriptions-item label="来源">{{ part?.source || '-' }}</a-descriptions-item>
@@ -675,7 +750,90 @@
               </a-col>
             </a-row>
           </div>
-          <a-empty v-else description="该类型无需 CAD 描述" :image-style="{ height: '64px' }" />
+
+          <!--
+            工程数据（3D 数模 / 2D 工程图 / 封装 / 图符）：零件版本 ↔ 工程数据版本，对应 Windchill EPMBuildRule。
+            2026-10-26 用户要求：从「关联文档 → 工程数据」子页签移到本页签 —— 工程数据本就是 CAD 描述的
+            实物证据，和三维模型 / 图符放一处，不用在两个页签之间来回切。
+
+            <p>原来这里还有一句「该类型无需 CAD 描述」的空状态：它只看零件类型
+            （STRUCT / ELECTRONIC / ELECTRICAL / SOFTWARE 之外一律这么说），跟有没有工程数据、
+            跟业务配置里停用了哪个对象类型**毫无关系** —— 关掉 ENG_DOCUMENT 相关对象它照样出现，
+            而且和下面的「工程数据」表自相矛盾（说没 CAD 描述，却又列着关联的数模）。
+            现在直接不显示：没有卡片就只渲染工程数据，页签本身仍有用。
+          -->
+          <div class="cad-eng" :class="{ 'cad-eng--solo': !hasCadCards }">
+            <div class="cad-eng-title">
+              <ApartmentOutlined class="tab-stat-icon" />
+              工程数据
+              <span class="cad-eng-hint">
+                零件版本 ↔ 工程数据版本 · 一个零件版本<b>只能</b>关联一份工程数据
+              </span>
+            </div>
+            <div class="tab-stats-bar">
+              <div class="tab-stat-item">
+                <span class="tab-stat-value">{{ engDocLinks.length }}</span>
+                <span class="tab-stat-label">已关联</span>
+              </div>
+              <div class="tab-stat-actions">
+                <!-- 已关联一份就把入口关掉：一个零件版本只允许一份工程数据（后端同样会拦） -->
+                <a-tooltip :title="engDocLinks.length ? '已关联一份工程数据，要换请先「解除关联」' : '选择一个工程数据并建立关联'">
+                  <span>
+                    <a-button size="small" type="primary" :disabled="engDocLinks.length > 0" @click="onAddEngDocLink">
+                      <PlusOutlined /> 关联工程数据
+                    </a-button>
+                  </span>
+                </a-tooltip>
+                <a-button size="small" danger :disabled="!engDocSelectedKeys.length" @click="onRemoveEngDocLinks">
+                  <DeleteOutlined /> 解除关联
+                </a-button>
+              </div>
+            </div>
+            <DataTable
+              scroll-x="max-content"
+              :columns="engDocLinkColumns"
+              :data-source="engDocLinks"
+              :loading="engDocLoading"
+              :pagination="false"
+              row-key="oid"
+              size="small"
+              :row-selection="{ selectedRowKeys: engDocSelectedKeys, onChange: keys => (engDocSelectedKeys = keys) }"
+              empty-text="暂无关联工程数据，点击「关联工程数据」建立关系"
+              searchable
+              search-placeholder="搜索编号/名称..."
+              :search-fields="['engDocNumber', 'engDocName']"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'engDoc'">
+                  <span style="color:#262626">{{ record.engDocName || '-' }}</span>
+                  <code style="font-size:12px;background:#f5f5f5;padding:1px 6px;border-radius:3px;color:#595959;margin-left:6px">{{ record.engDocNumber || '-' }}</code>
+                </template>
+                <template v-else-if="column.key === 'engDocType'">
+                  <a-tag color="cyan">{{ record.engDocType || '-' }}</a-tag>
+                </template>
+                <template v-else-if="column.key === 'engDocVersion'">
+                  <span>{{ record.engDocVersion || '-' }}</span>
+                  <a-tag v-if="!record.pinned" style="margin-left:4px">跟随最新</a-tag>
+                </template>
+                <template v-else-if="column.key === 'assocType'">
+                  <a-tag :color="ENG_DOC_ASSOC_COLOR[record.assocType] || 'default'">
+                    {{ ENG_DOC_ASSOC_LABEL[record.assocType] || record.assocType }}
+                  </a-tag>
+                </template>
+                <template v-else-if="column.key === 'buildRules'">
+                  <a-space v-if="hasBuildRule(record)" size="small" wrap>
+                    <a-tag v-if="record.buildStructure" color="blue">结构</a-tag>
+                    <a-tag v-if="record.buildAttribute" color="purple">属性</a-tag>
+                    <a-tag v-if="record.buildRepresentation" color="geekblue">表示</a-tag>
+                  </a-space>
+                  <span v-else style="color:#bfbfbf">—</span>
+                </template>
+                <template v-else-if="column.key === 'createdAt'">
+                  {{ fmtTime(record.createdAt) }}
+                </template>
+              </template>
+            </DataTable>
+          </div>
         </a-tab-pane>
 
         <!-- ========== 3.5 双向替代（EQUIVALENT 可替代清单） ========== -->
@@ -702,6 +860,7 @@
             </div>
           </div>
           <DataTable
+            scroll-x="max-content"
             :columns="alternateColumns"
             :data-source="alternateList"
             :loading="alternateLoading"
@@ -744,6 +903,16 @@
           </DataTable>
         </a-tab-pane>
 
+        <!-- ========== 3.6 MPN（认可制造商料号 AML + 供货渠道 AVL） ==========
+             共享组件：与企业资源页「MPN 库」的 AML·AVL 页签同一实现（见 components/PartMpnPanel.vue）。
+             件由本页 oid 直接传入，不需要选件器。
+             ★ 2026-10-11：本页签受能力开关控制，**所属能力 = MPN 管理（MPN_MANAGEMENT**，
+               声明于 electronics-core/capabilities.json）—— 与导航「MPN 厂商」菜单、企业资源页
+               「MPN 库」页签**同一开关**：能力关掉，三处入口一起消失（不出现"点进去什么都没有"）。 -->
+        <a-tab-pane v-if="hasMpn" key="mpn" tab="MPN">
+          <PartMpnPanel :part-oid="oid" />
+        </a-tab-pane>
+
         <!-- ========== 4. 关联文档（说明 DESCRIPTION / 参考 REFERENCE） ========== -->
         <a-tab-pane key="relatedDocs" tab="关联文档">
           <a-tabs v-model:activeKey="docTab" size="small">
@@ -766,6 +935,7 @@
                 </div>
               </div>
               <DataTable
+                scroll-x="max-content"
                 :columns="docLinkColumns"
                 :data-source="descDocList"
                 :loading="docLinksLoading"
@@ -817,6 +987,7 @@
                 </div>
               </div>
               <DataTable
+                scroll-x="max-content"
                 :columns="docLinkColumns"
                 :data-source="refDocList"
                 :loading="docLinksLoading"
@@ -852,20 +1023,49 @@
           </a-tabs>
         </a-tab-pane>
 
-        <!-- ========== 5. 被使用情况 ========== -->
+        <!-- ========== 5. 被使用情况（反向 BOM，可逐层往上追溯） ========== -->
         <a-tab-pane key="usedBy" tab="被使用情况">
+          <!--
+            往上追溯：本条链路上每一层的"查看范围"。点前面的层可回退，
+            最后一个是当前正在看的零件（它的父件由下面的表格回答）。
+          -->
+          <div v-if="usedByDrill.length" class="usedby-scope">
+            <span class="usedby-scope-label">查看范围</span>
+            <a class="usedby-scope-node" @click="onUsedByDrillTo(-1)">{{ usedByRootLabel }}</a>
+            <template v-for="(node, idx) in usedByDrill" :key="node.partOid">
+              <span class="usedby-scope-sep">›</span>
+              <a v-if="idx < usedByDrill.length - 1" class="usedby-scope-node" @click="onUsedByDrillTo(idx)">{{ node.label }}</a>
+              <span v-else class="usedby-scope-current">{{ node.label }}</span>
+            </template>
+            <a-button type="link" size="small" style="padding:0 4px" @click="onUsedByBack">返回上一层</a-button>
+          </div>
           <a-table
             :columns="usedByColumns"
             :data-source="usedByList"
             :loading="usedByLoading"
             :pagination="false"
-            row-key="oid"
+            :row-key="r => r.linkOid || r.parentIterationOid"
             size="small"
             :locale="{ emptyText: '未被其他零组件使用' }"
           >
             <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'exactRef'">
-                <a-tag v-if="record.childIterationOid" color="success" size="small">精确</a-tag>
+              <template v-if="column.key === 'parentNumber'">
+                <!-- 点编码 = 以该父件为范围，继续看它被谁使用（往上一层） -->
+                <a
+                  class="usedby-parent-link"
+                  :title="`向上追溯「${record.parentName || '未知父件'}」的被使用情况`"
+                  @click="onUsedByDrillUp(record)"
+                >{{ record.parentNumber || '-' }}</a>
+                <a-tag v-if="record.parentView" size="small" color="blue" style="margin-left:6px">{{ record.parentView }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'parentName'">
+                {{ record.parentName || '未知父件' }}
+              </template>
+              <template v-else-if="column.key === 'parentVersion'">
+                <a-tag size="small">{{ record.parentVersion || '-' }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'exactRef'">
+                <a-tag v-if="record.exactReference" color="success" size="small">精确</a-tag>
                 <a-tag v-else color="warning" size="small">跟随最新</a-tag>
               </template>
             </template>
@@ -877,9 +1077,70 @@
           <RelatedProcesses :entity-oid="oid" />
         </a-tab-pane>
 
-        <!-- ========== 7. 变更情况 ========== -->
+        <!--
+          ========== 7. 变更情况 ==========
+          口径（2026-10-26 用户要求）：按**变更通告（ECN）的变更对象**反查 —— 这张零件在某张通告里
+          是变更对象（ck_change_affected_object，主对象级），就出现在这里；一行 = 该通告上的这一条变更对象，
+          所以能看到"被改的是哪一版、改出来的又是哪一版"。
+        -->
         <a-tab-pane key="changes" tab="变更情况">
-          <a-empty description="变更情况功能开发中" :image-style="{ height: '64px' }" />
+          <div class="tab-stats-bar">
+            <div class="tab-stat-item">
+              <DiffOutlined class="tab-stat-icon" />
+              <span class="tab-stat-value">{{ changeNotices.length }}</span>
+              <span class="tab-stat-label">变更通告</span>
+            </div>
+            <a-divider type="vertical" style="height:24px" />
+            <div class="tab-stat-item">
+              <span class="tab-stat-value">{{ changeExecutedCount }}</span>
+              <span class="tab-stat-label">已执行（已出新版本）</span>
+            </div>
+            <div class="tab-stat-actions">
+              <a-button size="small" :loading="changeLoading" @click="loadChangeNotices">
+                <RollbackOutlined /> 刷新
+              </a-button>
+            </div>
+          </div>
+          <DataTable
+            scroll-x="max-content"
+            :columns="changeNoticeColumns"
+            :data-source="changeNotices"
+            :loading="changeLoading"
+            :pagination="false"
+            row-key="affectedOid"
+            size="small"
+            empty-text="暂无变更通告把该零件作为变更对象"
+            searchable
+            search-placeholder="搜索通告编号 / 标题..."
+            :search-fields="['noticeCode', 'noticeName']"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'notice'">
+                <a class="pd-change-link" @click="openChangeNotice(record)">{{ record.noticeCode || '-' }}</a>
+                <span class="pd-change-title">{{ record.noticeName || '-' }}</span>
+              </template>
+              <template v-else-if="column.key === 'status'">
+                <a-tag :color="CHANGE_NOTICE_STATUS_COLOR[record.status] || 'default'">
+                  {{ CHANGE_NOTICE_STATUS_LABEL[record.status] || record.status || '-' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'baseVersion'">
+                <a-tag color="blue" size="small">{{ record.baseVersion || '-' }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'resultVersion'">
+                <a-tag v-if="record.resultVersion" color="green" size="small">{{ record.resultVersion }}</a-tag>
+                <span v-else style="color:#bfbfbf">未执行</span>
+              </template>
+              <template v-else-if="column.key === 'executedAt'">
+                <span v-if="record.executedAt">{{ fmtTime(record.executedAt) }}</span>
+                <span v-else style="color:#bfbfbf">—</span>
+                <a-tag v-if="record.locked" color="orange" size="small" style="margin-left:4px">变更占用中</a-tag>
+              </template>
+              <template v-else-if="column.key === 'noticeCreatedAt'">
+                {{ fmtTime(record.noticeCreatedAt) }}
+              </template>
+            </template>
+          </DataTable>
         </a-tab-pane>
 
         <!-- ========== 8. 关联需求 ========== -->
@@ -888,8 +1149,56 @@
         </a-tab-pane>
 
         <!-- ========== 9. 关联问题 ========== -->
+        <!--
+          口径：问题的「关联对象」= 本零组件（relatedType=PART + relatedCode=编码）。
+          问题只存关联对象的类型 + 编码（ck_issue.related_type / related_code），所以这里按编码查 ——
+          同一编码的所有版本共享同一批问题（问题不是版本级数据）。
+        -->
         <a-tab-pane key="issues" tab="关联问题">
-          <a-empty description="问题管理开发中" :image-style="{ height: '64px' }" />
+          <div class="issue-link-bar">
+            <span class="issue-link-hint">
+              关联对象为本零组件（{{ part?.number || '-' }}）的问题 · 未闭环优先排序
+            </span>
+            <a-button size="small" :loading="relatedIssuesLoading" @click="loadRelatedIssues">
+              <ReloadOutlined /> 刷新
+            </a-button>
+          </div>
+          <DataTable
+            :columns="relatedIssueColumns"
+            :data-source="relatedIssues"
+            :loading="relatedIssuesLoading"
+            :pagination="{ pageSize: 10 }"
+            :show-total="(t) => `共 ${t} 个问题`"
+            row-key="oid"
+            size="small"
+            search-placeholder="搜索问题编码/标题..."
+            :search-fields="['code', 'name']"
+            empty-text="暂无关联问题（在「持续改进」里把关联对象选成本零组件即可）"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'code'">
+                <a class="issue-code-link" @click="openIssue(record)">{{ record.code || '-' }}</a>
+              </template>
+              <template v-else-if="column.key === 'issueType'">
+                <a-tag v-if="record.issueType" color="blue" size="small">{{ record.issueType }}</a-tag>
+                <span v-else style="color:#bfbfbf">未分类</span>
+              </template>
+              <template v-else-if="column.key === 'severity'">
+                <a-tag :color="ISSUE_SEVERITY_COLOR[record.severity] || 'default'" size="small">
+                  {{ ISSUE_SEVERITY_LABEL[record.severity] || record.severity || '-' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'status'">
+                <a-tag :color="ISSUE_STATUS_COLOR[record.status] || 'default'" size="small">
+                  {{ ISSUE_STATUS_LABEL[record.status] || record.status || '-' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'dueDate'">
+                <span :class="{ 'issue-overdue': isIssueOverdue(record) }">{{ record.dueDate || '-' }}</span>
+              </template>
+              <template v-else-if="column.key === 'createdAt'">{{ fmtTime(record.createdAt) }}</template>
+            </template>
+          </DataTable>
         </a-tab-pane>
       </a-tabs>
     </a-spin>
@@ -935,21 +1244,21 @@
       centered
       :body-style="{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '12px 16px 16px' }"
     >
-      <!-- 过滤区：产品系列/型号（下拉可选）+ 名称/编码搜索 -->
+      <!-- 过滤区：所属容器（企业资源库下钻到子库 / 产品系列 / 型号）+ 名称/编码搜索 -->
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <span style="color:#8c8c8c;font-size:12px;white-space:nowrap">所属容器</span>
-        <a-select
+        <a-tree-select
           v-model:value="addExistingContainerOid"
-          placeholder="选择产品系列/型号"
+          placeholder="选择产品系列/型号/企业资源库"
           allow-clear
           show-search
-          style="width: 240px"
+          tree-node-filter-prop="title"
+          :tree-default-expand-all="true"
+          :tree-data="addExistingContainerTree"
+          :field-names="{ label: 'title', value: 'value', children: 'children' }"
+          style="width: 260px"
           @change="onAddExistingContainerChange"
-        >
-          <a-select-option v-for="o in containerOptions" :key="o.value" :value="o.value">
-            {{ o.label }}
-          </a-select-option>
-        </a-select>
+        />
         <a-input-search
           v-model:value="addExistingKeyword"
           placeholder="按名称或编码搜索"
@@ -978,6 +1287,62 @@
           </template>
         </template>
       </a-table>
+    </a-modal>
+
+    <!--
+      新建零组件作为子件：创建表单与「物料清单」页签的「新建零组件」同一套 ——
+      先选类型，再按类型专属布局填表（不是另起一套简化表单，免得两个入口建出来的件字段不一致）。
+      区别只有两点：容器固定为当前 Part 的容器；建完自动挂到选中的 BOM 节点下。
+    -->
+    <a-modal
+      v-model:visible="newChildModalVisible"
+      title="新建零组件作为子件"
+      ok-text="创建并添加"
+      cancel-text="取消"
+      :confirm-loading="newChildSaving"
+      :ok-button-props="{ disabled: !newChildSelectedType }"
+      @ok="confirmNewChild"
+      @cancel="resetNewChildModal"
+      width="640px"
+      centered
+      :body-style="{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', padding: '12px 16px 16px' }"
+    >
+      <div v-if="newChildTarget" style="margin-bottom:10px;font-size:12px;color:#8c8c8c">
+        将作为「{{ newChildTarget.name }}」的子件（数量 1 · 单位 ea，建完可在右侧子件清单里改）
+      </div>
+      <div style="margin-bottom:8px">
+        <span style="color:#8c8c8c">选择零组件类型</span>
+        <a-tree-select
+          v-model:value="newChildTypeSelectValue"
+          style="width:100%;margin-top:4px"
+          placeholder="请选择零组件类型"
+          :tree-data="newChildTypeOptions"
+          :field-names="{ label: 'name', value: 'code', children: 'children' }"
+          tree-default-expand-all
+          show-search
+          @change="onNewChildTypeChange"
+        />
+      </div>
+
+      <a-divider v-if="newChildSelectedType" style="margin:12px 0" />
+
+      <div v-if="newChildSelectedType" style="margin-top:8px">
+        <a-tag color="blue" style="margin-bottom:12px">{{ newChildSelectedType.name || newChildSelectedType.code }} - 创建表单</a-tag>
+        <DynamicForm
+          ref="newChildFormRef"
+          :key="newChildEntityCode"
+          :entity-code="newChildEntityCode"
+          operation-code="create"
+          :context="{ containerType: part?.containerType, containerOid: part?.containerOid }"
+          :current-container-oid="part?.containerOid"
+          :type-definition-oid="newChildSelectedType?.oid"
+          v-model="newChildForm"
+        />
+      </div>
+      <div v-else style="padding:24px 0;text-align:center;color:#999">
+        <InboxOutlined style="font-size:32px;color:#d9d9d9;margin-bottom:8px;display:block" />
+        请先选择零组件类型，系统将加载对应的创建表单
+      </div>
     </a-modal>
 
     <!-- 文档详情查看抽屉（关联文档编码点击打开，复用产品线 DocumentViewer） -->
@@ -1146,6 +1511,73 @@
       </a-table>
     </a-modal>
 
+    <!-- 关联工程数据弹窗：选工程数据 + 关联类型 + 构建规则（EPMBuildRule） -->
+    <a-modal
+      v-model:visible="addEngDocModalVisible"
+      title="关联工程数据"
+      ok-text="关联"
+      cancel-text="取消"
+      :ok-button-props="{ disabled: !addEngDocSelectedRowKeys.length }"
+      :confirm-loading="addEngDocSaving"
+      @ok="confirmAddEngDocLinks"
+      @cancel="addEngDocModalVisible = false"
+      width="780px"
+      centered
+      :body-style="{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '12px 16px 16px' }"
+    >
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="color:#8c8c8c;font-size:12px;white-space:nowrap">所属容器</span>
+        <a-select
+          v-model:value="addEngDocContainerOid"
+          placeholder="选择产品系列/型号"
+          allow-clear
+          show-search
+          style="width: 220px"
+          @change="loadAddEngDocs"
+        >
+          <a-select-option v-for="o in containerOptions" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </a-select-option>
+        </a-select>
+        <a-input-search
+          v-model:value="addEngDocKeyword"
+          placeholder="按名称或编号过滤"
+          style="flex:1;min-width:180px;margin-left:8px"
+          allow-clear
+        />
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="color:#8c8c8c;font-size:12px;white-space:nowrap">关联类型</span>
+        <a-select v-model:value="addEngDocAssocType" :options="ENG_DOC_ASSOC_OPTIONS" style="width: 180px" />
+        <a-checkbox v-model:checked="addEngDocBuildStructure">构建结构</a-checkbox>
+        <a-checkbox v-model:checked="addEngDocBuildAttribute">构建属性</a-checkbox>
+        <a-checkbox v-model:checked="addEngDocBuildRepresentation">构建表示</a-checkbox>
+      </div>
+      <!-- 单选：一个零件版本只能挂一份工程数据（EPMBuildRule 的基数口径，后端也会拦第二条） -->
+      <div style="margin-bottom:8px;color:#8c8c8c;font-size:12px">
+        选择一个工程数据（单选）—— 一个零件版本只能关联一份，需要换对象请先解除原有关系
+      </div>
+      <a-table
+        :columns="addEngDocColumns"
+        :data-source="filteredAddEngDocList"
+        :loading="addEngDocLoading"
+        :pagination="{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'], showTotal: (t) => `共 ${t} 条` }"
+        :row-selection="{ type: 'radio', selectedRowKeys: addEngDocSelectedRowKeys, onChange: keys => (addEngDocSelectedRowKeys = keys) }"
+        row-key="oid"
+        size="small"
+        :locale="{ emptyText: '暂无可选工程数据（先选所属容器）' }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'number'">
+            <code style="font-size:12px;background:#f5f5f5;padding:1px 6px;border-radius:3px;color:#595959">{{ record.number || '-' }}</code>
+          </template>
+          <template v-else-if="column.key === 'type'">
+            <a-tag color="cyan">{{ record.typeDefinitionCode || '-' }}</a-tag>
+          </template>
+        </template>
+      </a-table>
+    </a-modal>
+
     <!-- BOM 成本报告（卷积）：总成本 + 逐层明细 + 口径与数据缺口提示 -->
     <BomCostReportModal
       v-model:open="costReportOpen"
@@ -1235,38 +1667,253 @@
         <a-empty description="对比未返回结果，请检查所选版本是否有效" />
       </div>
     </a-modal>
+
+    <!--
+      新增 BOM 快照：把当前版本（可能是检出中的工作副本）的顶层 BOM 行定格一份。
+      快照只读 —— 建完之后 BOM 再改也不会回写它，这正是「对比」能成立的前提。
+    -->
+    <a-modal
+      v-model:visible="snapshotModalVisible"
+      title="新增 BOM 快照"
+      ok-text="保存快照"
+      cancel-text="取消"
+      :confirm-loading="snapshotSaving"
+      @ok="confirmCreateSnapshot"
+      width="520px"
+      centered
+      :body-style="{ padding: '16px 20px 8px' }"
+    >
+      <div class="snapshot-tip">
+        将把「{{ part?.number || '' }} {{ part?.name || '' }}」当前版本（{{ part?.displayVersion || '-' }}）的
+        {{ bomList.length }} 条 BOM 行定格为一份快照。
+      </div>
+      <a-form layout="vertical" style="margin-top:12px">
+        <a-form-item label="快照名称" required>
+          <a-input v-model:value="snapshotForm.name" :maxlength="100" placeholder="如：设计基线 / 评审冻结" />
+        </a-form-item>
+        <a-form-item label="备注">
+          <a-textarea
+            v-model:value="snapshotForm.remark"
+            :rows="3"
+            :maxlength="500"
+            show-count
+            placeholder="可选：这次快照的用途或背景"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!--
+      快照记录 + 对比：勾选 1 条 → 与当前 BOM 对比；勾选 2 条 → 两份快照互比。
+      结果复用「BOM 版本对比」的分块样式，字段名与后端差异行一致（added/removed/changed）。
+    -->
+    <a-modal
+      v-model:visible="snapshotListVisible"
+      title="BOM 快照记录"
+      :footer="null"
+      width="880px"
+      centered
+      :body-style="{ padding: '12px 16px 16px' }"
+    >
+      <div class="snapshot-bar">
+        <span class="snapshot-bar-hint">勾选 1 条与当前 BOM 对比，勾选 2 条互相对比</span>
+        <a-button
+          size="small"
+          type="primary"
+          :loading="snapshotDiffLoading"
+          :disabled="snapshotSelectedRowKeys.length !== 1"
+          @click="compareSnapshotWithCurrent"
+        >与当前 BOM 对比</a-button>
+        <a-button
+          size="small"
+          :loading="snapshotDiffLoading"
+          :disabled="snapshotSelectedRowKeys.length !== 2"
+          @click="compareTwoSnapshots"
+        >两条快照对比</a-button>
+      </div>
+      <a-table
+        :columns="snapshotColumns"
+        :data-source="snapshotList"
+        :loading="snapshotListLoading"
+        :row-selection="{ selectedRowKeys: snapshotSelectedRowKeys, onChange: onSnapshotSelectChange }"
+        row-key="oid"
+        size="small"
+        :pagination="{ pageSize: 8, showSizeChanger: false, showTotal: (t) => `共 ${t} 份快照` }"
+        :locale="{ emptyText: '还没有快照。点工具栏「快照 → 新增快照」把当前 BOM 存一份' }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'name'">
+            <!-- 名称过长会被省略号截断，做成链接：点开看这份快照定格的 BOM 明细 -->
+            <a
+              class="snapshot-name-link"
+              :title="`查看快照「${record.name || ''}」的 BOM 明细`"
+              @click="openSnapshotDetail(record)"
+            >{{ record.name || '-' }}</a>
+          </template>
+          <template v-else-if="column.key === 'createdAt'">{{ fmtTime(record.createdAt) }}</template>
+          <template v-else-if="column.key === 'remark'">
+            <span :title="record.remark || ''">{{ record.remark || '-' }}</span>
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <a-button type="link" size="small" danger @click="onDeleteSnapshot(record)">删除</a-button>
+          </template>
+        </template>
+      </a-table>
+
+      <div v-if="snapshotDiff" class="bom-compare-result snapshot-diff">
+        <a-divider style="margin:16px 0 12px">对比结果</a-divider>
+        <div class="snapshot-diff-labels">
+          <span>{{ snapshotDiff.fromLabel }}</span>
+          <span>→</span>
+          <span>{{ snapshotDiff.toLabel }}</span>
+        </div>
+        <div v-if="snapshotDiffIsEmpty" style="padding:8px 0 4px">
+          <a-result status="success" title="两侧 BOM 无差异" />
+        </div>
+        <template v-else>
+          <a-alert type="warning" show-icon style="margin-bottom:12px">
+            <template #message>
+              新增 <b style="color:#52c41a">{{ snapshotDiff.addedCount || 0 }}</b> 行，移除 <b style="color:#ff4d4f">{{ snapshotDiff.removedCount || 0 }}</b> 行，修改 <b style="color:#faad14">{{ snapshotDiff.changedCount || 0 }}</b> 行
+            </template>
+          </a-alert>
+          <div class="bom-compare-detail">
+            <div v-if="snapshotDiff.added?.length" class="bom-compare-block bom-compare-add">
+              <div class="bom-compare-block-title">
+                <span class="bom-dot bom-dot-add" /> 新增（目标侧多出来的子件）
+              </div>
+              <ul>
+                <li v-for="(r, i) in snapshotDiff.added" :key="'sa'+i">{{ compareRowText(r) }}</li>
+              </ul>
+            </div>
+            <div v-if="snapshotDiff.removed?.length" class="bom-compare-block bom-compare-del">
+              <div class="bom-compare-block-title">
+                <span class="bom-dot bom-dot-del" /> 移除（源侧有、目标侧已删除）
+              </div>
+              <ul>
+                <li v-for="(r, i) in snapshotDiff.removed" :key="'sr'+i">{{ compareRowText(r) }}</li>
+              </ul>
+            </div>
+            <div v-if="snapshotDiff.changed?.length" class="bom-compare-block bom-compare-chg">
+              <div class="bom-compare-block-title">
+                <span class="bom-dot bom-dot-chg" /> 修改（用量 / 单位 / 版本 / 单位成本变化）
+              </div>
+              <ul>
+                <li v-for="(r, i) in snapshotDiff.changed" :key="'sc'+i">
+                  {{ compareRowText(r) }}
+                  <span v-if="r.from && r.from.quantity !== r.quantity" class="bom-compare-from-to">
+                    （{{ r.from.quantity }}{{ r.from.unit || '' }} → {{ r.quantity }}{{ r.unit || '' }}）
+                  </span>
+                </li>
+              </ul>
+            </div>
+            <div
+              v-if="!snapshotDiff.added?.length && !snapshotDiff.removed?.length && !snapshotDiff.changed?.length"
+              style="padding:4px 0 8px"
+            >
+              <a-empty description="未检测到差异明细" />
+            </div>
+          </div>
+        </template>
+      </div>
+    </a-modal>
+
+    <!--
+      快照内容：快照记录里点「快照名称」打开 —— 只读展示这份快照定格的顶层 BOM 行。
+      数据取单份快照接口（列表接口不带 snapshotJson，几百行明细不该跟着列表一起传）。
+    -->
+    <a-modal
+      v-model:visible="snapshotDetailVisible"
+      :title="`快照内容 · ${snapshotDetail?.name || ''}`"
+      :footer="null"
+      width="880px"
+      centered
+      :body-style="{ padding: '12px 16px 16px' }"
+    >
+      <a-spin :spinning="snapshotDetailLoading">
+        <a-descriptions v-if="snapshotDetail" size="small" :column="2" bordered class="snapshot-detail-meta">
+          <a-descriptions-item label="对应版本">{{ snapshotDetail.versionLabel || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="顶层子件行数">{{ snapshotDetail.itemCount ?? 0 }}</a-descriptions-item>
+          <a-descriptions-item label="创建">{{ snapshotDetail.creator || '-' }}</a-descriptions-item>
+          <a-descriptions-item label="创建时间">{{ fmtTime(snapshotDetail.createdAt) }}</a-descriptions-item>
+          <a-descriptions-item label="备注" :span="2">{{ snapshotDetail.remark || '-' }}</a-descriptions-item>
+        </a-descriptions>
+        <a-table
+          :columns="snapshotItemColumns"
+          :data-source="snapshotDetailItems"
+          size="small"
+          :pagination="snapshotDetailItems.length > 10
+            ? { pageSize: 10, showTotal: (t) => `共 ${t} 行` }
+            : false"
+          row-key="lineNumber"
+          :locale="{ emptyText: '这份快照里没有 BOM 行' }"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'number'">
+              <code class="snapshot-item-code">{{ record.number || '-' }}</code>
+            </template>
+            <template v-else-if="column.key === 'version'">
+              <a-tag size="small">{{ record.version || '-' }}</a-tag>
+            </template>
+          </template>
+        </a-table>
+      </a-spin>
+    </a-modal>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeftOutlined, PlusOutlined, PlusSquareOutlined, PlusCircleOutlined, DownloadOutlined, PartitionOutlined, ApartmentOutlined, FolderOutlined, ExportOutlined, ImportOutlined, InfoCircleOutlined, LockOutlined, RollbackOutlined, EyeOutlined, FilterOutlined, DownOutlined, DeleteOutlined, UploadOutlined, DollarOutlined, SwapOutlined, ClusterOutlined, UndoOutlined, ClockCircleOutlined, ArrowRightOutlined, ArrowUpOutlined, ArrowDownOutlined, SaveOutlined, DiffOutlined, ExpandOutlined, FileTextOutlined, BookOutlined, CheckOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { ArrowLeftOutlined, PlusOutlined, PlusSquareOutlined, PlusCircleOutlined, DownloadOutlined, PartitionOutlined, ApartmentOutlined, ExportOutlined, ImportOutlined, InfoCircleOutlined, LockOutlined, RollbackOutlined, EyeOutlined, FilterOutlined, DownOutlined, DeleteOutlined, UploadOutlined, DollarOutlined, SwapOutlined, ClusterOutlined, UndoOutlined, ClockCircleOutlined, ArrowRightOutlined, ArrowUpOutlined, ArrowDownOutlined, SaveOutlined, DiffOutlined, ExpandOutlined, FileTextOutlined, BookOutlined, CheckOutlined, SettingOutlined, InboxOutlined, CameraOutlined, HistoryOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
-import { registerDynamicStages, getStageTitle } from '@/utils/stageDefs'
 import {
   getEntityByCode, getPartIterations,
-  getBomLinksByParentIteration, getBomLinksByChildPart, getBomTree, exportBomFile, clearBomSubstitutes,
+  getBomLinksByParentIteration, getPartUsedBy, getBomTree, exportBomFile, clearBomSubstitutes,
   createBomLinks, deleteBomLinks, updateBomLinks,
   getPartAlternateLinksByPart,
   createPartAlternateLink, deletePartAlternateLink,
   getPartDocLinks, createPartDocLink, deletePartDocLink, promotePartDocLink,
+  getEngDocPartLinks, createEngDocPartLink, deleteEngDocPartLink, getEngineeringDocuments,
+  listChangeNoticesByEntity,
   getDocuments, getDocument, getFolderDocumentDetails,
-  getProductLine, getProductModel, getProductLines, getProductModels, getFolderByOid, getClassificationIBAs,
-  getStages,
+  getProductLine, getProductModel, getProductLines, getProductModels, getClassificationIBAs,
+  getClassification,
   checkoutPart, checkinPart, undoCheckoutPart,
-  getPartsByContainer,
+  getPartsByContainer, getResourceRoot, getResourceChildren,
   getBomDiff, compareBomVersions,
   getBomSubstitutesByLink, deleteBomSubstitute,
   getBomSubstituteGroups,
+  createPart, getTypeDefinitionTree,
+  createBomSnapshot, getBomSnapshots, getBomSnapshot, deleteBomSnapshot, compareBomSnapshots,
+  getCadViewerAvailable, getCadModelByPartIteration, convertCadModel, ckFileStreamUrl,
+  listIssues,
 } from '@/api'
+// 问题状态 / 严重度的文案与色板与「持续改进」页同源，避免两处各写一套映射
+import { ISSUE_STATUS_LABEL, ISSUE_STATUS_COLOR, ISSUE_SEVERITY_LABEL, ISSUE_SEVERITY_COLOR } from '@/utils/issueFlow'
 import UnitSelect from '@/components/UnitSelect.vue'
 import BomSubstituteGroupModal from '@/components/bom/BomSubstituteGroupModal.vue'
 import DataTable from '@/components/DataTable.vue'
+import DynamicForm from '@/components/DynamicForm.vue'
+import PartMpnPanel from '@/components/PartMpnPanel.vue'
 import RelatedProcesses from '@/components/RelatedProcesses.vue'
 import BomCostReportModal from '@/components/BomCostReportModal.vue'
 import BomSubstituteModal from '@/components/bom/BomSubstituteModal.vue'
+import CadConvertProgress from '@/components/cad/CadConvertProgress.vue'
+/**
+ * 三维查看器懒加载：three.js 打包后近 4 MB，静态引入会让整个零件详情页先背上渲染引擎。
+ * 只有真进「轻量化」页签、真有 GLB 时才去拉。
+ */
+const CadViewer = defineAsyncComponent(() => import('@/components/cad/CadViewer.vue'))
 import DocumentViewer from './DocumentViewer.vue'
+import { useCapabilities } from '@/composables/useCapabilities'
+// 变更通告的状态文案 / 色板与「变更控制」页同源，避免两处各写一套映射
+import { CHANGE_NOTICE_STATUS_COLOR, CHANGE_NOTICE_STATUS_LABEL } from '@/utils/changeFlow'
+
+// 能力判定：BOM 成本报告入口是否显示（见 BOM 工具栏的 v-if="has('BOM_COST')"）。
+// 能力账本由 MainLayout（导航宿主）统一加载，这里只读，不必再调 load。
+const { has } = useCapabilities()
+/** MPN 管理（MPN_MANAGEMENT）是否对本租户启用 —— 「MPN」页签的开关（与导航菜单、企业资源页签同源） */
+const hasMpn = computed(() => has('MPN_MANAGEMENT'))
 
 const route = useRoute()
 const router = useRouter()
@@ -1280,10 +1927,6 @@ const loading = ref(false)
 const part = ref(null)
 // 所属产品系列/型号
 const productContainer = ref(null)
-// 文件夹完整路径（从自身向上拼接，最多 6 层防循环）
-const folderPath = ref('')
-// Part 所属研发阶段名称（按 part.stageOid 从产品系列阶段清单中解析）
-const stageName = ref('')
 // 检出/检入
 const checkoutModalVisible = ref(false)
 const checkoutSaving = ref(false)
@@ -1401,6 +2044,280 @@ function compareRowText(row) {
   const qty = row.quantity != null ? ` ×${row.quantity}${row.unit || ''}` : ''
   return `${row.number || row.childPartOid || '?'} ${row.name || ''}${ver}${qty}`.trim()
 }
+
+// ==================== BOM 快照 ====================
+// 快照 = 某一时刻父件迭代顶层 BOM 行的定格（后端 ck_bom_snapshot，只读）。
+// 三个动作：新增（定格当前 BOM）、记录（列表 / 删除）、对比（快照 ↔ 当前 BOM，或两份快照互比）。
+const snapshotModalVisible = ref(false)
+const snapshotSaving = ref(false)
+const snapshotForm = ref({ name: '', remark: '' })
+
+const snapshotListVisible = ref(false)
+const snapshotListLoading = ref(false)
+const snapshotList = ref([])
+const snapshotSelectedRowKeys = ref([])
+const snapshotDiffLoading = ref(false)
+/** 对比结果：{fromLabel,toLabel,addedCount,removedCount,changedCount,added[],removed[],changed[]} */
+const snapshotDiff = ref(null)
+
+const snapshotDiffIsEmpty = computed(() => {
+  const d = snapshotDiff.value
+  return !!d && !(d.addedCount || d.removedCount || d.changedCount)
+})
+
+const snapshotColumns = [
+  { title: '快照名称', dataIndex: 'name', key: 'name', width: 200, ellipsis: true },
+  { title: '版本', dataIndex: 'versionLabel', key: 'versionLabel', width: 76 },
+  { title: '子件行数', dataIndex: 'itemCount', key: 'itemCount', width: 90, align: 'center' },
+  { title: '备注', key: 'remark', ellipsis: true },
+  { title: '创建人', dataIndex: 'creator', key: 'creator', width: 100 },
+  { title: '创建时间', key: 'createdAt', width: 150 },
+  { title: '操作', key: 'action', width: 70, align: 'center' },
+]
+
+// ==================== 快照内容（只读明细） ====================
+// 列表接口刻意不带 snapshotJson（几百行很占带宽），点名称时才按 oid 取单份快照。
+const snapshotDetailVisible = ref(false)
+const snapshotDetailLoading = ref(false)
+/** 快照元信息（名称/版本/行数/创建人/备注） */
+const snapshotDetail = ref(null)
+/** 快照里定格的 BOM 行（snapshotJson.items） */
+const snapshotDetailItems = ref([])
+
+const snapshotItemColumns = [
+  { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 70, align: 'center' },
+  { title: '编码', key: 'number', width: 190 },
+  { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true },
+  { title: '版本', key: 'version', width: 80, align: 'center' },
+  { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 80, align: 'center' },
+  { title: '单位', dataIndex: 'unit', key: 'unit', width: 70, align: 'center' },
+  { title: '单位成本(RMB)', dataIndex: 'unitCost', key: 'unitCost', width: 120, align: 'right' },
+]
+
+/** 快照 JSON → BOM 行数组（{"items":[...]}；解析失败按空处理，不把异常抛到渲染层） */
+function parseSnapshotItems(json) {
+  if (!json) return []
+  try {
+    const parsed = typeof json === 'string' ? JSON.parse(json) : json
+    const items = parsed?.items
+    return Array.isArray(items) ? items : []
+  } catch {
+    return []
+  }
+}
+
+/** 点快照名称：打开只读明细（先用列表行回填头部，明细到了再覆盖） */
+async function openSnapshotDetail(record) {
+  if (!record?.oid) return
+  snapshotDetail.value = { ...record }
+  snapshotDetailItems.value = []
+  snapshotDetailVisible.value = true
+  snapshotDetailLoading.value = true
+  try {
+    const res = await getBomSnapshot(record.oid)
+    if (res?.code === 200 && res.data) {
+      snapshotDetail.value = res.data
+      snapshotDetailItems.value = parseSnapshotItems(res.data.snapshotJson)
+    } else {
+      message.error(res?.message || '读取快照内容失败')
+    }
+  } catch (e) {
+    message.error(e?.response?.data?.message || '读取快照内容失败')
+  } finally {
+    snapshotDetailLoading.value = false
+  }
+}
+
+/** 默认名称：编码 + 版本 + 快照 —— 记录一多，"未命名快照"根本分不清 */
+function defaultSnapshotName() {
+  const number = part.value?.number || ''
+  const version = part.value?.displayVersion || ''
+  return `${number} ${version} 快照`.trim()
+}
+
+function openSnapshotModal() {
+  if (!currentIterationOid.value) { message.warning('当前没有可快照的 BOM 版本'); return }
+  snapshotForm.value = { name: defaultSnapshotName(), remark: '' }
+  snapshotModalVisible.value = true
+}
+
+async function confirmCreateSnapshot() {
+  const name = (snapshotForm.value.name || '').trim()
+  if (!name) { message.warning('请填写快照名称'); return }
+  snapshotSaving.value = true
+  try {
+    const res = await createBomSnapshot({
+      iterationOid: currentIterationOid.value,
+      name,
+      remark: (snapshotForm.value.remark || '').trim() || null,
+    })
+    if (res?.code === 200) {
+      message.success(`快照「${name}」已保存（${res.data?.itemCount ?? 0} 行）`)
+      snapshotModalVisible.value = false
+      // 存完顺手把记录打开：下一步十有八九是要对比
+      openSnapshotList()
+    } else {
+      message.error(res?.message || '保存快照失败')
+    }
+  } catch (e) {
+    // 别只回一句"保存快照失败"：网络断 / 后端没起 / 超时都是这一句，用户没法自救
+    const reason = e?.response?.data?.message || e?.message || '网络错误（确认后端已启动后重试）'
+    message.error(`保存快照失败：${reason}`)
+  } finally {
+    snapshotSaving.value = false
+  }
+}
+
+async function openSnapshotList() {
+  snapshotListVisible.value = true
+  snapshotDiff.value = null
+  snapshotSelectedRowKeys.value = []
+  await loadSnapshots()
+}
+
+async function loadSnapshots() {
+  if (!part.value?.oid) { snapshotList.value = []; return }
+  snapshotListLoading.value = true
+  try {
+    // 按零件取（跨版本）：快照记录的价值就在于"同一个件、不同时期的 BOM"
+    const res = await getBomSnapshots({ partOid: part.value.oid })
+    snapshotList.value = res?.code === 200 ? (res.data || []) : []
+  } catch (e) {
+    snapshotList.value = []
+    message.error('读取快照记录失败：' + (e?.response?.data?.message || e?.message || '网络错误'))
+  } finally {
+    snapshotListLoading.value = false
+  }
+}
+
+/** 对比只需要两侧：超过两条时保留最后两条，并说清原因 */
+function onSnapshotSelectChange(keys) {
+  if (keys.length > 2) {
+    message.info('对比最多只能选两条快照')
+    snapshotSelectedRowKeys.value = keys.slice(-2)
+  } else {
+    snapshotSelectedRowKeys.value = keys
+  }
+  snapshotDiff.value = null
+}
+
+async function runSnapshotCompare(params) {
+  snapshotDiffLoading.value = true
+  snapshotDiff.value = null
+  try {
+    const res = await compareBomSnapshots(params)
+    if (res?.code === 200) {
+      snapshotDiff.value = res.data || null
+      if (snapshotDiffIsEmpty.value) message.info('两侧 BOM 无差异')
+    } else {
+      message.error(res?.message || '快照对比失败')
+    }
+  } catch (e) {
+    message.error(e?.response?.data?.message || '快照对比失败')
+  } finally {
+    snapshotDiffLoading.value = false
+  }
+}
+
+/** 选中 1 条快照 → 与当前查看版本的 BOM 比 */
+function compareSnapshotWithCurrent() {
+  const oid = snapshotSelectedRowKeys.value[0]
+  if (!oid) { message.warning('请选择一份快照'); return }
+  if (!currentIterationOid.value) { message.warning('当前没有可对比的 BOM 版本'); return }
+  runSnapshotCompare({ from: oid, toIteration: currentIterationOid.value })
+}
+
+/** 选中 2 条快照 → 互相比（先选的作为源，后选的作为目标） */
+function compareTwoSnapshots() {
+  const [from, to] = snapshotSelectedRowKeys.value
+  if (!from || !to) { message.warning('请选择两份快照'); return }
+  runSnapshotCompare({ from, toSnapshot: to })
+}
+
+function onDeleteSnapshot(record) {
+  Modal.confirm({
+    title: '删除快照',
+    content: `确定删除快照「${record.name || '-'}」吗？删除后无法恢复。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    onOk: async () => {
+      try {
+        const res = await deleteBomSnapshot(record.oid)
+        if (res?.code === 200) {
+          message.success('快照已删除')
+          snapshotSelectedRowKeys.value = snapshotSelectedRowKeys.value.filter(k => k !== record.oid)
+          snapshotDiff.value = null
+          await loadSnapshots()
+        } else {
+          message.error(res?.message || '删除失败')
+        }
+      } catch (e) {
+        message.error(e?.response?.data?.message || '删除失败')
+      }
+    },
+  })
+}
+
+// ==================== 关联问题（问题的「关联对象」= 本零组件） ====================
+// 问题的关联对象只存「类型 + 编码」，所以按 relatedType=PART + relatedCode=零件编码 查；
+// 同编码的所有版本共享同一批问题（问题是对象级的，不是版本级的）。
+const relatedIssues = ref([])
+const relatedIssuesLoading = ref(false)
+
+const relatedIssueColumns = [
+  { title: '编码', dataIndex: 'code', key: 'code', width: 110 },
+  { title: '标题', dataIndex: 'name', key: 'name', ellipsis: true },
+  { title: '类型', dataIndex: 'issueType', key: 'issueType', width: 110 },
+  { title: '严重度', dataIndex: 'severity', key: 'severity', width: 80, align: 'center' },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 90, align: 'center' },
+  { title: '责任人', dataIndex: 'owner', key: 'owner', width: 100 },
+  { title: '计划完成', dataIndex: 'dueDate', key: 'dueDate', width: 110 },
+  { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 150 },
+]
+
+/** 本地日期 yyyy-MM-dd：dueDate 只到天，不用 UTC 比较，免得跨时区把"今天到期"算成逾期 */
+function todayYmd() {
+  const now = new Date()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${mm}-${dd}`
+}
+
+function isIssueOverdue(record) {
+  if (!record?.dueDate) return false
+  if (record.status === 'CLOSED' || record.status === 'CANCELLED') return false
+  return String(record.dueDate).slice(0, 10) < todayYmd()
+}
+
+async function loadRelatedIssues() {
+  const code = part.value?.number
+  if (!code) { relatedIssues.value = []; return }
+  relatedIssuesLoading.value = true
+  try {
+    const res = await listIssues({ relatedType: 'PART', relatedCode: code, page: 1, pageSize: 100 })
+    const data = res?.code === 200 ? res.data : null
+    if (Array.isArray(data?.rows)) relatedIssues.value = data.rows
+    else if (Array.isArray(data)) relatedIssues.value = data
+    else relatedIssues.value = []
+  } catch {
+    relatedIssues.value = []
+  } finally {
+    relatedIssuesLoading.value = false
+  }
+}
+
+/** 打开问题：跳「持续改进」并直接展开该问题的详情抽屉（见 ContinuousImprovement 的 ?issue= 处理） */
+function openIssue(record) {
+  if (!record?.oid) return
+  router.push({ path: '/improve', query: { issue: record.oid } })
+}
+
+// 切到「关联问题」页签才查（进页面时不必为一个看不见的列表多发请求）；换零件也要重查
+watch([activeTab, () => part.value?.number], ([tab]) => {
+  if (tab === 'issues') loadRelatedIssues()
+})
 /**
  * 当前查看的迭代 OID（BOM 读写的口径）。
  *
@@ -1429,6 +2346,21 @@ const bomExpandedKeys = ref([])
 // 被使用情况（反向 BOM）
 const usedByLoading = ref(false)
 const usedByList = ref([])
+/**
+ * 往上追溯的层级栈：空 = 看本页零件；每 push 一项就往上走一层（该父件被谁使用）。
+ * 栈里存的是"父件"的 oid 与展示文案，回退时只截断栈，不依赖服务端返回顺序。
+ */
+const usedByDrill = ref([])
+/** 当前查看范围的零件 oid（栈顶；栈空时就是本页零件） */
+const usedByScopeOid = computed(() => usedByDrill.value.length
+  ? usedByDrill.value[usedByDrill.value.length - 1].partOid
+  : oid.value)
+/** 范围条第一段：本页零件（编码 名称 版本） */
+const usedByRootLabel = computed(() => {
+  const p = part.value || {}
+  const text = [p.number, p.name, p.displayVersion].filter(Boolean).join(' ')
+  return text || '当前零组件'
+})
 
 // 双向替代（PartAlternateLink）
 const alternateLoading = ref(false)
@@ -1467,6 +2399,152 @@ const bomItemsColumns = [
 
 // 右侧面板当前激活的 tab
 const bomRightTab = ref('items')
+
+// ==================== 轻量化（右侧页签：选中 BOM 行的三维预览） ====================
+/*
+ * 数据链条：零件迭代 →（ck_eng_doc_part_link / EPMBuildRule）→ 工程数据迭代 → 主文件 → 轻量化 GLB。
+ * 后端一次查询就能给全（getCadModelByPartIteration），前端只负责渲染与轮询状态，
+ * 不在浏览器里串 3~4 个请求拼这条链。
+ */
+const bomCadLoading = ref(false)
+/** 选中行的数模状态（ContainerCadModelVO 口径）；null = 没关联可轻量化的数模 */
+const bomCadModel = ref(null)
+/** 转换器是否可用：未部署时不给"生成"按钮，避免点出一个永远转不完的圈 */
+const bomCadAvailable = ref(false)
+/** 失败 / 跳过原因 */
+const bomCadMessage = ref('')
+const bomCadWorking = ref(false)
+let bomCadPollTimer = null
+let bomCadPollTicks = 0
+/** 轮询上限：150 次 × 2 秒 = 5 分钟（与文档预览同一口径，转换不该让用户无限等） */
+const BOM_CAD_POLL_MAX = 150
+
+const bomCadReady = computed(() => bomCadModel.value?.status === 'SUCCESS' && !!bomCadModel.value?.glbCkfileOid)
+const bomCadGlbUrl = computed(() => (bomCadReady.value ? ckFileStreamUrl(bomCadModel.value.glbCkfileOid) : ''))
+const bomCadStructureUrl = computed(() =>
+  bomCadModel.value?.structureCkfileOid ? ckFileStreamUrl(bomCadModel.value.structureCkfileOid) : ''
+)
+const bomCadStats = computed(() => ({
+  triangles: bomCadModel.value?.triangleCount,
+  parts: bomCadModel.value?.partCount,
+  units: bomCadModel.value?.units,
+}))
+
+/** 选中 BOM 行对应的零件迭代：子件优先精确引用 → 解析缓存 → 最新；根行用当前查看版本 */
+function bomRowIterationOid(row) {
+  if (!row) return null
+  if (row.isRoot) return currentIterationOid.value || null
+  return row.childIterationOid || row.resolvedIterationOid || row.childLatestIterationOid || null
+}
+
+/** 读到状态后统一收口：转换中继续轮询，成功渲染，失败给重试入口 */
+function applyBomCadModel(model) {
+  bomCadModel.value = model || null
+  const st = model?.status
+  if (st === 'QUEUED' || st === 'RUNNING') {
+    bomCadWorking.value = true
+    bomCadMessage.value = ''
+    if (!bomCadPollTimer) startBomCadPolling()
+    return
+  }
+  bomCadWorking.value = false
+  bomCadMessage.value = (st === 'FAILED' || st === 'SKIPPED' || st === 'TIMEOUT')
+    ? (model.errorMessage || '上次转换未成功')
+    : ''
+}
+
+/** 加载选中行的轻量化状态（换行 / 切到本页签 / 点刷新时调用） */
+async function loadBomCad() {
+  stopBomCadPolling()
+  bomCadModel.value = null
+  bomCadMessage.value = ''
+  bomCadWorking.value = false
+  const iterOid = bomRowIterationOid(bomSelectedRow.value)
+  if (!iterOid) return
+  bomCadLoading.value = true
+  try {
+    if (!bomCadAvailable.value) {
+      const r = await getCadViewerAvailable()
+      bomCadAvailable.value = !!(r?.code === 200 && r.data?.available)
+    }
+    if (!bomCadAvailable.value) return
+    const res = await getCadModelByPartIteration(iterOid)
+    if (res?.code === 200) applyBomCadModel(res.data)
+  } catch {
+    bomCadModel.value = null
+  } finally {
+    bomCadLoading.value = false
+  }
+}
+
+/** 提交转换：提交后按"重新读状态"处理，不把 CadVisualization 的字段混进数模 VO */
+async function startBomCadConvert() {
+  const model = bomCadModel.value
+  if (!model?.iterationOid || !model?.sourceCkfileOid) {
+    message.warning('该零组件没有可转换的数模文件')
+    return
+  }
+  bomCadWorking.value = true
+  bomCadMessage.value = ''
+  try {
+    const res = await convertCadModel({
+      engDocIterationOid: model.iterationOid,
+      sourceCkfileOid: model.sourceCkfileOid,
+    })
+    if (res?.code !== 200) {
+      bomCadWorking.value = false
+      bomCadMessage.value = res?.message || '提交转换失败'
+      return
+    }
+    const iterOid = bomRowIterationOid(bomSelectedRow.value)
+    const fresh = iterOid ? await getCadModelByPartIteration(iterOid).catch(() => null) : null
+    if (fresh?.code === 200 && fresh.data) applyBomCadModel(fresh.data)
+    else if (!bomCadPollTimer) startBomCadPolling()
+  } catch (e) {
+    bomCadWorking.value = false
+    bomCadMessage.value = e?.response?.data?.message || '提交转换失败，请检查转换器是否运行'
+  }
+}
+
+function startBomCadPolling() {
+  stopBomCadPolling()
+  const iterOid = bomRowIterationOid(bomSelectedRow.value)
+  if (!iterOid) return
+  bomCadPollTicks = 0
+  bomCadPollTimer = setInterval(async () => {
+    bomCadPollTicks++
+    if (bomCadPollTicks > BOM_CAD_POLL_MAX) {
+      stopBomCadPolling()
+      bomCadWorking.value = false
+      bomCadMessage.value = '转换超时，请稍后重试'
+      return
+    }
+    try {
+      const res = await getCadModelByPartIteration(iterOid)
+      if (res?.code === 200 && res.data) applyBomCadModel(res.data)
+    } catch {
+      /* 单次轮询失败不打断，等下一拍 */
+    }
+  }, 2000)
+}
+
+function stopBomCadPolling() {
+  if (bomCadPollTimer) {
+    clearInterval(bomCadPollTimer)
+    bomCadPollTimer = null
+  }
+}
+
+// 切到「轻量化」页签才去查（打开零件详情不多发请求）；切走就停轮询
+watch(bomRightTab, (tab) => {
+  if (tab === 'lightweight') loadBomCad()
+  else stopBomCadPolling()
+})
+// 页签开着时换选中行：重查这一行的数模
+watch(() => bomSelectedRow.value?.oid, () => {
+  if (bomRightTab.value === 'lightweight') loadBomCad()
+})
+onUnmounted(stopBomCadPolling)
 
 // ==================== 两栏布局：可拖拽分隔条 ====================
 
@@ -1525,11 +2603,19 @@ function onToggleColumn(key, visible) {
   bomColumnVisibility.value[key] = visible
 }
 
+/**
+ * 被使用情况的列：父件按「编码 / 名称 / 版本」展示。
+ *
+ * <p>原来这里直接显示 {@code parentIterationOid} —— 那是内部标识，用户看不出"装在哪个件上"。
+ * 编码列是可点的：点它即以该父件为范围继续往上追溯一层（见 onUsedByDrillUp）。
+ */
 const usedByColumns = [
-  { title: '父迭代 OID', dataIndex: 'parentIterationOid', key: 'parentIterationOid', ellipsis: true },
-  { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 100 },
-  { title: '单位', dataIndex: 'unit', key: 'unit', width: 100 },
-  { title: '引用方式', key: 'exactRef', width: 120 },
+  { title: '编码', key: 'parentNumber', width: 190 },
+  { title: '名称', key: 'parentName', ellipsis: true },
+  { title: '版本', key: 'parentVersion', width: 90, align: 'center' },
+  { title: '数量', dataIndex: 'quantity', key: 'quantity', width: 90, align: 'center' },
+  { title: '单位', dataIndex: 'unit', key: 'unit', width: 80, align: 'center' },
+  { title: '引用方式', key: 'exactRef', width: 110, align: 'center' },
 ]
 
 /** 双向替代列表列定义（另一端部件 + 替代属性） */
@@ -1620,6 +2706,14 @@ const isElectronic = computed(() => (part.value?.typeDefinitionCode || '').toUpp
 const isElectrical = computed(() => (part.value?.typeDefinitionCode || '').toUpperCase() === 'ELECTRICAL')
 /** 是否为软件 */
 const isSoftware = computed(() => (part.value?.typeDefinitionCode || '').toUpperCase() === 'SOFTWARE')
+/**
+ * 本类型有没有 CAD 描述卡片（三维模型 / 图符 / 电气图 / 架构图）。
+ *
+ * <p>没有就只渲染「工程数据」区块，不再给一句「该类型无需 CAD 描述」——
+ * 那句话只由零件类型决定，跟工程数据有没有关联、跟业务配置里停用哪个对象类型都无关，
+ * 摆在工程数据表上面只会自相矛盾。
+ */
+const hasCadCards = computed(() => isStructural.value || isElectronic.value || isElectrical.value || isSoftware.value)
 
 /** CAD 描述 Tab 标题：按对象类型动态化（电子元器件=符号.封装，电气件=电气图，软件=原理图） */
 const cadTabLabel = computed(() => {
@@ -1673,14 +2767,30 @@ async function loadDetail() {
     const res = await getEntityByCode('PART', oid.value, params)
     if (res.code === 200 && res.data) {
       part.value = res.data
-      // 加载所属容器（产品系列/型号）和文件夹路径
+      // 加载所属容器（产品系列/型号）
       loadContainer()
-      loadFolderPath()
-      // 加载分类 IBA 定义（用于显示名称映射）
-      if (part.value.clsOid) loadClsIbaDefs(part.value.clsOid)
+      // 加载分类 IBA 定义（用于显示名称映射）与分类名称（"基本信息"区展示"分类"）
+      if (part.value.clsOid) {
+        loadClsIbaDefs(part.value.clsOid)
+        loadClsName(part.value.clsOid)
+      } else {
+        clsName.value = ''
+      }
     }
   } catch { part.value = null }
   finally { loading.value = false }
+}
+
+/** 所属分类名称（ck_classification.name）——"基本信息"区展示用 */
+const clsName = ref('')
+
+/** 按 clsOid 解析分类名称；取不到就留空（界面显示 '-'，不显示无意义的 oid） */
+async function loadClsName(clsOid) {
+  try {
+    const r = await getClassification(clsOid)
+    const data = r?.data || r
+    clsName.value = (r && r.code === 200 && data) ? (data.name || data.displayName || '') : ''
+  } catch { clsName.value = '' }
 }
 
 /** 加载分类 IBA 定义列表（用于将 code 映射为显示名称） */
@@ -1714,53 +2824,12 @@ async function loadContainer() {
         code: data.code,
         type: ctype || 'PRODUCT_LINE',
       }
-      // 顺带加载所属研发阶段名称（注册动态阶段表 → 按 part.stageOid 解析）
-      loadStageName(data.oid)
     } else {
       productContainer.value = null
     }
   } catch {
     productContainer.value = null
   }
-}
-
-/** 加载 Part 所属研发阶段名称：产品系列的阶段清单 → 注册到全局阶段表 → 按 stageOid 取名 */
-async function loadStageName(seriesOid) {
-  if (!seriesOid) { stageName.value = ''; return }
-  try {
-    const res = await getStages(seriesOid)
-    const list = res?.code === 200 ? (res.data || []) : []
-    if (list.length) {
-      // 注册动态阶段（oid → 名称），与产品线仪表盘共享同一映射
-      registerDynamicStages(list)
-      const stageOid = part.value?.stageOid || ''
-      const title = getStageTitle(stageOid)
-      // 无法解析（注册表中不存在）时回退为原始 oid 展示无意义，置空隐藏
-      stageName.value = (title && title !== stageOid) ? title : ''
-    }
-  } catch { stageName.value = '' }
-}
-
-/**
- * 加载 Part 所属文件夹的完整路径（递归向上拼接父文件夹名）。
- * 限制最大深度 6 层，避免异常循环。
- */
-async function loadFolderPath() {
-  let currentOid = part.value?.folderOid
-  if (!currentOid) { folderPath.value = ''; return }
-  const segments = []
-  let depth = 0
-  while (currentOid && depth < 6) {
-    try {
-      const r = await getFolderByOid(currentOid)
-      const data = r?.data || r
-      if (!data || (r && r.code !== 200)) break
-      if (data.name) segments.unshift(data.name)
-      currentOid = data.parentOid || data.parentFolderOid
-    } catch { break }
-    depth++
-  }
-  folderPath.value = segments.join(' / ')
 }
 
 async function loadHistory() {
@@ -2353,16 +3422,91 @@ const containerOptions = computed(() => {
   return opts
 })
 
-/** 加载产品系列 + 型号（用于下拉选项） */
+/*
+ * 企业资源库：作为「所属容器」的一种可选口径。
+ * 根节点（CORP_RESOURCE）本身不直接挂零组件 —— 零件实际挂在元器件库 / 标准件库 / 通用件库等
+ * 资源子库上（containerOid = 子库 oid），所以选中根节点时展开成各子库逐个查询再合并
+ * （见 loadAddExistingParts / resolveQueryContainerOids）。
+ */
+const resourceRootOid = ref(null)
+const resourceLibraries = ref([])
+
+/** 容器类型 → 可读文案（仅用于容器不在候选里时的兜底显示，与 BOM 替代弹窗同一口径） */
+const CONTAINER_TYPE_LABEL = {
+  PRODUCT_LINE: '产品系列',
+  LINE: '产品系列',
+  PRODUCT_MODEL: '产品型号',
+  MODEL: '产品型号',
+  CORP_RESOURCE: '企业资源',
+  FOLDER: '文件夹',
+}
+
+/**
+ * 只放文档 / 图片、不挂零组件的资源子库 —— 选件的「所属容器」里不列它们，
+ * 免得点进去永远是空清单（封装·图符库存的是 EPMDocument，技术文档库是 Document，产品图册是图片）。
+ */
+const NON_PART_LIBRARY_CODES = new Set(['PACKAGE_SYMBOL', 'TECH_DOC', 'MEDIA'])
+
+/** 能挂零组件的资源子库（元器件库 / 标准件库 / 通用件库 / 其他 …） */
+const partLibraries = computed(() =>
+  resourceLibraries.value.filter(l => l.oid && !NON_PART_LIBRARY_CODES.has(String(l.code || '').toUpperCase())),
+)
+
+/**
+ * 「添加已有零组件」弹窗的容器树：
+ *   企业资源库（全部库）→ 元器件库 / 标准件库 / 通用件库 …
+ *   产品系列 / 型号（保持扁平可选）
+ * 选父节点 = 汇总下挂子库；选子库 = 只看该库。
+ */
+const addExistingContainerTree = computed(() => {
+  const nodes = []
+  if (resourceRootOid.value) {
+    nodes.push({
+      value: resourceRootOid.value,
+      title: '企业资源库（全部库）',
+      children: partLibraries.value.map(l => ({ value: l.oid, title: l.name || l.code })),
+    })
+  }
+  containerOptions.value.forEach(o => nodes.push({ value: o.value, title: o.label }))
+  // 当前容器的 oid 不在候选里（零件本身就在资源子库 / 文件夹里）时补一条兜底项：
+  // 否则下拉找不到对应节点，会把 containerOid 原样当文本显示
+  const cur = addExistingContainerOid.value
+  const hasCur = nodes.some(n => n.value === cur || (n.children || []).some(c => c.value === cur))
+  if (cur && !hasCur) {
+    nodes.unshift({ value: cur, title: containerLabelOf(cur, part.value?.containerType) })
+  }
+  return nodes
+})
+
+/** 容器文案：命中资源子库取库名，其余按容器类型给可读兜底（不暴露 oid） */
+function containerLabelOf(containerOid, containerType) {
+  const lib = resourceLibraries.value.find(l => l.oid === containerOid)
+  if (lib) return lib.name || lib.code
+  const label = CONTAINER_TYPE_LABEL[String(containerType || '').toUpperCase()]
+  return label ? `${label}（当前容器）` : '当前容器'
+}
+
+/** 加载产品系列 + 型号 + 企业资源库（用于下拉选项） */
 async function loadContainerOptions() {
   try {
-    const [lineRes, modelRes] = await Promise.all([
+    const [lineRes, modelRes, rootRes, libRes] = await Promise.all([
       getProductLines().catch(() => ({ data: [] })),
       getProductModels().catch(() => ({ data: [] })),
+      // 资源库未初始化 / 无权限时按空态处理，不影响产品系列/型号的选项
+      getResourceRoot().catch(() => null),
+      getResourceChildren().catch(() => ({ data: [] })),
     ])
     productLinesForSelect.value = lineRes?.data || lineRes || []
     productModelsForSelect.value = modelRes?.data || modelRes || []
-  } catch { productLinesForSelect.value = []; productModelsForSelect.value = [] }
+    resourceRootOid.value = rootRes?.data?.oid || null
+    const libs = libRes?.data
+    resourceLibraries.value = Array.isArray(libs) ? libs : []
+  } catch {
+    productLinesForSelect.value = []
+    productModelsForSelect.value = []
+    resourceRootOid.value = null
+    resourceLibraries.value = []
+  }
 }
 
 /** 打开"添加已有子件"弹窗：默认容器 = 当前 Part 的 containerOid */
@@ -2404,7 +3548,7 @@ function onAddExistingChild() {
   ensureTargetCheckedOut()
 }
 
-/** 容器（产品系列/型号）切换 */
+/** 容器（产品系列/型号/企业资源库）切换 */
 function onAddExistingContainerChange() {
   addExistingSelectedRowKeys.value = []
   loadAddExistingParts()
@@ -2416,14 +3560,45 @@ async function loadAddExistingParts() {
   if (!containerOid) { addExistingList.value = []; return }
   addExistingLoading.value = true
   try {
-    const res = await getPartsByContainer(containerOid, addExistingKeyword.value.trim() || undefined)
-    const list = res?.data || res || []
-    const arr = Array.isArray(list) ? list : []
+    const keyword = addExistingKeyword.value.trim() || undefined
+    const oids = await resolveQueryContainerOids(containerOid)
+    const results = await Promise.all(
+      oids.map(oid => getPartsByContainer(oid, keyword).catch(() => ({ data: [] }))),
+    )
+    // 多容器合并（企业资源库）：按 oid 去重，保持各子库返回顺序
+    const merged = []
+    const seen = new Set()
+    results.forEach(res => {
+      const arr = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+      arr.forEach(p => {
+        if (p?.oid && !seen.has(p.oid)) {
+          seen.add(p.oid)
+          merged.push(p)
+        }
+      })
+    })
     // 过滤掉选中节点自身及其所有祖先（防止自引用 / 死循环）
     const forbidden = collectForbiddenPartOids()
-    addExistingList.value = arr.filter(p => p && p.oid && !forbidden.has(p.oid))
+    addExistingList.value = merged.filter(p => !forbidden.has(p.oid))
   } catch { addExistingList.value = [] }
   finally { addExistingLoading.value = false }
+}
+
+/**
+ * 实际要查询的容器 oid 列表。
+ *
+ * <p>普通容器（产品系列/型号/资源子库）→ 只查它自己；
+ * 选「企业资源库」根节点 → 展开成各资源子库：零件挂在子库上，按根 oid 精确查只会得到空清单。
+ */
+async function resolveQueryContainerOids(containerOid) {
+  if (containerOid !== resourceRootOid.value) return [containerOid]
+  if (!resourceLibraries.value.length) {
+    try {
+      const res = await getResourceChildren()
+      resourceLibraries.value = Array.isArray(res?.data) ? res.data : []
+    } catch { return [] }
+  }
+  return partLibraries.value.map(l => l.oid).filter(Boolean)
 }
 
 /** 弹窗搜索 */
@@ -2507,8 +3682,91 @@ async function confirmAddExisting() {
   }
 }
 
-/** BOM 操作：新建子件（占位，后续接入新建部件流程） */
+// ==================== 新建零组件作为子件 ====================
+// 与「物料清单」页签的「新建零组件」是同一套创建表单：先选类型 → 按类型专属布局填表。
+// 差别只有两点：① 容器固定为当前 Part 的容器（否则建出来的件在该产品的物料清单里查不到）；
+// ② 建完立刻用 createBomLinks 挂到选中的 BOM 节点下，不用再走一遍「添加已有子件」。
+const newChildModalVisible = ref(false)
+const newChildSaving = ref(false)
+const newChildFormRef = ref(null)
+const newChildForm = ref({})
+const newChildEntityCode = ref('PART')
+const newChildTypeSelectValue = ref(undefined)
+const newChildSelectedType = ref(null)
+const newChildTypeOptions = ref([])
+/** 本次新建的目标父件 { iterationOid, name }：打开弹窗时定下来，提交时用 */
+const newChildTarget = ref(null)
+
+/** 产品线/型号内禁止创建的类型（电子元器件必须走「企业资源 → 元器件库 → IPN申请」） */
+const FORBIDDEN_PART_TYPE_CODES = ['ELECTRONIC']
+
+/** 递归剔除禁止选择的类型节点（连同其子树）—— 与物料清单同一个口径 */
+function filterForbiddenPartTypes(node) {
+  if (!node) return null
+  if (FORBIDDEN_PART_TYPE_CODES.includes((node.code || '').toUpperCase())) return null
+  return {
+    ...node,
+    children: (node.children || []).map(filterForbiddenPartTypes).filter(Boolean),
+  }
+}
+
+/** 类型树里定位 PART 根节点（其下挂全部零件软类型） */
+function findRootPartTypeNode(nodes) {
+  for (const n of nodes) {
+    if (n.code === 'PART') return n
+    if (n.children) {
+      const found = findRootPartTypeNode(n.children)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function findTypeNodeByCode(nodes, code) {
+  for (const n of nodes) {
+    if (n.code === code) return n
+    if (n.children) {
+      const found = findTypeNodeByCode(n.children, code)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+async function loadNewChildPartTypes() {
+  try {
+    const res = await getTypeDefinitionTree()
+    const tree = res?.data || res || []
+    const partNode = findRootPartTypeNode(Array.isArray(tree) ? tree : [])
+    const filtered = filterForbiddenPartTypes(partNode)
+    newChildTypeOptions.value = filtered ? [filtered] : []
+  } catch { newChildTypeOptions.value = [] }
+}
+
+function onNewChildTypeChange(typeCode) {
+  if (typeCode) {
+    const found = findTypeNodeByCode(newChildTypeOptions.value, typeCode)
+    newChildSelectedType.value = found || { code: typeCode, name: typeCode }
+    newChildEntityCode.value = typeCode
+    newChildForm.value.typeDefinitionCode = typeCode
+  } else {
+    newChildSelectedType.value = null
+    newChildEntityCode.value = 'PART'
+    newChildForm.value.typeDefinitionCode = ''
+  }
+}
+
+function resetNewChildModal() {
+  newChildTypeSelectValue.value = undefined
+  newChildSelectedType.value = null
+  newChildEntityCode.value = 'PART'
+  newChildForm.value = {}
+  newChildTarget.value = null
+}
+
+/** BOM 操作：新建零组件并作为子件挂到选中的节点下 */
 async function onNewChild() {
+  if (!isLatestVersion.value) { message.warning(readonlyTip); return }
   const target = resolveBomTargetParent()
   if (!target) {
     message.warning('请先选择左侧 BOM 节点作为新建子件的父件')
@@ -2517,7 +3775,89 @@ async function onNewChild() {
   // 默认将选中的行检出，检出失败则中止
   const ok = await ensureTargetCheckedOut()
   if (!ok) return
-  message.info(`新建子件功能开发中（目标父件：${target.name}）`)
+  resetNewChildModal()
+  newChildTarget.value = target
+  // 与物料清单同一套预设：名称/类型在弹窗里填，容器跟着当前 Part
+  newChildForm.value = {
+    name: '',
+    typeDefinitionCode: '',
+    description: '',
+    containerOid: part.value?.containerOid || '',
+    containerType: part.value?.containerType || '',
+    clsOid: '',
+    ckfileOid: '',
+    attachmentOid: '',
+  }
+  loadNewChildPartTypes()
+  newChildModalVisible.value = true
+}
+
+async function confirmNewChild() {
+  if (!newChildSelectedType.value) { message.warning('请选择零组件类型'); return }
+  if (!newChildForm.value.name?.trim()) { message.warning('请输入零组件名称'); return }
+  // 目标父件的迭代必须重新取：打开弹窗时的「自动检出」会新建工作副本迭代并把 BOM 行整份复制过去，
+  // 沿用打开时抓的旧 iterationOid 会把新子件挂到历史版本上（列表刷新后看不到）
+  const target = resolveBomTargetParent() || newChildTarget.value
+  if (!target?.iterationOid) { message.warning('目标父件没有可用迭代，无法添加子件'); return }
+  newChildSaving.value = true
+  try {
+    const payload = { ...newChildForm.value }
+    // 分类 IBA 单独提交到分类节点（与物料清单的创建逻辑一致）
+    if (newChildFormRef.value) {
+      const clsIbaFieldNames = newChildFormRef.value.getClsIbaFieldNames() || []
+      clsIbaFieldNames.forEach(k => delete payload[k])
+      const clsIbaValues = newChildFormRef.value.getClsIbaValues() || {}
+      if (Object.keys(clsIbaValues).length > 0) payload.clsIbaValues = clsIbaValues
+    }
+    payload.typeDefinitionCode = payload.typeDefinitionCode || newChildSelectedType.value.code
+    // 容器必须落在当前 Part 所在的产品上，否则这颗料不会出现在该产品的物料清单里
+    if (!payload.containerOid) payload.containerOid = part.value?.containerOid || null
+    if (!payload.containerType) payload.containerType = part.value?.containerType || null
+    // 外键字段空字符串转 null，避免外键约束失败
+    ;['clsOid', 'stageOid', 'folderOid', 'containerOid', 'ckfileOid', 'attachmentOid'].forEach(k => {
+      if (payload[k] != null && String(payload[k]).trim() === '') payload[k] = null
+    })
+
+    const created = await createPart(payload)
+    if (created?.code !== 200) {
+      message.error(created?.message || '创建零组件失败')
+      return
+    }
+    const child = created.data || {}
+    if (!child.oid) {
+      message.error('零组件已创建，但接口未返回对象标识，无法加入 BOM')
+      return
+    }
+    const label = child.number || child.name || payload.name
+
+    const linkRes = await createBomLinks({
+      parentIterationOid: target.iterationOid,
+      childPartOid: child.oid,
+      quantity: 1,
+      unit: 'ea',
+    })
+    if (linkRes?.code !== 200) {
+      // 零件已经建出来了：别让用户以为整件事失败又建一颗，提示改用「添加已有子件」挂上
+      newChildModalVisible.value = false
+      resetNewChildModal()
+      message.warning(`零组件 ${label} 已创建，但加入 BOM 失败：${linkRes?.message || '未知错误'}；可用「添加已有子件」挂到当前节点`)
+      return
+    }
+
+    // 目标父件是子件行时先把它展开，否则新建的孙件被折叠在下面，看起来像没加进去
+    const parentRowOid = bomSelectedRow.value && !bomSelectedRow.value.isRoot ? bomSelectedRow.value.oid : null
+    newChildModalVisible.value = false
+    resetNewChildModal()
+    await loadBom()
+    if (parentRowOid && !bomExpandedKeys.value.includes(parentRowOid)) {
+      bomExpandedKeys.value = [...bomExpandedKeys.value, parentRowOid]
+    }
+    message.success(`已创建零组件 ${label} 并添加为「${target.name}」的子件`)
+  } catch (e) {
+    message.error(e?.response?.data?.message || '新建零组件失败')
+  } finally {
+    newChildSaving.value = false
+  }
 }
 
 /** BOM 操作：移除选中的 BOM 行（删除 BomLinks），删除前二次确认 */
@@ -3187,14 +4527,44 @@ function onViewHistoryVersion(record) {
   router.push({ name: 'PartDetail', params: { oid: oid.value, iterationOid: record.oid } })
 }
 
+/**
+ * 加载「被使用情况」：按当前查看范围（默认本页零件，往上追溯后是栈顶那个父件）。
+ * 返回的每个父件都带 parentPartOid，点一下就是再往上走一层。
+ */
 async function loadUsedBy() {
-  if (!oid.value) return
+  const scopeOid = usedByScopeOid.value
+  if (!scopeOid) return
   usedByLoading.value = true
   try {
-    const res = await getBomLinksByChildPart(oid.value)
+    const res = await getPartUsedBy(scopeOid)
     usedByList.value = pickList(res)
   } catch { usedByList.value = [] }
   finally { usedByLoading.value = false }
+}
+
+/** 点到某个父件：以它为范围，继续看它被谁使用（往上一层） */
+function onUsedByDrillUp(record) {
+  if (!record?.parentPartOid) {
+    message.warning('该父件已不存在（可能已被删除），无法继续向上追溯')
+    return
+  }
+  usedByDrill.value.push({
+    partOid: record.parentPartOid,
+    label: [record.parentNumber, record.parentName, record.parentVersion].filter(Boolean).join(' ') || '上层零组件',
+  })
+  loadUsedBy()
+}
+
+/** 范围条回退：idx = -1 回到本页零件，否则回到第 idx 层父件 */
+function onUsedByDrillTo(idx) {
+  usedByDrill.value = idx < 0 ? [] : usedByDrill.value.slice(0, idx + 1)
+  loadUsedBy()
+}
+
+/** 返回上一层 */
+function onUsedByBack() {
+  usedByDrill.value = usedByDrill.value.slice(0, -1)
+  loadUsedBy()
 }
 
 /** 加载双向替代清单：双向对称（不区分角色端），附加另一端部件名称/编码 */
@@ -3497,6 +4867,175 @@ async function confirmAddDocLink() {
   })
 }
 
+// ==================== 关联工程数据（零件版本 ↔ 工程数据版本，EPMBuildRule） ====================
+
+/** 关联类型文案（OWNER / CONTENT / CONTRIBUTING_IMAGE / IMAGE，对齐 Windchill EPMBuildRule） */
+const ENG_DOC_ASSOC_LABEL = {
+  OWNER: '主数据',
+  CONTENT: '内容',
+  CONTRIBUTING_IMAGE: '贡献图纸',
+  IMAGE: '附图',
+}
+const ENG_DOC_ASSOC_COLOR = {
+  OWNER: 'red',
+  CONTENT: 'blue',
+  CONTRIBUTING_IMAGE: 'orange',
+  IMAGE: 'default',
+}
+const ENG_DOC_ASSOC_OPTIONS = Object.entries(ENG_DOC_ASSOC_LABEL).map(([value, label]) => ({ value, label }))
+
+const engDocLinkColumns = [
+  { title: '工程数据', key: 'engDoc', ellipsis: true },
+  { title: '类型', key: 'engDocType', width: 120 },
+  { title: '版本', key: 'engDocVersion', width: 130 },
+  { title: '关联类型', key: 'assocType', width: 110 },
+  { title: '构建规则', key: 'buildRules', width: 170 },
+  { title: '关联时间', key: 'createdAt', width: 160 },
+]
+
+const engDocLinks = ref([])
+const engDocLoading = ref(false)
+const engDocSelectedKeys = ref([])
+
+/** 构建规则是否勾选了任意一项（用于表格里显示「—」占位） */
+function hasBuildRule(record) {
+  return !!(record?.buildStructure || record?.buildAttribute || record?.buildRepresentation)
+}
+
+/** 加载当前零件版本的工程数据关联（后端已补齐零件/工程数据的编号、名称、版本） */
+async function loadEngDocLinks() {
+  if (!oid.value) return
+  engDocLoading.value = true
+  try {
+    const res = await getEngDocPartLinks({ partOid: oid.value })
+    engDocLinks.value = pickList(res)
+  } catch {
+    engDocLinks.value = []
+  } finally {
+    engDocLoading.value = false
+  }
+}
+
+// ---- 关联工程数据弹窗 ----
+const addEngDocModalVisible = ref(false)
+const addEngDocLoading = ref(false)
+const addEngDocSaving = ref(false)
+const addEngDocList = ref([])
+const addEngDocKeyword = ref('')
+const addEngDocSelectedRowKeys = ref([])
+const addEngDocContainerOid = ref(null)
+const addEngDocAssocType = ref('CONTENT')
+const addEngDocBuildStructure = ref(false)
+const addEngDocBuildAttribute = ref(false)
+const addEngDocBuildRepresentation = ref(false)
+
+const addEngDocColumns = [
+  { title: '编号', key: 'number', width: 160 },
+  { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true },
+  { title: '类型', key: 'type', width: 130 },
+]
+
+/** 按关键词本地过滤（名称/编号），避免依赖后端关键字参数 */
+const filteredAddEngDocList = computed(() => {
+  const kw = addEngDocKeyword.value.trim().toLowerCase()
+  if (!kw) return addEngDocList.value
+  return addEngDocList.value.filter(d =>
+    (d.name || '').toLowerCase().includes(kw) || (d.number || '').toLowerCase().includes(kw)
+  )
+})
+
+function onAddEngDocLink() {
+  if (!oid.value) { message.warning('缺少当前部件信息'); return }
+  addEngDocModalVisible.value = true
+  addEngDocKeyword.value = ''
+  addEngDocSelectedRowKeys.value = []
+  addEngDocAssocType.value = 'CONTENT'
+  addEngDocBuildStructure.value = false
+  addEngDocBuildAttribute.value = false
+  addEngDocBuildRepresentation.value = false
+  addEngDocContainerOid.value = part.value?.containerOid || null
+  loadContainerOptions()
+  loadAddEngDocs()
+}
+
+/** 加载当前容器下的工程数据，排除已关联的（后端唯一约束兜底） */
+async function loadAddEngDocs() {
+  const containerOid = addEngDocContainerOid.value
+  if (!containerOid) { addEngDocList.value = []; return }
+  addEngDocLoading.value = true
+  try {
+    const res = await getEngineeringDocuments({ containerOid })
+    const arr = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+    const linked = new Set(engDocLinks.value.map(l => l.engDocumentOid))
+    addEngDocList.value = arr.filter(d => d && d.oid && !linked.has(d.oid))
+  } catch { addEngDocList.value = [] }
+  finally { addEngDocLoading.value = false }
+}
+
+/**
+ * 关联工程数据（单选）。
+ *
+ * <p>一个零件版本只能挂**一份**工程数据（2026-10-26 用户口径），所以这里只提交选中的那一条；
+ * 后端 create 里还有一道同样的校验 —— 两个页签同时点、或绕过弹窗直接调接口，也只会成功一条。
+ */
+async function confirmAddEngDocLinks() {
+  const target = addEngDocList.value.find(d => addEngDocSelectedRowKeys.value.includes(d.oid))
+  if (!target) return
+  addEngDocSaving.value = true
+  try {
+    const res = await createEngDocPartLink({
+      partOid: oid.value,
+      engDocumentOid: target.oid,
+      assocType: addEngDocAssocType.value,
+      buildStructure: addEngDocBuildStructure.value,
+      buildAttribute: addEngDocBuildAttribute.value,
+      buildRepresentation: addEngDocBuildRepresentation.value,
+    })
+    if (res?.code === 200) {
+      message.success(`已关联工程数据「${target.number || target.name || target.oid}」`)
+      addEngDocModalVisible.value = false
+      await loadEngDocLinks()
+    } else {
+      message.error(res?.message || '关联失败')
+    }
+  } catch (e) {
+    message.error(e?.response?.data?.message || e.message || '关联失败')
+  } finally {
+    addEngDocSaving.value = false
+  }
+}
+
+function onRemoveEngDocLinks() {
+  const keys = engDocSelectedKeys.value
+  if (!keys.length) return
+  const rows = engDocLinks.value.filter(l => keys.includes(l.oid))
+  const labels = rows.map(r => `${r.engDocName || '-'}(${r.engDocNumber || '-'})`).join('、')
+  Modal.confirm({
+    title: '确认解除关联',
+    content: `确定要解除与「${labels}」的关联吗？解除后可重新关联。`,
+    okText: '解除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    onOk: async () => {
+      let success = 0
+      for (const row of rows) {
+        try {
+          const res = await deleteEngDocPartLink(row.oid)
+          if (res?.code === 200) success++
+        } catch (e) {
+          message.error(`解除「${row.engDocName || row.oid}」失败：${e?.response?.data?.message || e.message}`)
+        }
+      }
+      if (success > 0) {
+        message.success(`已解除 ${success} 条关联`)
+        engDocSelectedKeys.value = []
+        await loadEngDocLinks()
+      }
+    },
+  })
+}
+
 // ==================== 文档详情查看（复用产品线的 DocumentViewer 抽屉） ====================
 
 const docViewerVisible = ref(false)
@@ -3529,12 +5068,67 @@ async function viewDocDetail(record) {
   }
 }
 
+// ==================== 变更情况（变更通告的变更对象反查） ====================
+
+/**
+ * 一行 = 某张变更通告上的**这一条变更对象**（后端 `/change-notices/by-entity` 拼好的）。
+ *
+ * <p>为什么不是"零件自己有哪些变更记录"：变更的落点是通告的受影响对象
+ * （{@code ck_change_affected_object}，记在主对象上、指向具体被修订的那一版），
+ * 所以反查这张表才能同时说清"哪张单改的、改的是哪一版、改出来的又是哪一版"。
+ */
+const changeNotices = ref([])
+const changeLoading = ref(false)
+/** 已执行（已产出新大版本）的条数 —— 与未执行的分开数，看进度一眼就够 */
+const changeExecutedCount = computed(() => changeNotices.value.filter(row => !!row.executedAt).length)
+
+const changeNoticeColumns = [
+  { title: '变更通告', key: 'notice', ellipsis: true },
+  { title: '状态', key: 'status', width: 100 },
+  { title: '被修订版本', key: 'baseVersion', width: 110 },
+  { title: '修订产物', key: 'resultVersion', width: 110 },
+  { title: '执行时间', key: 'executedAt', width: 190 },
+  { title: '责任人', key: 'owner', width: 110 },
+  { title: '创建时间', key: 'noticeCreatedAt', width: 160 },
+]
+
+async function loadChangeNotices() {
+  if (!oid.value) {
+    return
+  }
+  changeLoading.value = true
+  try {
+    const res = await listChangeNoticesByEntity('PART', oid.value)
+    changeNotices.value = res?.code === 200 ? (res.data || []) : []
+  } catch {
+    changeNotices.value = []
+  } finally {
+    changeLoading.value = false
+  }
+}
+
+/**
+ * 点通告编号跳到「变更控制 → 变更通告」并直接打开那张单的详情抽屉。
+ *
+ * <p>只带 noticeOid：列表页据此定位（见 ChangeNoticePanel 的 onMounted），
+ * 不带完整对象 —— 通告详情以服务端为准，跳过去看到的就是最新状态。
+ */
+function openChangeNotice(record) {
+  if (!record?.noticeOid) {
+    return
+  }
+  router.push({ path: '/change', query: { tab: 'notice', noticeOid: record.noticeOid } })
+}
+
 // 切换 tab 时按需懒加载
 watch(activeTab, (key) => {
   if (key === 'bom' && bomList.value.length === 0 && !bomLoading.value) loadBom()
   if (key === 'usedBy' && usedByList.value.length === 0 && !usedByLoading.value) loadUsedBy()
   if (key === 'twoWaySubstitute' && alternateList.value.length === 0 && !alternateLoading.value) loadAlternates()
   if (key === 'relatedDocs' && docLinksList.value.length === 0 && !docLinksLoading.value) loadDocLinks()
+  // 工程数据已并入「CAD 描述」页签（2026-10-26）：切到它时再拉，打开别的页签不多发请求
+  if (key === 'cad' && engDocLinks.value.length === 0 && !engDocLoading.value) loadEngDocLinks()
+  if (key === 'changes' && changeNotices.value.length === 0 && !changeLoading.value) loadChangeNotices()
 })
 
 // 监听迭代 oid 变化：切换到不同历史版本时重新加载详情 + 按新迭代重新加载 BOM
@@ -3557,6 +5151,10 @@ watch(() => route.params.oid, async (newOid, oldOid) => {
   refSelectedKeys.value = []
   descSelectedKeys.value = []
   usedByList.value = []
+  // 被使用情况可能停在某个父件上，换零件必须回到"看这个零件"这一层
+  usedByDrill.value = []
+  // 变更情况同样按零件缓存，换零件必须清掉（否则会显示上一个零件的变更历史）
+  changeNotices.value = []
   activeTab.value = 'bom'
   await loadDetail()
   await loadHistory()
@@ -3583,10 +5181,13 @@ onMounted(async () => {
 .pd-header {
   position: relative;
   background: #fff;
+  /* 边框 / 圆角 / 阴影与产品系列页头同一套（.pl-header）：只有极淡阴影时卡片边缘几乎看不出来 */
+  border: 1px solid #f0f0f0;
   border-radius: 8px;
-  padding: 12px 20px 2px;
+  /* 时间信息移进标题行后，底部留白由 12px 改 6px，保持与原先相近的呼吸感 */
+  padding: 12px 20px 6px;
   margin-bottom: 2px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   overflow: hidden;
 }
 /* 顶部彩色渐变边条（参考产品系列卡片视觉） */
@@ -3664,12 +5265,14 @@ onMounted(async () => {
   gap: 6px;
   flex-wrap: wrap;
 }
-/* 底部时间信息 */
+/* 时间信息：与标题行同一行，用竖线与左侧标签拉开距离（窄屏时随 flex-wrap 折行） */
 .pd-meta-time {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  margin-left: 8px;
+  padding-left: 10px;
+  border-left: 1px solid #f0f0f0;
   font-size: 12px;
   color: #8c8c8c;
   flex-wrap: wrap;
@@ -3700,9 +5303,11 @@ onMounted(async () => {
 }
 .pd-tabs {
   background: #fff;
+  /* 与页头同一套描边，避免两张卡片一有边一无边显得割裂 */
+  border: 1px solid #f0f0f0;
   border-radius: 8px;
   padding: 4px 20px 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   /* 防止被外层 a-layout-content 的 flex 强制撑高，避免内部出现横向滚动条 */
   min-height: 0;
   height: auto;
@@ -3835,6 +5440,123 @@ onMounted(async () => {
 .alternate-part-link:hover {
   background: #e6f4ff;
   text-decoration: underline;
+}
+
+/* ===== 被使用情况页签：往上追溯的范围条 + 父件链接 ===== */
+.usedby-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.usedby-scope-label {
+  color: #8c8c8c;
+}
+.usedby-scope-node {
+  color: #1677ff;
+  cursor: pointer;
+}
+.usedby-scope-node:hover {
+  text-decoration: underline;
+}
+.usedby-scope-sep {
+  color: #bfbfbf;
+}
+.usedby-scope-current {
+  color: #262626;
+  font-weight: 500;
+}
+.usedby-parent-link {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  color: #1677ff;
+  cursor: pointer;
+}
+.usedby-parent-link:hover {
+  text-decoration: underline;
+}
+
+/* ===== 关联问题页签 ===== */
+.issue-link-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.issue-link-hint {
+  flex: 1;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+.issue-code-link {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  background: #f5f5f5;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #1677ff;
+  cursor: pointer;
+}
+.issue-code-link:hover {
+  background: #e6f4ff;
+  text-decoration: underline;
+}
+.issue-overdue {
+  color: #ff4d4f;
+}
+
+/* ===== BOM 快照（新增 / 记录 / 对比） ===== */
+/* 快照名称是可点的超链接：点开看这份快照定格的 BOM 明细 */
+.snapshot-name-link {
+  color: #1677ff;
+  cursor: pointer;
+}
+.snapshot-name-link:hover {
+  text-decoration: underline;
+}
+/* 快照明细里的编码：与其它页签的 code 视觉一致 */
+.snapshot-item-code {
+  font-size: 12px;
+  background: #f5f5f5;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #595959;
+}
+.snapshot-detail-meta {
+  margin-bottom: 12px;
+}
+.snapshot-tip {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #8c8c8c;
+  background: #fafafa;
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.snapshot-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.snapshot-bar-hint {
+  flex: 1;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+.snapshot-diff-labels {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #595959;
+  margin-bottom: 8px;
 }
 
 /* ===== BOM 版本对比对话框 ===== */
@@ -4316,7 +6038,79 @@ onMounted(async () => {
 .bom-detail-pane {
   padding: 8px;
 }
+/* ===== 右侧「轻量化」页签 ===== */
+.bom-cad-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.bom-cad-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #262626;
+  font-weight: 500;
+}
+.bom-cad-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+/* 右栏本身不宽，给模型一个固定高度就够看；结构树在查看器里是可折叠的 */
+.bom-cad-viewer {
+  height: 360px;
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
 .cad-grid {
   padding: 4px 0;
+}
+
+/* 工程数据区块：挂在 CAD 卡片下方，用一条虚线把"描述"与"关联的数据"分开 */
+.cad-eng {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #f0f0f0;
+}
+/* 没有 CAD 卡片时（工程数据独占本页签）：不需要那条分隔线和上边距 */
+.cad-eng--solo {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+.cad-eng-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+.cad-eng-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: #8c8c8c;
+}
+
+/* 变更情况：通告编号是可点进详情的链接，标题跟在后面（同一格里省一列） */
+.pd-change-link {
+  font-family: monospace;
+  font-size: 12px;
+  color: #1677ff;
+  cursor: pointer;
+}
+.pd-change-link:hover {
+  text-decoration: underline;
+}
+.pd-change-title {
+  margin-left: 8px;
+  color: #262626;
 }
 </style>

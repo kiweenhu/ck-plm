@@ -18,14 +18,14 @@ public interface PostgreSqlUnitMapper extends UnitMapper {
 
     String TABLE = "ck_unit";
     String COLS = "oid, name, display, quantity_type, is_si, base_unit_name, " +
-                  "factor, unit_shift, sort_order, description, " +
+                  "factor, unit_shift, sort_order, description, tenant_oid, " +
                   "creator, created_at, updater, updated_at";
 
     @Override
     @Insert("INSERT INTO " + TABLE + " (oid, name, display, quantity_type, is_si, base_unit_name, " +
-            "factor, unit_shift, sort_order, description, creator, created_at, updater, updated_at) " +
+            "factor, unit_shift, sort_order, description, tenant_oid, creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{name}, #{display}, #{quantityType}, #{isSI}, #{baseUnitName}, " +
-            "#{factor}, #{offset}, #{sortOrder}, #{description}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
+            "#{factor}, #{offset}, #{sortOrder}, #{description}, #{tenantOid}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(Unit unit);
 
     @Override
@@ -34,23 +34,25 @@ public interface PostgreSqlUnitMapper extends UnitMapper {
             "unit_shift = #{offset}, sort_order = #{sortOrder}, description = #{description}, " +
             "updater = #{updater}, updated_at = CURRENT_TIMESTAMP WHERE oid = #{oid}")
     int update(Unit unit);
+    // 注：update 不写 tenant_oid —— 单位不换租户（与 ck_classification 同款）
 
     @Override
     @Delete("DELETE FROM " + TABLE + " WHERE oid = #{oid}")
     int deleteByOid(@Param("oid") String oid);
 
     @Override
-    @Select("SELECT " + COLS + " FROM " + TABLE + " WHERE name = #{name}")
+    @Select("SELECT " + COLS + " FROM " + TABLE + " WHERE name = #{name} AND tenant_oid = #{tenantOid}")
     @Results(id = "unitResult", value = {
             @Result(property = "quantityType", column = "quantity_type"),
             @Result(property = "isSI", column = "is_si"),
             @Result(property = "baseUnitName", column = "base_unit_name"),
             @Result(property = "offset", column = "unit_shift"),
             @Result(property = "sortOrder", column = "sort_order"),
+            @Result(property = "tenantOid", column = "tenant_oid"),
             @Result(property = "createdAt", column = "created_at"),
             @Result(property = "updatedAt", column = "updated_at"),
     })
-    Unit selectByName(@Param("name") String name);
+    Unit selectByName(@Param("name") String name, @Param("tenantOid") String tenantOid);
 
     @Override
     @Select("SELECT " + COLS + " FROM " + TABLE + " WHERE oid = #{oid}")
@@ -58,21 +60,27 @@ public interface PostgreSqlUnitMapper extends UnitMapper {
     Unit selectByOid(@Param("oid") String oid);
 
     @Override
-    @Select("SELECT " + COLS + " FROM " + TABLE + " WHERE quantity_type = #{quantityType} ORDER BY sort_order, name")
+    @Select("SELECT " + COLS + " FROM " + TABLE +
+            " WHERE quantity_type = #{quantityType} AND tenant_oid = #{tenantOid} " +
+            "ORDER BY sort_order, name")
     @ResultMap("unitResult")
-    List<Unit> selectByQuantityType(@Param("quantityType") String quantityType);
+    List<Unit> selectByQuantityType(@Param("quantityType") String quantityType,
+                                    @Param("tenantOid") String tenantOid);
 
     @Override
-    @Select("SELECT " + COLS + " FROM " + TABLE + " ORDER BY quantity_type, sort_order, name")
+    @Select("SELECT " + COLS + " FROM " + TABLE + " WHERE tenant_oid = #{tenantOid} " +
+            "ORDER BY quantity_type, sort_order, name")
     @ResultMap("unitResult")
-    List<Unit> selectAll();
+    List<Unit> selectAll(@Param("tenantOid") String tenantOid);
 
     @Override
-    @Select("SELECT COUNT(*) FROM " + TABLE + " WHERE name = #{name}")
-    int existsByName(@Param("name") String name);
+    @Select("SELECT COUNT(*) FROM " + TABLE + " WHERE name = #{name} AND tenant_oid = #{tenantOid}")
+    int existsByName(@Param("name") String name, @Param("tenantOid") String tenantOid);
 
     @Override
-    @Select("SELECT " + COLS + " FROM " + TABLE + " WHERE base_unit_name = #{baseUnitName}")
+    @Select("SELECT " + COLS + " FROM " + TABLE +
+            " WHERE base_unit_name = #{baseUnitName} AND tenant_oid = #{tenantOid}")
     @ResultMap("unitResult")
-    List<Unit> selectByBaseUnitName(@Param("baseUnitName") String baseUnitName);
+    List<Unit> selectByBaseUnitName(@Param("baseUnitName") String baseUnitName,
+                                    @Param("tenantOid") String tenantOid);
 }

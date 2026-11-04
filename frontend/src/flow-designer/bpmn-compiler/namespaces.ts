@@ -57,13 +57,35 @@ export const RUNTIME_VARIABLES = {
   SETUP_ASSIGNEES: 'ckplmSetupAssignees_',
   /** 多实例的单个人员变量名 */
   APPROVER: 'ckplmApprover',
-  /** 部门主管（DEPT_LEADER 策略解析结果） */
+  /**
+   * 部门主管 —— <b>仅用于导入旧产物</b>（历史版本曾把策略编译成 `assignee="${ckplmDeptLeader}"`）。
+   *
+   * <p>现在不再编译出这个变量：`DEPT_LEADER` 由 `ckplm:assignee` 的 strategy + `deptFieldKey`
+   * 声明，运行期在任务创建那一步按「业务对象上的部门字段 → 组织 → 部门主管」解析并直接指派
+   * （见 `ProcessServiceImpl#resolveDeclaredAssignee`）。沿用声明式而不是回到变量，
+   * 是因为变量式只能"发起时快照"。
+   */
   DEPT_LEADER: 'ckplmDeptLeader',
-  /** 发起人上级（INITIATOR_LEADER 策略解析结果） */
+  /**
+   * 发起人上级 —— <b>仅用于导入旧产物</b>。
+   *
+   * <p>现在不再编译出这个变量：`INITIATOR_LEADER` 由 `ckplm:assignee` 的 strategy 声明，
+   * 运行期在任务创建那一步按「发起人 → 所属组织 → 部门主管」解析并直接指派
+   * （见 `ProcessServiceImpl#resolveDeclaredAssignee`）。
+   */
   INITIATOR_LEADER: 'ckplmInitiatorLeader',
 } as const
 
-/** 会签「一票否决」在运行期使用的变量名（任务监听器读到 Reject 时置为 true） */
+/**
+ * 会签「本轮已不可能通过」标记（<b>多实例根执行</b>的局部变量，运行期每次投票后写入）。
+ *
+ * <p>编译层把它拼进 `completionCondition`（`… || ckplmVetoed`）：一旦为 true，多实例立刻结束，
+ * 剩余评审人的任务随之取消 —— 一票否决（或剩余票数已凑不够）时，不该让人再白办一遍。
+ *
+ * <p>写入方：后端 `ProcessServiceImpl#tallyCountersign`，<b>每次投票都写</b>（含 false）。
+ * 写成局部变量而非流程变量：会签可能被走多轮（驳回退回后重新提交），挂在根执行上，
+ * 本轮活动一结束就随之消失，天然按轮清零。
+ */
 export const RUNTIME_VETO_VARIABLE = 'ckplmVetoed'
 
 /** 业务对象绑定在运行期的变量名（承载主业务对象的 oid 与类型） */
@@ -96,6 +118,24 @@ export const NOTIFY_DELEGATE = 'plmNotify'
 export const CKPLM_ATTR = {
   // 通用
   NODE_TYPE: 'nodeType',
+  /**
+   * 连线条件的<b>结构化副本</b>（写在 sequenceFlow 上，JSON）。
+   *
+   * <p>BPMN 只有 {@code <conditionExpression>} 一段文本，字段选择器（objectType/fieldKey/
+   * operator/value）编译成 UEL 后就不可逆 —— 导入时只能退化成「表达式模式」，
+   * 用户再打开面板看到的是一段他不认识的表达式。多写这份 JSON，往返才能保住结构。
+   *
+   * <p>只在前端解析（读 XML 文本）时使用，运行期不看它；路由边（{@code ckplm:route}）
+   * 不写 —— 那种边的条件由编译层按路由生成，本来就没有用户填的结构。
+   */
+  CONDITION: 'condition',
+  /**
+   * 流程变量定义（写在 {@code <process>} 上，JSON 数组）。
+   *
+   * <p>BPMN 标准里没有"流程变量声明"的位置，变量只在运行期以数据形式存在。
+   * 不写这份声明，导入 BPMN 就等于把「任务页要显示哪些变量、默认值是什么」全丢了。
+   */
+  VARIABLES: 'variables',
   // START
   INITIATOR: 'initiator',
   FORM_REF: 'formRef',
@@ -112,7 +152,27 @@ export const CKPLM_ATTR = {
   REJECT: 'reject',
   /** 连线承载的路由（通过/驳回）—— 见 dsl-core 的 EdgeRoute */
   ROUTE: 'route',
-  DELIVERABLES: 'deliverables',
+  /**
+   * 「终止同层分支」的连线标记（写在 sequenceFlow 上）。
+   *
+   * <p>只是给人看与前端往返用的<b>可读副本</b>；运行期判定读的是
+   * {@link CKPLM_ATTR.TERMINATE_ON} —— 自定义命名空间属性在 sequenceFlow 上实测可能取不到
+   * （见后端 {@code RejectRouter#hasRejectRoute} 的记录），把判据放在节点上才稳。
+   */
+  TERMINATE_SIBLINGS: 'terminateSiblings',
+  /**
+   * 「本节点哪些出边带终止语义」的汇总（写在<b>源节点</b>上，逗号分隔的连线 id）。
+   *
+   * <p>为什么要在节点上再写一份：引擎解析 BPMN 时对 sequenceFlow 上的自定义属性
+   * 是否保留与解析器实现有关（{@code ckplm:route} 就遇到过"XML 里明明写着、运行期读不到"）。
+   * 节点属性（{@code ckplm:assignee} / {@code ckplm:passRule}）已验证可读，
+   * 所以运行期按「任务节点 → terminateOn → 再取这条边的 targetRef」判定，不依赖连线属性。
+   */
+  TERMINATE_ON: 'terminateOn',
+  /** 办理节点是否需要交付件（2026-10-13：原先手填文档 code 的「交付物」换成了这个开关） */
+  NEED_DELIVERABLES: 'needDeliverables',
+  /** 交付件绑定的业务对象类型（code 列表，可多选） */
+  DELIVERABLE_OBJECT_TYPES: 'deliverableObjectTypes',
   // SERVICE
   SERVICE_REF: 'serviceRef',
   SERVICE_PARAMS: 'serviceParams',
@@ -122,6 +182,14 @@ export const CKPLM_ATTR = {
   ATTACH_PRIMARY_OBJECT: 'attachPrimaryObject',
   // SUB_PROCESS
   VARIABLE_MAP: 'variableMap',
+  /**
+   * 子流程多实例声明（JSON，{@link SubProcessMultiInstance}）。
+   *
+   * <p>标准 BPMN 的 `multiInstanceLoopCharacteristics` 只保留 collection 与元素变量名，
+   * 丢了"业务 key 用元素上的哪个字段"这类意图 —— 导入后无法还原成可编辑的配置。
+   * 这份 JSON 是往返依据，运行期不看。
+   */
+  SUB_PROCESS_MULTI_INSTANCE: 'multiInstance',
   // TIMER
   TIMER_MODE: 'timerMode',
   // 网关

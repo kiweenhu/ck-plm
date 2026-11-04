@@ -194,11 +194,12 @@ public class TenantController {
             if (user == null) {
                 return ApiResponse.fail(403, "用户不存在");
             }
-            // 直接用 JDBC 查询，绕过 TenantStatementInterceptor 对 JOIN 查询的改写问题
+            // 直接用 JDBC 查询，绕过 TenantStatementInterceptor 对 JOIN 查询的改写问题。
+            // ★ 角色按租户隔离后 role.code 各租户各一份，必须限定"角色与成员同租户"，否则会命中租户副本。
             Integer count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM ck_role_member rm " +
                     "INNER JOIN ck_role r ON rm.role_oid = r.oid " +
-                    "WHERE rm.user_oid = ? AND r.code = ?",
+                    "WHERE rm.user_oid = ? AND r.code = ? AND r.tenant_oid = rm.tenant_oid",
                     Integer.class, user.getOid(), PLATFORM_ADMIN_ROLE);
             if (count == null || count == 0) {
                 log.warn("非平台管理员尝试访问审核接口: user={}", username);

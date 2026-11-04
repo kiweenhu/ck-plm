@@ -10,6 +10,10 @@ package cn.ck.plm.softtype.config;
 import cn.ck.plm.base.util.TenantContext;
 import cn.ck.plm.softtype.entity.PageLayout;
 import cn.ck.plm.softtype.mapper.PageLayoutMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -186,14 +190,22 @@ public class PageLayoutInitializer implements CommandLineRunner {
      * @return true 表示新插入，false 表示已存在跳过、已自愈改挂或实体类型未找到
      */
     private boolean ensureLayout(String entityCode, String operationCode, String operationName, String layoutJson) {
-        // 1. 查找 entity_oid（同一 code 有平台行 + 租户覆盖行时取"当前租户优先"的一条，
-        //    避免 queryForObject 因多行直接抛异常、被当成"找不到类型"）
+        // 新建 / 编辑表单统一套「布局行」：窄字段两两一行、宽控件独占一行。
+        // 与 softtypes.json 里的基准布局、以及存量库的一次性重排保持同一规则 ——
+        // 三处各写一套的话，下次加字段又会出现"有的表单套了行、有的没套"。
+        if ("create".equals(operationCode) || "update".equals(operationCode)) {
+            layoutJson = wrapFormFieldsInSingleRow(layoutJson);
+        }
+        // 1. 查找 entity_oid —— ★ 只认【平台租户】自己那份类型（2026-10-12 修）：
+        //    本初始化器是"平台 OOTB 布局"的建立者（第 3 步插入也写平台租户），原先前两步都
+        //    "跨租户"取数 —— 多个租户都有同名类型/布局时会张冠李戴（把别家的行改挂到自家 oid，
+        //    或反之），用户实测的"设计器读不到本租户布局"即由此而来。
         String findOidSql = "SELECT oid FROM ck_type_definition WHERE code = ? "
                 + "ORDER BY CASE WHEN tenant_oid = ? THEN 0 ELSE 1 END LIMIT 1";
         String entityOid;
         try {
             entityOid = jdbcTemplate.queryForObject(findOidSql, String.class, entityCode,
-                    TenantContext.get());
+                    TenantContext.PLATFORM_TENANT_OID);
         } catch (Exception e) {
             log.warn("  ✗ 未找到实体类型定义: {}", entityCode);
             return false;
@@ -204,11 +216,15 @@ public class PageLayoutInitializer implements CommandLineRunner {
             return false;
         }
 
-        // 2. 幂等 + 自愈：按 entity_code + operation_code 找既有布局；
-        //    若它的 entity_oid 已失效（指向不存在的类型），原地改挂到当前 oid，而不是再插第二份
+        // 2. 幂等 + 自愈：按 entity_code + operation_code + **平台租户**找既有布局；
+        //    若它的 entity_oid 已失效（指向不存在的类型），原地改挂到当前 oid，而不是再插第二份。
+        //    ★ 2026-10-12 修：原先漏了 tenant_oid 条件 —— rows.get(0) 可能抓到**租户行**，
+        //    然后把它改挂到平台的类型 oid，该租户的设计器自此永远读不到自己的布局
+        //    （实测：CKAI-TECH 的 DOCUMENT/create 被改成平台 oid 9e00f799…，
+        //     而该租户自己的 DOCUMENT oid 是 41fa4c56…）。自愈只能治自家的病。
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT oid, entity_oid FROM ck_type_page_layout WHERE entity_code = ? AND operation_code = ?",
-                entityCode, operationCode);
+                "SELECT oid, entity_oid FROM ck_type_page_layout WHERE entity_code = ? AND operation_code = ? AND tenant_oid = ?",
+                entityCode, operationCode, TenantContext.PLATFORM_TENANT_OID);
         if (!rows.isEmpty()) {
             Object rowEntityOid = rows.get(0).get("entity_oid");
             if (rowEntityOid != null && !entityOid.equals(rowEntityOid.toString())) {
@@ -250,10 +266,12 @@ public class PageLayoutInitializer implements CommandLineRunner {
      */
     private void clonePartLayoutToSoftTypes() {
         try {
-            // 1. 查询 PART 当前的布局定义
+            // 1. 查询 PART 当前的布局定义 —— ★ 只取【平台租户】那份（2026-10-12 修：
+            //    原先无租户条件，可能拿到某租户的 PART 布局当模板，跨租户复制语义混乱）
             List<Map<String, Object>> partLayouts = jdbcTemplate.queryForList(
                     "SELECT operation_code, operation_name, layout_json::text AS layout_json " +
-                    "FROM ck_type_page_layout WHERE entity_code = 'PART' ORDER BY operation_code");
+                    "FROM ck_type_page_layout WHERE entity_code = 'PART' AND tenant_oid = ? ORDER BY operation_code",
+                    TenantContext.PLATFORM_TENANT_OID);
             if (partLayouts.isEmpty()) {
                 log.warn("未找到 PART 布局，跳过 Part 子类型布局复制");
                 return;
@@ -275,10 +293,11 @@ public class PageLayoutInitializer implements CommandLineRunner {
                     String opName = (String) partLayout.get("operation_name");
                     String layoutJson = (String) partLayout.get("layout_json");
 
-                    // 幂等：按 entity_code + operation_code 判断（类型 oid 变更过也不会重复插）
+                    // 幂等：按 entity_code + operation_code + 平台租户判断（类型 oid 变更过也不会重复插；
+                    // 加租户条件后，租户自己那行不影响平台补齐）
                     Integer count = jdbcTemplate.queryForObject(
-                            "SELECT COUNT(*) FROM ck_type_page_layout WHERE entity_code = ? AND operation_code = ?",
-                            Integer.class, softTypeCode, opCode);
+                            "SELECT COUNT(*) FROM ck_type_page_layout WHERE entity_code = ? AND operation_code = ? AND tenant_oid = ?",
+                            Integer.class, softTypeCode, opCode, TenantContext.PLATFORM_TENANT_OID);
                     if (count != null && count > 0) {
                         skipped++;
                         continue;
@@ -833,10 +852,17 @@ public class PageLayoutInitializer implements CommandLineRunner {
                         "\"placeholder\": \"请选择所属研发阶段\"" +
                     "}," +
                     "{" +
+                        "\"id\": \"fld-location\"," +
+                        "\"fieldName\": \"location\"," +
+                        "\"label\": \"存放位置\"," +
+                        "\"uiComponent\": \"input\"," +
+                        "\"placeholder\": \"文档存放位置\"" +
+                    "}," +
+                    "{" +
                         "\"id\": \"fld-folder\"," +
                         "\"fieldName\": \"folderOid\"," +
                         "\"label\": \"所属文件夹\"," +
-                        "\"uiComponent\": \"input\"," +
+                        "\"uiComponent\": \"folder-select\"," +
                         "\"readonly\": true," +
                         "\"placeholder\": \"由当前文件夹自动填充\"" +
                     "}," +
@@ -869,10 +895,25 @@ public class PageLayoutInitializer implements CommandLineRunner {
         "}";
     }
 
+    /**
+     * 编辑文档 —— 字段集与 {@link #buildDocumentCreateLayout()} 一一对应。
+     *
+     * <p>两边各写一套曾经漂移过：编辑表单少了编号 / 所属产品 / 所属文件夹 / 附件，
+     * 主文档还错用了 file-upload（新建那边是 ckfile-upload）。新建能填、编辑却改不了，
+     * 用户只能认为是缺陷。要改字段就两边一起改。
+     */
     private String buildDocumentUpdateLayout() {
         return "{" +
             "\"form\": {" +
                 "\"fields\": [" +
+                    "{" +
+                        "\"id\": \"fld-number\"," +
+                        "\"fieldName\": \"number\"," +
+                        "\"label\": \"文档编号\"," +
+                        "\"uiComponent\": \"input\"," +
+                        "\"readonly\": true," +
+                        "\"placeholder\": \"系统根据编码规则自动生成\"" +
+                    "}," +
                     "{" +
                         "\"id\": \"fld-name\"," +
                         "\"fieldName\": \"name\"," +
@@ -886,6 +927,7 @@ public class PageLayoutInitializer implements CommandLineRunner {
                         "\"fieldName\": \"typeDefinitionCode\"," +
                         "\"label\": \"文档类型\"," +
                         "\"uiComponent\": \"document-type-select\"," +
+                        "\"required\": false," +
                         "\"placeholder\": \"选择文档类型（TypeDefinition）\"" +
                     "}," +
                     "{" +
@@ -901,6 +943,7 @@ public class PageLayoutInitializer implements CommandLineRunner {
                         "\"fieldName\": \"stageOid\"," +
                         "\"label\": \"所属研发阶段\"," +
                         "\"uiComponent\": \"stage-select\"," +
+                        "\"required\": true," +
                         "\"placeholder\": \"请选择所属研发阶段\"" +
                     "}," +
                     "{" +
@@ -911,8 +954,32 @@ public class PageLayoutInitializer implements CommandLineRunner {
                         "\"placeholder\": \"文档存放位置\"" +
                     "}," +
                     "{" +
-                        "\"id\": \"fld-ckfile\"," +
+                        "\"id\": \"fld-folder\"," +
+                        "\"fieldName\": \"folderOid\"," +
+                        "\"label\": \"所属文件夹\"," +
+                        "\"uiComponent\": \"folder-select\"," +
+                        "\"readonly\": true," +
+                        "\"placeholder\": \"由当前文件夹自动填充\"" +
+                    "}," +
+                    "{" +
+                        "\"id\": \"fld-owner\"," +
+                        "\"fieldName\": \"ownerOid\"," +
+                        "\"label\": \"所属产品\"," +
+                        "\"uiComponent\": \"product-select\"," +
+                        "\"required\": true," +
+                        "\"placeholder\": \"选择所属产品\"" +
+                    "}," +
+                    "{" +
+                        "\"id\": \"fld-mainfile\"," +
                         "\"fieldName\": \"ckfileOid\"," +
+                        "\"label\": \"主文档\"," +
+                        "\"uiComponent\": \"ckfile-upload\"," +
+                        "\"required\": false," +
+                        "\"placeholder\": \"上传主文档文件或录入网络地址\"" +
+                    "}," +
+                    "{" +
+                        "\"id\": \"fld-attachment\"," +
+                        "\"fieldName\": \"attachmentOid\"," +
                         "\"label\": \"附件上传\"," +
                         "\"uiComponent\": \"file-upload\"," +
                         "\"required\": false," +
@@ -1072,8 +1139,10 @@ public class PageLayoutInitializer implements CommandLineRunner {
 
     // ==================== PART 布局 JSON 模板 ====================
     // PART 是零部件家族的模板根（子类型按 root_type_code=PART 解析属性），字段取自 PART 的
-    // 属性定义：name / number / typeDefinitionCode / clsOid / containerOid / folderOid / stageOid /
+    // 属性定义：name / number / typeDefinitionCode / clsOid / containerOid /
     // unit / source / displayVersion / revision / iteration / status / description。
+    // 2026-10-22：folderOid / stageOid 已从零件模型退役（零件管理独立于阶段与文件夹），
+    // 布局里不再出现；实体列与历史数据保留。
     // 控件 id 见前端 widgets/catalog.js（number-preview、version-display、unit-select、
     // source-select、classification-bound-select、resource-container-select、folder-select、stage-select）。
 
@@ -1122,8 +1191,6 @@ public class PageLayoutInitializer implements CommandLineRunner {
                       { "id": "fld-version", "fieldName": "displayVersion", "label": "版本", "uiComponent": "version-display", "readonly": true, "placeholder": "由系统生成" },
                       { "id": "fld-cls", "fieldName": "clsOid", "label": "分类", "uiComponent": "classification-bound-select", "placeholder": "请选择分类" },
                       { "id": "fld-container", "fieldName": "containerOid", "label": "所属容器", "uiComponent": "resource-container-select", "placeholder": "请选择所属库或产品" },
-                      { "id": "fld-folder", "fieldName": "folderOid", "label": "所属文件夹", "uiComponent": "folder-select", "placeholder": "请选择所属文件夹" },
-                      { "id": "fld-stage", "fieldName": "stageOid", "label": "研发阶段", "uiComponent": "stage-select", "required": false, "placeholder": "请选择研发阶段" },
                       { "id": "fld-unit", "fieldName": "unit", "label": "单位", "uiComponent": "unit-select", "placeholder": "请选择单位" },
                       { "id": "fld-source", "fieldName": "source", "label": "来源", "uiComponent": "source-select", "placeholder": "请选择来源" },
                       { "id": "fld-desc", "fieldName": "description", "label": "描述", "uiComponent": "textarea", "rows": 3, "placeholder": "请输入描述（可选）" }
@@ -1144,8 +1211,6 @@ public class PageLayoutInitializer implements CommandLineRunner {
                       { "id": "fld-version", "fieldName": "displayVersion", "label": "版本", "uiComponent": "version-display", "readonly": true },
                       { "id": "fld-cls", "fieldName": "clsOid", "label": "分类", "uiComponent": "classification-bound-select", "placeholder": "请选择分类" },
                       { "id": "fld-container", "fieldName": "containerOid", "label": "所属容器", "uiComponent": "resource-container-select", "placeholder": "请选择所属库或产品" },
-                      { "id": "fld-folder", "fieldName": "folderOid", "label": "所属文件夹", "uiComponent": "folder-select", "placeholder": "请选择所属文件夹" },
-                      { "id": "fld-stage", "fieldName": "stageOid", "label": "研发阶段", "uiComponent": "stage-select", "required": false, "placeholder": "请选择研发阶段" },
                       { "id": "fld-unit", "fieldName": "unit", "label": "单位", "uiComponent": "unit-select", "placeholder": "请选择单位" },
                       { "id": "fld-source", "fieldName": "source", "label": "来源", "uiComponent": "source-select", "placeholder": "请选择来源" },
                       { "id": "fld-desc", "fieldName": "description", "label": "描述", "uiComponent": "textarea", "rows": 3, "placeholder": "请输入描述（可选）" }
@@ -1167,8 +1232,6 @@ public class PageLayoutInitializer implements CommandLineRunner {
                       { "id": "fld-status", "fieldName": "status", "label": "生命周期状态", "uiComponent": "input", "readonly": true },
                       { "id": "fld-version", "fieldName": "displayVersion", "label": "版本", "uiComponent": "input", "readonly": true },
                       { "id": "fld-cls", "fieldName": "clsOid", "label": "分类", "uiComponent": "input", "readonly": true },
-                      { "id": "fld-folder", "fieldName": "folderOid", "label": "所属文件夹", "uiComponent": "input", "readonly": true },
-                      { "id": "fld-stage", "fieldName": "stageOid", "label": "研发阶段", "uiComponent": "input", "readonly": true },
                       { "id": "fld-unit", "fieldName": "unit", "label": "单位", "uiComponent": "input", "readonly": true },
                       { "id": "fld-source", "fieldName": "source", "label": "来源", "uiComponent": "input", "readonly": true },
                       { "id": "fld-creator", "fieldName": "creator", "label": "创建者", "uiComponent": "input", "readonly": true },
@@ -1177,5 +1240,64 @@ public class PageLayoutInitializer implements CommandLineRunner {
                   }
                 }
                 """;
+    }
+
+    // ==================== 表单套「布局行」 ====================
+
+    /**
+     * 把表单的全部字段收进<b>唯一一个布局行</b>，且固定 1 列（一行一个字段）。
+     *
+     * <p>为什么不按两列拆：页面设计器里的布局行是"整块容器"，拆成多行后每个容器
+     * 自带一圈边框，看起来像一堆互不相干的卡片；单行 1 列则是干净的一列表单。
+     *
+     * <p>幂等：已经是"单行 + 1 列"就原样返回；旧基准里的多行会被展开合并回一个行，
+     * 字段顺序不变。解析失败也原样返回 —— 写坏布局比没套行严重得多。
+     */
+    private static String wrapFormFieldsInSingleRow(String layoutJson) {
+        try {
+            ObjectMapper om = new ObjectMapper();
+            JsonNode root = om.readTree(layoutJson);
+            JsonNode form = root.path("form");
+            JsonNode fields = form.path("fields");
+            if (!fields.isArray() || fields.isEmpty()) {
+                return layoutJson;
+            }
+            if (fields.size() == 1) {
+                JsonNode only = fields.get(0);
+                if ("layout-row".equals(only.path("type").asText("")) && only.path("columns").asInt(2) == 1) {
+                    return layoutJson;
+                }
+            }
+
+            ArrayNode children = om.createArrayNode();
+            for (JsonNode field : fields) {
+                if ("layout-row".equals(field.path("type").asText(""))) {
+                    JsonNode sub = field.path("children");
+                    if (sub.isArray()) {
+                        sub.forEach(children::add);
+                    }
+                } else {
+                    children.add(field);
+                }
+            }
+            if (children.isEmpty()) {
+                return layoutJson;
+            }
+
+            ObjectNode row = om.createObjectNode();
+            row.put("type", "layout-row");
+            row.put("fieldName", "row_1");
+            row.put("label", "布局行");
+            row.put("columns", 1);
+            row.set("children", children);
+
+            ArrayNode rows = om.createArrayNode();
+            rows.add(row);
+            ((ObjectNode) form).set("fields", rows);
+            return om.writeValueAsString(root);
+        } catch (Exception e) {
+            log.warn("表单套布局行失败，按原样写入: {}", e.toString());
+            return layoutJson;
+        }
     }
 }

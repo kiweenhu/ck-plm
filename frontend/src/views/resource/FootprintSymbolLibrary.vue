@@ -38,6 +38,7 @@
       <!-- 右侧：封装 / 图符清单 -->
       <div class="psl-content">
         <DataTable
+          scroll-x="max-content"
           :columns="itemColumns"
           :data-source="itemList"
           :loading="loading"
@@ -398,6 +399,14 @@ async function confirmCreate() {
   createSaving.value = true
   try {
     const payload = { ...(form.value || {}) }
+    // 分类 IBA 值从顶层剔除、单独放到 clsIbaValues（与元器件库创建、行操作编辑同口径）——
+    // 否则会被后端当成实体 IBA 存进 ck_type_iba_data（2026-10-11 实测过该串表问题）
+    if (dynamicFormRef.value) {
+      const clsIbaFieldNames = dynamicFormRef.value.getClsIbaFieldNames() || []
+      clsIbaFieldNames.forEach(k => delete payload[k])
+      const clsIbaValues = dynamicFormRef.value.getClsIbaValues() || {}
+      if (Object.keys(clsIbaValues).length > 0) payload.clsIbaValues = clsIbaValues
+    }
     payload.typeDefinitionCode = createType.value
     payload.containerOid = c.containerOid
     payload.containerType = c.containerType || 'CORP_RESOURCE'

@@ -76,6 +76,17 @@ public class AttributeDefinition extends BaseEntity {
     /** 是否启用 */
     private boolean enabled = true;
 
+    /**
+     * 归属租户 —— <b>平台元数据写平台租户</b>，行业包装给某租户的行业属性写该租户。
+     *
+     * <p>与 {@code ck_iba} 的口径一致（那边本来就是 {@code UNIQUE(code, tenant_oid)}）：
+     * 同一实体同一字段可以"平台一份 + 各租户各一份"，租户可覆写平台定义而互不影响。
+     *
+     * <p>注意：本类<b>刻意不实现</b> {@code TenantEntity} —— 它的写入方是两类显式场景
+     * （平台元数据播种、行业包按租户安装），归属由调用方明确决定，不该被"当前上下文"隐式改写。
+     */
+    private String tenantOid;
+
     // ==================== 构造方法 ====================
 
     public AttributeDefinition() {
@@ -134,6 +145,9 @@ public class AttributeDefinition extends BaseEntity {
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+    public String getTenantOid() { return tenantOid; }
+    public void setTenantOid(String tenantOid) { this.tenantOid = tenantOid; }
 
     @Override
     public String toString() {

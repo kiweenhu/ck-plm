@@ -60,6 +60,7 @@ public class OrganizationServiceImpl implements OrganizationService {
         mapper.update(org);
         existing.setName(org.getName());
         existing.setParentOid(org.getParentOid());
+        existing.setLeaderOid(org.getLeaderOid());
         existing.setDescription(org.getDescription());
         existing.setEnabled(org.isEnabled());
         return existing;

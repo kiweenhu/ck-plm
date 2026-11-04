@@ -61,9 +61,11 @@
           <template v-if="column.key === 'action'">
             <a-space>
               <template v-if="activeTab === 'todo'">
-                <a-button size="small" type="primary" @click="openHandleWindow(record)">办理</a-button>
-                <a-button size="small" @click="openDelegateModal(record)">委派</a-button>
+                <a-button size="small" type="primary" @click="openHandle(record)">办理</a-button>
+                <!-- 只保留转办：Flowable 的委派需要 resolve 交还原办理人，本项目没有这条链路，
+                     委派出去的任务谁也办不完（详见 ProcessService#transferTask 的注释） -->
                 <a-button size="small" @click="openTransferModal(record)">转办</a-button>
+                <a-button size="small" @click="openAddSignerModal(record)">加签</a-button>
               </template>
               <template v-if="activeTab === 'claimable'">
                 <a-button size="small" type="primary" @click="claimTask(record)">认领</a-button>
@@ -71,7 +73,6 @@
               <template v-if="activeTab === 'done'">
                 <a-tag color="green">已完成</a-tag>
               </template>
-              <a-button size="small" @click="viewComments(record)">评论</a-button>
             </a-space>
           </template>
         </template>
@@ -79,46 +80,57 @@
     </a-card>
 
     <!--
-      办理不再用弹窗：点「办理」在新窗口打开 /workflow/task/{id} 独立页面（见 openHandleWindow）。
+      办理不再用弹窗：点「办理」在当前窗口跳到 /workflow/task/{id} 独立页面（见 openHandle）。
       那边的渲染架构是「通用信息（TaskContextView）+ 任务表单模板（TaskFormRenderer + taskForms/）」，
       这里不保留第二份实现 —— 也不参与表单渲染。
     -->
 
-    <!-- 委派弹窗 -->
-    <a-modal v-model:visible="showDelegateModal" title="委派任务" @ok="delegateTask" width="400px">
+    <!-- 转办弹窗：选人而不是手打 username —— 手打时拼错一个字，任务就指给了一个不存在的账号 -->
+    <a-modal v-model:visible="showTransferModal" title="转办任务" @ok="transferTask" width="420px">
       <a-form layout="vertical">
-        <a-form-item label="受托人用户名" required>
-          <a-input v-model:value="delegateTarget" placeholder="请输入受托人用户名" />
+        <a-form-item label="新负责人" required>
+          <a-select
+            v-model:value="transferTarget"
+            show-search
+            allow-clear
+            :options="userOptions"
+            :filter-option="filterUser"
+            :loading="userLoading"
+            placeholder="搜索姓名或账号"
+            style="width:100%"
+          />
         </a-form-item>
       </a-form>
     </a-modal>
 
-    <!-- 转办弹窗 -->
-    <a-modal v-model:visible="showTransferModal" title="转办任务" @ok="transferTask" width="400px">
+    <!--
+      加签弹窗：语义由后端按节点类型决定 —— 会签节点是"追加一个实例，必须办完"，
+      单实例是"转候选，谁先办谁算过"。两种后果差别很大，弹窗里先都说清。
+    -->
+    <a-modal v-model:visible="showAddSignerModal" title="加签" @ok="addSigner" width="460px">
+      <a-alert
+        type="info"
+        show-icon
+        style="margin-bottom: 12px"
+        message="加签是「加人」，不是「换人」"
+        description="会签节点：追加一名会签人，所有人都办完本节点才结束；普通节点：任务转为候选，您和加签人谁先办谁算过。"
+      />
       <a-form layout="vertical">
-        <a-form-item label="新负责人用户名" required>
-          <a-input v-model:value="transferTarget" placeholder="请输入新负责人用户名" />
+        <a-form-item label="加签人" required>
+          <a-select
+            v-model:value="addSignerTarget"
+            show-search
+            allow-clear
+            :options="userOptions"
+            :filter-option="filterUser"
+            :loading="userLoading"
+            placeholder="搜索姓名或账号"
+            style="width:100%"
+          />
         </a-form-item>
       </a-form>
     </a-modal>
 
-    <!-- 评论弹窗 -->
-    <a-modal v-model:visible="showCommentModal" title="任务评论" :footer="null" width="520px">
-      <div style="margin-bottom:12px;max-height:300px;overflow:auto;">
-        <div v-for="c in comments" :key="c.id" style="padding:8px 0;border-bottom:1px solid #f0f0f0;">
-          <div style="display:flex;justify-content:space-between;">
-            <strong>{{ c.userId || '系统' }}</strong>
-            <span style="color:#999;font-size:12px;">{{ formatTime(c.time) }}</span>
-          </div>
-          <div style="margin-top:4px;color:#555;">{{ c.message }}</div>
-        </div>
-        <a-empty v-if="comments.length === 0" description="暂无评论" />
-      </div>
-      <a-space style="width:100%;">
-        <a-input v-model:value="newComment" placeholder="输入评论..." style="flex:1;" @pressEnter="addComment(currentTaskRecord)" />
-        <a-button type="primary" @click="addComment(currentTaskRecord)">发送</a-button>
-      </a-space>
-    </a-modal>
   </div>
 </template>
 
@@ -128,8 +140,12 @@ import { message } from 'ant-design-vue'
 import api from '@/api'
 import EntityRefLabel from '@/components/EntityRefLabel.vue'
 import { useEntityLabels } from '@/composables/useEntityLabels'
+import { loadOptions } from '@/flow-designer/app/panel/options'
+import { useRouter } from 'vue-router'
 // 办理表单（节点表单派发、槽位模型、提交）整体搬到了 components/task/ 下的渲染架构 ——
 // 办理现在是独立页面，那份实现只有一处，这里不再引用表单注册表与槽位模型。
+
+const router = useRouter()
 
 /** 行的「业务对象」标签：与流程监控同一份回查与拼装（后端只给实体引用，编码/名称/状态前端回查） */
 const { attach: attachBiz } = useEntityLabels()
@@ -144,20 +160,17 @@ const total = ref(0)
 
 const stats = reactive({ todoCount: 0, doneCount: 0, claimableCount: 0, overdueCount: 0 })
 
-// 弹窗状态（办理已改为新窗口的独立页面，这里只剩委派 / 转办 / 评论）
-const showDelegateModal = ref(false)
+// 弹窗状态（办理已改为独立页面，这里只剩转办 / 加签）
 const showTransferModal = ref(false)
-const showCommentModal = ref(false)
+const showAddSignerModal = ref(false)
+const addSignerTarget = ref('')
 const currentTaskRecord = ref(null)
-const comments = ref([])
-const newComment = ref('')
-const delegateTarget = ref('')
 const transferTarget = ref('')
 
 const baseColumns = [
   { title: '任务 / 业务对象 / 流程', key: 'process' },
   { title: '负责人', key: 'assignee', width: 120 },
-  { title: '创建时间', key: 'createTime', width: 160 },
+  { title: '发起时间', key: 'createTime', width: 160 },
   { title: '截止时间', key: 'dueDate', width: 160 },
   { title: '操作', key: 'action', width: 280 }
 ]
@@ -218,47 +231,60 @@ async function claimTask(record) {
 }
 
 /**
- * 办理：在**新窗口**打开独立页面（形态与业务对象详情页一致），不再用弹窗。
+ * 办理：跳到独立页面 /workflow/task/{id}（仍是独立页面，不是弹窗）。
  *
- * <p>为什么换掉弹窗：办理时要一边填表单、一边核对"这条流程走到哪、别人提了什么意见"，
- * 还常要同时开着对象详情/图纸对照 —— 弹窗被表格夹在中间，多窗口对照时互相遮挡；
- * 独立窗口本身是个普通 URL，可以同时开多条任务比对、可以收藏。
- *
- * <p>被浏览器拦截时明确提示（而不是静默什么都不发生 —— 那最容易被当成"点了没反应"）。
+ * <p><b>2026-10-26 改为当前窗口内跳转</b>（用户要求）：原来 {@code window.open(..., '_blank')}。
+ * 新开窗口的理由是"办理时要比对对象详情/图纸"，但实际使用里它带来三个麻烦 ——
+ * 弹窗拦截（点了没反应）、返回时找不到列表、多条任务开一堆窗口。
+ * 现在走路由，办理页自带「返回」，浏览器后退也能回列表。
  */
-function openHandleWindow(record) {
+function openHandle(record) {
   if (!record?.id) return
-  const url = `${window.location.origin}/workflow/task/${record.id}`
-  const win = window.open(url, '_blank')
-  if (!win) {
-    message.warning('浏览器拦截了新窗口，请允许本站弹出窗口后重试')
+  router.push(`/workflow/task/${record.id}`)
+}
+
+/**
+ * 人员下拉选项（value = username，label = 姓名）。
+ *
+ * <p>原来两个弹窗都是手打 username 的输入框：拼错一个字，任务就指给了一个不存在的账号，
+ * 而且校验要到提交时才发现。这里复用流程设计器那份 {@code loadOptions('USERS')}
+ * —— 它已经把「username 才是 Flowable 的 assignee 口径」这件事收口好了，还带模块级缓存，
+ * 第二次打开弹窗不会再请求。
+ */
+const userOptions = ref([])
+const userLoading = ref(false)
+
+async function ensureUserOptions() {
+  if (userOptions.value.length) return
+  userLoading.value = true
+  try {
+    userOptions.value = await loadOptions('USERS')
+  } catch {
+    // 选人下拉没有候选就没法选人，必须说清楚，而不是让人对着空下拉发呆
+    userOptions.value = []
+    message.warning('人员清单加载失败，请关闭后重试')
+  } finally {
+    userLoading.value = false
   }
 }
 
-function openDelegateModal(record) {
-  delegateTarget.value = ''
-  currentTaskRecord.value = record
-  showDelegateModal.value = true
-}
-
-async function delegateTask() {
-  if (!delegateTarget.value) { message.warning('请输入受托人'); return }
-  try {
-    await api.post(`/workflow/task/${currentTaskRecord.value.id}/delegate`, { targetAssignee: delegateTarget.value })
-    message.success('委派成功')
-    showDelegateModal.value = false
-    loadTasks()
-  } catch { message.error('委派失败') }
+/** 姓名与账号都能命中（有人按姓名找、有人按 Kiween.Hu 找） */
+function filterUser(input, option) {
+  const keyword = String(input || '').trim().toLowerCase()
+  if (!keyword) return true
+  return String(option?.label || '').toLowerCase().includes(keyword)
+    || String(option?.value || '').toLowerCase().includes(keyword)
 }
 
 function openTransferModal(record) {
   transferTarget.value = ''
   currentTaskRecord.value = record
   showTransferModal.value = true
+  ensureUserOptions()
 }
 
 async function transferTask() {
-  if (!transferTarget.value) { message.warning('请输入新责任人'); return }
+  if (!transferTarget.value) { message.warning('请选择新责任人'); return }
   try {
     await api.post(`/workflow/task/${currentTaskRecord.value.id}/transfer`, { targetAssignee: transferTarget.value })
     message.success('转办成功')
@@ -267,25 +293,39 @@ async function transferTask() {
   } catch { message.error('转办失败') }
 }
 
-async function viewComments(record) {
+function openAddSignerModal(record) {
+  addSignerTarget.value = ''
   currentTaskRecord.value = record
-  try {
-    const res = await api.get(`/workflow/task/${record.id}/comment`)
-    comments.value = (res.code === 200 && res.data) ? res.data : []
-  } catch {
-    comments.value = []
-  }
-  newComment.value = ''
-  showCommentModal.value = true
+  showAddSignerModal.value = true
+  ensureUserOptions()
 }
 
-async function addComment(record) {
-  if (!newComment.value.trim()) return
-  try {
-    await api.post(`/workflow/task/${record.id}/comment`, { comment: newComment.value })
-    newComment.value = ''
-    await viewComments(record)
-  } catch { message.error('添加评论失败') }
+/**
+ * 加签。后端按节点类型返回两种模式：
+ * - COUNTERSIGN（会签节点）：往多实例追加一个实例，我的待办还在，新人也必须办完；
+ * - OR_SIGN（普通节点）：任务转候选，我的待办会消失、进「可认领」—— 提示必须说清，否则像丢了任务。
+ */
+async function addSigner() {
+  if (!addSignerTarget.value) { message.warning('请选择加签人'); return }
+  // 响应拦截器对 HTTP 错误 / 业务 code!=200 都已弹过提示，这里不再重复弹，
+  // 也绝不能在失败时继续走"加签成功"的提示
+  const res = await api.post(`/workflow/task/${currentTaskRecord.value.id}/add-signer`, {
+    targetAssignee: addSignerTarget.value,
+  }).catch(() => null)
+  if (!res || res.code !== 200) return
+
+  if (res.data?.mode === 'COUNTERSIGN') {
+    const total = res.data.participantCount
+    message.success(
+      total > 0
+        ? `已加入会签：本节点共 ${total} 人，全部办理完才结束`
+        : '已加入会签：所有人都办理完，本节点才结束',
+    )
+  } else {
+    message.success('加签成功：任务已转为候选，您可在「可认领」里继续办理')
+  }
+  showAddSignerModal.value = false
+  loadTasks()
 }
 
 function formatTime(t) {

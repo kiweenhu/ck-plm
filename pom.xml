@@ -90,6 +90,20 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+            引擎级测试用的内存库。
+
+            生产跑 PostgreSQL，但单元测试不该依赖外部库：Flowable 的引擎行为
+            （并行分支、会签多实例、任务插入）只有真跑一遍才敢说"能行"，
+            纯 mock 验不出来。H2 由 Flowable 自动建表（schema.update=true）。
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.2.224</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <repositories>

@@ -58,6 +58,7 @@
     <div v-if="selectedRoleOid" class="pm-table-wrapper">
       <DataTable
         :key="selectedRoleOid"
+        scroll-x="max-content"
         :columns="columns"
         :data-source="allMembers"
         :loading="membersLoading"
@@ -123,6 +124,7 @@
       </div>
 
       <DataTable
+        scroll-x="max-content"
         :columns="candidateColumns"
         :data-source="addModal.candidates"
         :loading="addModal.searching"

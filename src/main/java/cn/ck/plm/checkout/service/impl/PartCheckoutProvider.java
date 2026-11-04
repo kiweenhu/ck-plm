@@ -103,7 +103,7 @@ public class PartCheckoutProvider implements CheckoutProvider {
             if (iter.getStatus() != null) {
                 vo.setStatusCode(iter.getStatus().getCode());
                 // 不能取 getDisplayName()：迭代上的 status 只带 code（LifecycleStatusTypeHandler），
-                // 那样"我的检出"列表只会显示 IN_WORK 这种 code
+                // 那样"我的检出"列表只会显示 WORKING 这种 code
                 vo.setStatusName(lifecycleStatusService.displayName(
                         iter.getLifecycleTemplateIterationOid(), iter.getStatus().getCode()));
             }

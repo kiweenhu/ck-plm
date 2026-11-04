@@ -67,6 +67,28 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ==========================================================================
+   列表页顶部「口径条」：左 = 这段列表是什么（怎么排序、含不含裁剪/子流程），
+   右 = 条数。与产品页「物料清单」（.pl-bom-materials-bar）同一版式 ——
+   变更请求 / 变更通告 / 变更任务三个列表共用，免得同一产品里出现两种"表格上方小字"。
+   ========================================================================== */
+.ck-list-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8c8c8c;
+}
+
+.ck-list-bar__count {
+  flex-shrink: 0;
+  color: #595959;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 流程画布：连线两端的端点手柄（拖它 = 改接 / 改锚点）—— 光标告知"这里可以抓" */
 .x6-edge-tool-source-arrowhead,
 .x6-edge-tool-target-arrowhead {

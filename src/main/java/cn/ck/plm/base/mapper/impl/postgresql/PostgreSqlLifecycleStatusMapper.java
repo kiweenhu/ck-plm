@@ -29,9 +29,12 @@ public interface PostgreSqlLifecycleStatusMapper extends LifecycleStatusMapper {
             "#{tenantOid}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(LifecycleStatus status);
 
+    // 2026-10-11 起按租户隔离：SET 不再写 tenant_oid —— 否则 SQL 含 tenant_oid 字样会被
+    // TenantStatementInterceptor 整体跳过注入，WHERE code 就变成跨租户更新（平台+各租户同 code 行全改）。
+    // 去掉后整条 SQL 无 tenant_oid 字样，拦截器自动追加 AND tenant_oid = 本租户。
     @Override
     @Update("UPDATE ck_lifecycle_status SET name = #{name}, display_name = #{displayName}, " +
-            "tenant_oid = #{tenantOid}, updater = #{updater}, updated_at = #{updatedAt} " +
+            "updater = #{updater}, updated_at = #{updatedAt} " +
             "WHERE code = #{code}")
     int update(LifecycleStatus status);
 

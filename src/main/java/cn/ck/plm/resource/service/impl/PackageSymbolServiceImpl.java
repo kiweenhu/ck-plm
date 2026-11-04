@@ -7,6 +7,7 @@
 
 package cn.ck.plm.resource.service.impl;
 
+import cn.ck.plm.base.util.TenantContext;
 import cn.ck.plm.resource.entity.ResourceContainer;
 import cn.ck.plm.resource.mapper.PackageSymbolMapper;
 import cn.ck.plm.resource.mapper.ResourceContainerMapper;
@@ -21,6 +22,10 @@ import java.util.UUID;
 
 /**
  * {@link PackageSymbolService} 实现：封装·图符库（PACKAGE_SYMBOL 资源子库）。
+ *
+ * <p>资源库**按租户隔离**（2026-10-11 起）：容器与归属阶段都取**本租户**那份，
+ * 随 platform-base 包在引导装包时建立；装包前本租户没有该子库 → 上下文返回空
+ * （containerOid / stageOid 为 null，前端按空态处理）。
  */
 @Service
 public class PackageSymbolServiceImpl implements PackageSymbolService {
@@ -40,18 +45,19 @@ public class PackageSymbolServiceImpl implements PackageSymbolService {
     public Map<String, Object> getResourceContext() {
         Map<String, Object> ctx = new HashMap<>();
         ctx.put("containerType", ResourceContainer.CONTAINER_TYPE);
-        // 封装·图符归属「企业资源库 → 封装·图符库」子库节点（平台级共享容器，启动时预置）
-        ResourceContainer lib = resourceContainerMapper.selectByCode(ResourceContainer.PACKAGE_SYMBOL);
+        String tenantOid = TenantContext.get();
+        // 封装·图符归属「企业资源库 → 封装·图符库」子库节点（按租户隔离，装包时各建一份）
+        ResourceContainer lib = resourceContainerMapper.selectByCode(ResourceContainer.PACKAGE_SYMBOL, tenantOid);
         if (lib != null) {
             ctx.put("containerOid", lib.getOid());
             ctx.put("containerCode", lib.getCode());
             ctx.put("containerName", lib.getName());
-            String stageOid = mapper.selectResourceStageOid(lib.getOid());
+            String stageOid = mapper.selectResourceStageOid(lib.getOid(), tenantOid);
             if (stageOid == null) {
-                // 兜底：阶段缺失时按资源节点补建（平台租户）
+                // 兜底：阶段缺失时按资源节点补建（**本租户**）
                 mapper.insertResourceStage(UUID.randomUUID().toString(), ResourceContainer.PACKAGE_SYMBOL,
-                        "封装图符", lib.getOid(), LocalDateTime.now());
-                stageOid = mapper.selectResourceStageOid(lib.getOid());
+                        "封装图符", lib.getOid(), tenantOid, LocalDateTime.now());
+                stageOid = mapper.selectResourceStageOid(lib.getOid(), tenantOid);
             }
             ctx.put("stageOid", stageOid);
         } else {

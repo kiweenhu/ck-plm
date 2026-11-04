@@ -100,7 +100,7 @@ public interface LifecycleStatusService {
      * 而"这个 code 叫什么"的权威定义就在它所用的模板里（{@code ck_lifecycle_template_state}
      * 的 code 与 display_name 是配套写下的，天然对得上）。全局字典是另一层东西，
      * 各租户的状态词未必一致、也可能压根没有该 code —— 只认字典的结果就是界面上直接显示 code，
-     * 而用户并不知道 {@code IN_WORK} 就是"工作中"。
+     * 而用户并不知道 {@code WORKING} 就是"工作中"。
      *
      * <p>不缓存：模板改完要立刻生效（改完状态名却还显示旧的，比慢一点更难解释）。
      *

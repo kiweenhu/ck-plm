@@ -8,6 +8,7 @@
 package cn.ck.plm.process.controller;
 
 import cn.ck.plm.iam.dto.ApiResponse;
+import cn.ck.plm.process.dto.ProcessAddSignerVO;
 import cn.ck.plm.process.dto.ProcessCommentVO;
 import cn.ck.plm.process.dto.ProcessTaskContextVO;
 import cn.ck.plm.process.dto.ProcessTaskFormVO;
@@ -32,8 +33,9 @@ import java.util.Map;
  * POST   /api/workflow/task/{id}/claim     认领
  * POST   /api/workflow/task/{id}/complete  办理 {"action":"approve|reject","comment":"...",
  *                                                "variables":{ 节点表单填的流程变量 }}
- * POST   /api/workflow/task/{id}/delegate  委派 {"targetAssignee":"username"}
  * POST   /api/workflow/task/{id}/transfer  转办 {"targetAssignee":"username"}
+ * POST   /api/workflow/task/{id}/add-signer 加签 {"targetAssignee":"username"}
+ *                                           并行会签 → 扩容（必须办完）；其余 → 转候选（谁先办谁算过）
  * GET    /api/workflow/task/{id}/comment   评论列表
  * POST   /api/workflow/task/{id}/comment   添加评论 {"comment":"..."}
  * </pre>
@@ -178,19 +180,6 @@ public class ProcessTaskController {
         }
     }
 
-    /** 委派任务 */
-    @PostMapping("/{id}/delegate")
-    public ApiResponse<Void> delegate(@PathVariable String id, @RequestBody Map<String, Object> body) {
-        try {
-            workflowService.delegateTask(id, str(body, "targetAssignee"));
-            return ApiResponse.ok();
-        } catch (IllegalStateException | IllegalArgumentException e) {
-            return ApiResponse.fail(400, e.getMessage());
-        } catch (Exception e) {
-            return ApiResponse.fail(500, "委派失败: " + e.getMessage());
-        }
-    }
-
     /** 转办任务 */
     @PostMapping("/{id}/transfer")
     public ApiResponse<Void> transfer(@PathVariable String id, @RequestBody Map<String, Object> body) {
@@ -201,6 +190,22 @@ public class ProcessTaskController {
             return ApiResponse.fail(400, e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail(500, "转办失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 加签：并行会签节点向多实例追加一个实例（每人都要审），
+     * 其余节点追加候选人（谁先办谁算过）—— 返回的 mode 告诉前端该提示哪一种。
+     */
+    @PostMapping("/{id}/add-signer")
+    public ApiResponse<ProcessAddSignerVO> addSigner(@PathVariable String id,
+                                                     @RequestBody Map<String, Object> body) {
+        try {
+            return ApiResponse.ok(workflowService.addSigner(id, str(body, "targetAssignee")));
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "加签失败: " + e.getMessage());
         }
     }
 

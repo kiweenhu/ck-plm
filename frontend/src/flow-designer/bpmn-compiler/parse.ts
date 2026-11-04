@@ -34,6 +34,8 @@ import {
   type FlowDsl,
   type FlowEdge,
   type FlowNode,
+  type SubProcessMultiInstance,
+  type VariableDef,
 } from '@flow-dsl-core'
 import {
   CKPLM_ATTR,
@@ -137,6 +139,8 @@ export function parseBpmnXml(xml: string, options: ParseOptions = {}): ImportRes
   const nodes: FlowNode[] = []
   const edges: FlowEdge[] = []
   const gatewayDefaults = new Map<string, string>()
+  /** 节点上的「终止同层分支」汇总（ckplm:terminateOn="flow_a,flow_b"），见下方兜底 */
+  const terminateOn = new Map<string, string[]>()
 
   for (const tag of innerTags) {
     if (tag.name === 'sequenceFlow') {
@@ -159,6 +163,13 @@ export function parseBpmnXml(xml: string, options: ParseOptions = {}): ImportRes
       if (defaultFlow) {
         gatewayDefaults.set(tag.attrs.id, defaultFlow)
       }
+      const declared = tag.attrs[`${CKPLM_PREFIX}:${CKPLM_ATTR.TERMINATE_ON}`]
+      if (declared) {
+        terminateOn.set(
+          node.id,
+          declared.split(',').map((item) => item.trim()).filter(Boolean),
+        )
+      }
     }
   }
 
@@ -166,15 +177,28 @@ export function parseBpmnXml(xml: string, options: ParseOptions = {}): ImportRes
     edges.push(toEdge(tag, gatewayDefaults, unsupported))
   }
 
+  // 兜底还原「终止同层分支」：连线上的自定义属性不保证保留（导入的 BPMN 可能被别的工具
+  // 重写过），而源节点上的汇总同样表达了"哪几条出边收口" —— 两处任一可读，配置就不丢。
+  for (const [nodeId, flowIds] of terminateOn) {
+    for (const edge of edges) {
+      if (edge.source === nodeId && flowIds.includes(edge.id)) {
+        edge.terminateSiblings = true
+      }
+    }
+  }
+
   const layout = buildLayout(xml, nodes, edges)
+  const description = readDocumentation(xml, processTag)
 
   const dsl: FlowDsl = {
     dslVersion: DSL_VERSION,
     meta: {
       key: options.key ?? processTag.attrs.id ?? 'imported_flow',
       name: options.name ?? processTag.attrs.name ?? '导入的流程',
+      ...(description ? { description } : {}),
     },
-    variables: [],
+    // 变量声明没有标准 BPMN 位置，读本层写在 <process> 上的扩展属性
+    variables: (readCkplmJson(processTag, CKPLM_ATTR.VARIABLES) as VariableDef[] | undefined) ?? [],
     nodes,
     edges,
     layout,
@@ -300,7 +324,9 @@ function toNode(
         name,
         assignee: readAssignee(tag),
         formRef: readCkplm(tag, CKPLM_ATTR.FORM_REF) ?? tag.attrs[`${FLOWABLE_PREFIX}:formKey`],
-        deliverables: readCkplmJson(tag, CKPLM_ATTR.DELIVERABLES),
+        needDeliverables:
+          readCkplmJson(tag, CKPLM_ATTR.NEED_DELIVERABLES) === true ? true : undefined,
+        deliverableObjectTypes: readCkplmJson(tag, CKPLM_ATTR.DELIVERABLE_OBJECT_TYPES),
         deadline: readCkplmJson(tag, CKPLM_ATTR.DEADLINE),
         binding: readCkplmJson(tag, CKPLM_ATTR.BINDING),
       }
@@ -325,14 +351,17 @@ function toNode(
         templateCode: readCkplm(tag, CKPLM_ATTR.TEMPLATE_CODE),
         attachPrimaryObject: readCkplmJson(tag, CKPLM_ATTR.ATTACH_PRIMARY_OBJECT) === true ? true : undefined,
       }
-    case NodeType.SUB_PROCESS:
+    case NodeType.SUB_PROCESS: {
+      const multiInstance = readSubProcessMultiInstance(tag)
       return {
         id,
         type: NodeType.SUB_PROCESS,
         name,
         processKey: tag.attrs.calledElement ?? '',
         variableMap: readCkplmJson(tag, CKPLM_ATTR.VARIABLE_MAP),
+        ...(multiInstance ? { multiInstance } : {}),
       }
+    }
     case NodeType.TIMER: {
       const mode = (readCkplmJson(tag, CKPLM_ATTR.TIMER_MODE) as TimerMode | undefined)
         ?? (tag.inner.includes('timeDuration') ? TimerMode.DURATION : TimerMode.AT)
@@ -398,6 +427,49 @@ function inferApprovalMode(tag: RawTag): ApprovalMode {
   return ApprovalMode.PARALLEL_ALL
 }
 
+/**
+ * 子流程的多实例声明（1:M 子流程）。
+ *
+ * <p>优先读 ckplm 扩展 —— 本层产物一定带，且保留了「业务 key 取元素上哪个字段」这类
+ * 标准属性表达不了的意图。外部手写的 BPMN 只有标准
+ * {@code multiInstanceLoopCharacteristics}，就从 collection / elementVariable /
+ * businessKey 反推；不反推的话，导入会把 1:M 静默降级成单实例，等于改了流程行为。
+ */
+function readSubProcessMultiInstance(tag: RawTag): SubProcessMultiInstance | undefined {
+  const declared = readCkplmJson(
+    tag,
+    CKPLM_ATTR.SUB_PROCESS_MULTI_INSTANCE,
+  ) as SubProcessMultiInstance | undefined
+  if (declared) {
+    return declared
+  }
+  const multi = /<multiInstanceLoopCharacteristics([^>]*)>/.exec(tag.inner)
+  if (!multi) {
+    return undefined
+  }
+  const raw = multi[1]
+  const collection = stripUel(attrOf(raw, `${FLOWABLE_PREFIX}:collection`))
+  if (!collection) {
+    return undefined
+  }
+  const elementVariable = attrOf(raw, `${FLOWABLE_PREFIX}:elementVariable`) || undefined
+  const sequential = /isSequential\s*=\s*"true"/.test(raw) || undefined
+  const keyExpression = stripUel(attrOf(raw, `${FLOWABLE_PREFIX}:businessKey`))
+  const prefix = `${elementVariable || 'item'}.`
+  const businessKey =
+    keyExpression && keyExpression.startsWith(prefix)
+      ? keyExpression.slice(prefix.length)
+      : undefined
+  return { collection, elementVariable, sequential, businessKey }
+}
+
+/** 从一段「标签属性串」里取属性值：多实例子元素的属性在 inner 里，不在 tag.attrs 上 */
+function attrOf(attrs: string, name: string): string | undefined {
+  const re = new RegExp(`${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=\\s*"([^"]*)"`)
+  const found = re.exec(attrs)
+  return found ? decode(found[1]) : undefined
+}
+
 /** 从标准属性 + 运行期变量约定反推审批人策略（无 ckplm 标记时） */
 function readAssignee(tag: RawTag): AssigneeSpec {
   const declared = readCkplmJson(tag, CKPLM_ATTR.ASSIGNEE) as AssigneeSpec | undefined
@@ -436,10 +508,14 @@ function toEdge(
   const id = tag.attrs.id ?? `${tag.attrs.sourceRef}_${tag.attrs.targetRef}`
   const condition = readCondition(tag)
   const route = readRoute(tag, condition)
+  // 路由边的条件（${approved} / ${!approved}）是编译层按路由生成的，不是用户配置 ——
+  // 读回时丢掉它，否则往返一次就从「普通流转 + 通过/驳回」变成「条件流转 + 一段表达式」，
+  // 面板上会多出一个条件编辑器，用户还改不动它（真正生效的是 route）。
+  const effectiveCondition = route ? undefined : condition
   const isDefault = gatewayDefaults.get(tag.attrs.sourceRef ?? '') === tag.attrs.id
   const kind = isDefault
     ? EdgeKind.DEFAULT
-    : condition
+    : effectiveCondition
       ? EdgeKind.CONDITION
       : EdgeKind.NORMAL
   if (!tag.attrs.sourceRef || !tag.attrs.targetRef) {
@@ -452,7 +528,9 @@ function toEdge(
     kind,
     name: tag.attrs.name,
     route,
-    condition,
+    condition: effectiveCondition,
+    terminateSiblings:
+      tag.attrs[`${CKPLM_PREFIX}:${CKPLM_ATTR.TERMINATE_SIBLINGS}`] === 'true' ? true : undefined,
   }
 }
 
@@ -480,7 +558,27 @@ function readRoute(tag: RawTag, condition?: Condition): EdgeRoute | undefined {
   return undefined
 }
 
+/**
+ * 读流程级的 {@code <documentation>}（流程说明）。
+ *
+ * <p>编译产物把它写在 {@code <process>} 的第一行；这里取 process 区间里的第一个 ——
+ * 本层从不给节点写 documentation，所以不会误取到节点的注释。
+ */
+function readDocumentation(xml: string, processTag: RawTag): string | undefined {
+  const close = xml.indexOf('</process>', processTag.end)
+  const span = xml.slice(processTag.end, close >= 0 ? close : xml.length)
+  const match = /<documentation>([\s\S]*?)<\/documentation>/.exec(span)
+  const text = match?.[1] ? decode(match[1]).trim() : ''
+  return text || undefined
+}
+
 function readCondition(tag: RawTag): Condition | undefined {
+  // 优先认本层产物里的结构化副本：字段选择器（对象类型 / 字段 / 操作符 / 取值）编译成 UEL
+  // 后不可逆，只靠表达式只能退化成「表达式模式」（见 namespaces.ts 的 CONDITION 说明）
+  const declared = readCkplmJson(tag, CKPLM_ATTR.CONDITION) as Condition | undefined
+  if (declared?.mode) {
+    return declared
+  }
   const attr = tag.attrs[`${FLOWABLE_PREFIX}:conditionExpression`]
   const child = textOf(tag.inner, 'conditionExpression')
   const raw = attr ?? child

@@ -1,0 +1,157 @@
+{
+  "statuses": [
+    { "code": "DRAFT",     "name": "草稿" },
+    { "code": "WORKING",   "name": "工作中" },
+    { "code": "APPROVING", "name": "审核中" },
+    { "code": "PUBLISHED", "name": "已发布" },
+    { "code": "OFFLINE",   "name": "已下线" },
+    { "code": "ARCHIVED",  "name": "已归档" },
+
+    { "code": "OPEN",      "name": "待开始" },
+    { "code": "SUBMITTED", "name": "已提交" },
+    { "code": "REVIEWING", "name": "评审中" },
+    { "code": "ACCEPTED",  "name": "已受理" },
+    { "code": "APPROVED",  "name": "已审批" },
+    { "code": "IN_WORK",   "name": "实施中" },
+    { "code": "COMPLETED", "name": "已完成" },
+    { "code": "CLOSED",    "name": "已关闭" },
+    { "code": "REJECTED",  "name": "已驳回" },
+    { "code": "CANCELLED", "name": "已取消" }
+  ],
+  "lifecycleTemplates": [
+    {
+      "code": "STANDARD",
+      "name": "标准生命周期",
+      "description": "DRAFT → WORKING → PUBLISHED 三阶段标准流程",
+      "initialStateCode": "DRAFT",
+      "states": [
+        { "code": "DRAFT",     "name": "草稿",   "sortOrder": 1 },
+        { "code": "WORKING",   "name": "工作中", "sortOrder": 2 },
+        { "code": "PUBLISHED", "name": "已发布", "sortOrder": 3 }
+      ],
+      "transitions": [
+        { "from": "DRAFT",   "to": "WORKING" },
+        { "from": "WORKING", "to": "PUBLISHED" }
+      ],
+      "rejections": [
+        { "from": "WORKING",   "to": "DRAFT" },
+        { "from": "PUBLISHED", "to": "WORKING" }
+      ]
+    },
+    {
+      "code": "SIMPLE",
+      "name": "简单生命周期",
+      "description": "DRAFT → PUBLISHED 两阶段简化流程",
+      "initialStateCode": "DRAFT",
+      "states": [
+        { "code": "DRAFT",     "name": "草稿",   "sortOrder": 1 },
+        { "code": "PUBLISHED", "name": "已发布", "sortOrder": 2 }
+      ],
+      "transitions": [
+        { "from": "DRAFT", "to": "PUBLISHED" }
+      ],
+      "rejections": [
+        { "from": "PUBLISHED", "to": "DRAFT" }
+      ]
+    },
+    {
+      "code": "DOC_REVIEW",
+      "name": "文档评审生命周期",
+      "description": "技术文档评审流：DRAFT → APPROVING → PUBLISHED，APPROVING 状态自动拉起技术评审流程（doc-technical-review）",
+      "initialStateCode": "DRAFT",
+      "states": [
+        { "code": "DRAFT",     "name": "草稿",   "sortOrder": 1 },
+        { "code": "APPROVING", "name": "审核中", "sortOrder": 2 },
+        { "code": "PUBLISHED", "name": "已发布", "sortOrder": 3 },
+        { "code": "OFFLINE",   "name": "已下线", "sortOrder": 4 },
+        { "code": "ARCHIVED",  "name": "已归档", "sortOrder": 5 }
+      ],
+      "transitions": [
+        { "from": "DRAFT",     "to": "APPROVING" },
+        { "from": "APPROVING", "to": "PUBLISHED" },
+        { "from": "PUBLISHED", "to": "OFFLINE" },
+        { "from": "OFFLINE",   "to": "ARCHIVED" }
+      ],
+      "rejections": [
+        { "from": "APPROVING", "to": "DRAFT" },
+        { "from": "PUBLISHED", "to": "APPROVING" },
+        { "from": "OFFLINE",   "to": "PUBLISHED" }
+      ]
+    },
+    {
+      "code": "CHANGE_REQUEST_LIFECYCLE",
+      "name": "变更请求生命周期",
+      "description": "ECR 状态序列：草稿 →（发起评审）→ 评审中 → 已受理 → 已关闭。否决退回草稿重提。已提交（SUBMITTED）为历史中间态，仅存量数据保留、新单据不再进入。状态码与 ChangeRequestFlow 常量逐字一致，两侧改动必须同步。",
+      "initialStateCode": "DRAFT",
+      "states": [
+        { "code": "DRAFT",     "name": "草稿",   "sortOrder": 1, "revisable": false },
+        { "code": "SUBMITTED", "name": "已提交", "sortOrder": 2, "revisable": false },
+        { "code": "REVIEWING", "name": "评审中", "sortOrder": 3, "revisable": false },
+        { "code": "ACCEPTED",  "name": "已受理", "sortOrder": 4, "revisable": false },
+        { "code": "REJECTED",  "name": "已否决", "sortOrder": 5, "revisable": false },
+        { "code": "CLOSED",    "name": "已关闭", "sortOrder": 6, "revisable": false },
+        { "code": "CANCELLED", "name": "已取消", "sortOrder": 7, "revisable": false }
+      ],
+      "transitions": [
+        { "from": "DRAFT",     "to": "REVIEWING" },
+        { "from": "SUBMITTED", "to": "REVIEWING" },
+        { "from": "REVIEWING", "to": "ACCEPTED" },
+        { "from": "ACCEPTED",  "to": "CLOSED" }
+      ],
+      "rejections": [
+        { "from": "REVIEWING", "to": "REJECTED" },
+        { "from": "REJECTED",  "to": "DRAFT" }
+      ]
+    },
+    {
+      "code": "CHANGE_NOTICE_LIFECYCLE",
+      "name": "变更通告生命周期",
+      "description": "ECN 状态序列：草稿 → 已提交 → 审核中 → 已审批 → 实施中 → 已完成 → 已关闭；审核驳回退回草稿重提。状态码与 ChangeNoticeFlow 常量逐字一致，两侧改动必须同步。",
+      "initialStateCode": "DRAFT",
+      "states": [
+        { "code": "DRAFT",     "name": "草稿",   "sortOrder": 1, "revisable": false },
+        { "code": "SUBMITTED", "name": "已提交", "sortOrder": 2, "revisable": false },
+        { "code": "APPROVING", "name": "审核中", "sortOrder": 3, "revisable": false },
+        { "code": "APPROVED",  "name": "已审批", "sortOrder": 4, "revisable": false },
+        { "code": "IN_WORK",   "name": "实施中", "sortOrder": 5, "revisable": false },
+        { "code": "COMPLETED", "name": "已完成", "sortOrder": 6, "revisable": false },
+        { "code": "CLOSED",    "name": "已关闭", "sortOrder": 7, "revisable": false },
+        { "code": "REJECTED",  "name": "已驳回", "sortOrder": 8, "revisable": false },
+        { "code": "CANCELLED", "name": "已取消", "sortOrder": 9, "revisable": false }
+      ],
+      "transitions": [
+        { "from": "DRAFT",     "to": "SUBMITTED" },
+        { "from": "SUBMITTED", "to": "APPROVING" },
+        { "from": "APPROVING", "to": "APPROVED" },
+        { "from": "APPROVED",  "to": "IN_WORK" },
+        { "from": "IN_WORK",   "to": "COMPLETED" },
+        { "from": "COMPLETED", "to": "CLOSED" }
+      ],
+      "rejections": [
+        { "from": "APPROVING", "to": "REJECTED" },
+        { "from": "REJECTED",  "to": "DRAFT" }
+      ]
+    },
+    {
+      "code": "CHANGE_TASK_LIFECYCLE",
+      "name": "变更任务生命周期",
+      "description": "ECT 状态序列：待开始 → 实施中 → 待验收 → 已完成；验收退回回到实施中。状态码与 ChangeTaskFlow 常量逐字一致，两侧改动必须同步。",
+      "initialStateCode": "OPEN",
+      "states": [
+        { "code": "OPEN",      "name": "待开始", "sortOrder": 1, "revisable": false },
+        { "code": "IN_WORK",   "name": "实施中", "sortOrder": 2, "revisable": false },
+        { "code": "SUBMITTED", "name": "待验收", "sortOrder": 3, "revisable": false },
+        { "code": "COMPLETED", "name": "已完成", "sortOrder": 4, "revisable": false }
+      ],
+      "transitions": [
+        { "from": "OPEN",      "to": "IN_WORK" },
+        { "from": "IN_WORK",   "to": "SUBMITTED" },
+        { "from": "SUBMITTED", "to": "COMPLETED" }
+      ],
+      "rejections": [
+        { "from": "SUBMITTED", "to": "IN_WORK" }
+      ]
+    }
+  ],
+  "note": "预置生命周期状态字典（平台级、全租户共享）+ 内置生命周期模板 STANDARD / SIMPLE / DOC_REVIEW（DRAFT/WORKING/PUBLISHED 三态与两态流程，及文档评审流；类型定义默认绑 STANDARD，DOCUMENT 绑 DOC_REVIEW）。原先由 LifecycleStatusInitializer 与 TypeDefinitionInitializer 分别写在代码里，现随本包播种。DRAFT 必须存在 —— 两个内置模板的初始状态码都是它，缺了会导致新建对象的 status 恒为 NULL。2026-10-13 口径统一：模板原先自造 IN_WORK / RELEASED，与字典的 WORKING / PUBLISHED 同义异码（显示名还都叫「工作中 / 已发布」）—— 后果是同一句\"是否已发布\"的判断要认两个码、按字典校验状态的地方会失配（流程节点设 APPROVING 被模板打回就是这一类）；现模板状态码一律归一到字典口径，已装租户的存量数据由 CHANGELOG「升级说明」节内联的增量 SQL 迁移（模板状态表 + 迁移规则表）。\r\n\r\n2026-11-01 「可修订」（states[].revisable）改为随包声明：此前 LifecycleStatusInstaller 用三元构造 LifecycleTemplateStatusRef，revisable 恒为默认 true，包无从表达「这个状态不可修订」；现在 states 里的 revisable 会被读进来。变更域三张单据（CHANGE_REQUEST / CHANGE_NOTICE / CHANGE_TASK）不是受控版本对象、没有修订概念，所有状态都显式声明 revisable=false；部件 / 文档等受控对象仍保持默认 true。前端「业务配置 → 类型 → 规则绑定」也不再对这三类展示该开关。"
+}

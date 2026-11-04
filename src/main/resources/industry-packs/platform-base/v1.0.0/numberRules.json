@@ -1,0 +1,103 @@
+{
+  "items": [
+    {
+      "code": "PRODUCT_LINE", "name": "产品系列编码", "example": "PL-001",
+      "segments": [
+        { "type": "CONST", "value": "PL", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "SERIAL", "digits": 3, "start": 1, "sortOrder": 3 }
+      ]
+    },
+    {
+      "code": "PRODUCT_MODEL", "name": "产品型号编码", "example": "PM-2026-001",
+      "segments": [
+        { "type": "CONST", "value": "PM", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "YEAR", "format": "yyyy", "sortOrder": 3 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 4 },
+        { "type": "SERIAL", "digits": 3, "start": 1, "sortOrder": 5 }
+      ]
+    },
+    {
+      "code": "DOC_NUMBER", "name": "文档编号", "example": "DOC-202601-0001",
+      "segments": [
+        { "type": "CONST", "value": "DOC", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "YEAR", "format": "yyyy", "sortOrder": 3 },
+        { "type": "MONTH", "format": "MM", "sortOrder": 4 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 5 },
+        { "type": "SERIAL", "digits": 4, "start": 1, "sortOrder": 6 }
+      ]
+    },
+    {
+      "code": "ENG_DOC_NUMBER", "name": "工程数据编号", "example": "ENG-202610-0001",
+      "segments": [
+        { "type": "CONST", "value": "ENG", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "YEAR", "format": "yyyy", "sortOrder": 3 },
+        { "type": "MONTH", "format": "MM", "sortOrder": 4 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 5 },
+        { "type": "SERIAL", "digits": 4, "start": 1, "sortOrder": 6 }
+      ]
+    },
+    {
+      "code": "PART_NUMBER", "name": "部件编号", "example": "PART-202601-0001",
+      "segments": [
+        { "type": "CONST", "value": "PART", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "YEAR", "format": "yyyy", "sortOrder": 3 },
+        { "type": "MONTH", "format": "MM", "sortOrder": 4 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 5 },
+        { "type": "SERIAL", "digits": 4, "start": 1, "sortOrder": 6 }
+      ]
+    },
+    {
+      "code": "FUNCTIONAL-NUM", "name": "功能架构编码规则", "example": "FUNC-20260101-00000001",
+      "segments": [
+        { "type": "CONST", "value": "FUNC", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "YEAR", "format": "yyyy", "sortOrder": 3 },
+        { "type": "MONTH", "format": "MM", "sortOrder": 4 },
+        { "type": "DAY", "format": "dd", "sortOrder": 5 },
+        { "type": "SERIAL", "digits": 8, "start": 1, "sortOrder": 6 }
+      ]
+    },
+    {
+      "code": "ECAD_PROJECT-NUM", "name": "电子设计项目编码", "example": "ECAD-202601-0001",
+      "segments": [
+        { "type": "CONST", "value": "ECAD", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "YEAR", "format": "yyyy", "sortOrder": 3 },
+        { "type": "MONTH", "format": "MM", "sortOrder": 4 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 5 },
+        { "type": "SERIAL", "digits": 4, "start": 1, "sortOrder": 6 }
+      ]
+    },
+    {
+      "code": "CHANGE_REQUEST", "name": "变更请求编号", "example": "ECR-0001",
+      "segments": [
+        { "type": "CONST", "value": "ECR", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "SERIAL", "digits": 4, "start": 1, "sortOrder": 3 }
+      ]
+    },
+    {
+      "code": "CHANGE_NOTICE", "name": "变更通告编号", "example": "ECN-0001",
+      "segments": [
+        { "type": "CONST", "value": "ECN", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "SERIAL", "digits": 4, "start": 1, "sortOrder": 3 }
+      ]
+    },
+    {
+      "code": "CHANGE_TASK", "name": "变更任务编号", "example": "ECT-0001",
+      "segments": [
+        { "type": "CONST", "value": "ECT", "sortOrder": 1 },
+        { "type": "SEPARATOR", "value": "-", "sortOrder": 2 },
+        { "type": "SERIAL", "digits": 4, "start": 1, "sortOrder": 3 }
+      ]
+    }
+  ],
+  "note": "编码规则（ck_number + ck_number_segment）。段类型：CONST（固定值）/ SEPARATOR（分隔符）/ YEAR|MONTH|DAY（日期，format 为 yyyy|MM|dd）/ SERIAL（流水号，digits 位数、start 起始值）。原先由 NumberRuleInitializer 写在代码里，现随本包播种。",
+  "belongs": "平台级基础数据 —— 原先放在 electronics-core，2026-10 移到 platform-base：编码规则是编号模板（ck_number 本就是平台共享表），与行业无关；而且平台包的 11 个对象类型（PART / DOCUMENT / PRODUCT_MODEL …）绑的就是这里的 PART_NUMBER / DOC_NUMBER，规则必须先于类型就位，故在 pack.json 里排在 SOFT_TYPE 之前。注：其中 ECAD_PROJECT-NUM 服务的是电子设计项目（类型在 electronics-core），但规则本身是通用编号模板，放平台级不影响任何行业。"
+}

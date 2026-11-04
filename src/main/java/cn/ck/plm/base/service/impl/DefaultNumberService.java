@@ -88,6 +88,11 @@ public class DefaultNumberService implements NumberService {
         if (number.getEnabled() == null) {
             number.setEnabled(true);
         }
+        // 按租户隔离（2026-10-11）：归属必须显式落本租户 —— insert 的列清单含 tenant_oid，
+        // 不设会写 NULL；隔离后 NULL 行本租户读不到，等于"创建即失踪"。
+        if (number.getTenantOid() == null) {
+            number.setTenantOid(TenantContext.get());
+        }
 
         numberMapper.insert(number);
         log.info("编码规则创建成功: {}", code);

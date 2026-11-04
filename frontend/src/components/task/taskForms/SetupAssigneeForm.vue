@@ -11,8 +11,19 @@
         <b>{{ slot.nodeName }}</b>
         <a-tag size="small" color="blue" style="margin-left:6px">{{ slot.kind }}</a-tag>
         <a-tag v-if="slot.allowMultiple && slot.minPeople <= 1" size="small" color="orange">可多选</a-tag>
-        <span class="saf-hint">
-          {{ slot.roleCodes.length ? `候选：角色 ${slot.roleCodes.join('、')} 的成员` : '候选：全部用户（该活动未指定角色）' }}
+        <!--
+          候选范围用**角色中文名**（DSL 里存的是 code，直接写出来等于让办理人读枚举 ——
+          2026-10-26 用户反馈"显示的是角色的 code，不是显示名称"）。
+          code 放进悬停提示：对不上角色定义时要能核对，但那是次要信息。
+        -->
+        <a-tooltip v-if="slot.roleCodes.length" :title="`角色编码：${slot.roleCodes.join('、')}`">
+          <span class="saf-hint">
+            候选：角色 {{ roleNamesText(slot) }} 的成员
+            <template v-if="slot.minPeople > 1">；至少 {{ slot.minPeople }} 人</template>
+          </span>
+        </a-tooltip>
+        <span v-else class="saf-hint">
+          候选：全部用户（该活动未指定角色）
           <template v-if="slot.minPeople > 1">；至少 {{ slot.minPeople }} 人</template>
         </span>
       </div>
@@ -64,6 +75,36 @@ const slotOptions = reactive({})
 const slotLoading = reactive({})
 const comment = ref('')
 const loadError = ref('')
+
+/**
+ * 角色 code → 中文名。
+ *
+ * <p>DSL 里存的是 code（稳定标识），界面要显示名称。数据源用设计器同一份角色选项
+ * （{@code options.ts} 的模块级缓存，同一会话只请求一次；「设置审批人」本来就要按角色取成员，
+ * 那一侧同样先拉角色列表，所以这里几乎不增加请求）。
+ *
+ * <p>查不到名字时回落 code —— 宁可露出 code，也不能显示空白（那会让人以为没有候选范围）。
+ */
+const roleNameByCode = reactive({})
+
+/** 槽位的候选角色文案（中文名，逗号分隔） */
+function roleNamesText(slot) {
+  return (slot.roleCodes || []).map((code) => roleNameByCode[code] || code).join('、')
+}
+
+async function loadRoleNames() {
+  try {
+    const roles = await loadOptions('ROLES')
+    for (const role of roles || []) {
+      // 同一 code 可能有平台副本与租户副本：保留先到的那个（与面板 / 交付件责任人的口径一致）
+      if (role?.value && !roleNameByCode[role.value]) {
+        roleNameByCode[role.value] = role.label || role.value
+      }
+    }
+  } catch {
+    // 主数据不可用：文案回落 code，不影响选人（成员候选另有自己的失败兜底）
+  }
+}
 
 /** 该活动是否要求必须填说明（来自 DSL 节点声明） */
 const commentRequired = computed(() => {
@@ -159,7 +200,11 @@ function collect() {
   return { ok: true, payload: { variables: toSetupVariables(model, values), comment: comment.value } }
 }
 
-onMounted(load)
+onMounted(() => {
+  // 角色名与槽位并行取：名字只影响文案，晚到也只是先显示 code、随即替换成中文名
+  loadRoleNames()
+  load()
+})
 defineExpose({ collect, submitText, successText, renderable })
 </script>
 

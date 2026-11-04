@@ -24,8 +24,12 @@
           :stage-options="stageOptions"
           :type-definition-oid="resolvedTypeOid || typeDefinitionOid"
           :current-container-oid="currentContainerOid"
+          :entity-code="entityCode"
+          :widget-options="widgetOptions"
+          :readonly-fields="readonlyFields"
           @update="onFieldUpdate"
           @table-action="onTableAction"
+          @object-options="onObjectOptions"
         />
 
         <!-- 分类属性分区：选择分类后加载该分类的 IBA 布局/属性 -->
@@ -53,6 +57,8 @@
             :stage-options="stageOptions"
             :type-definition-oid="resolvedTypeOid || typeDefinitionOid"
             :current-container-oid="currentContainerOid"
+            :entity-code="entityCode"
+            :readonly-fields="readonlyFields"
             @update="onFieldUpdate"
             @table-action="onTableAction"
           />
@@ -65,7 +71,7 @@
 <script setup>
 import { ref, reactive, watch, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { getPageLayoutByCode, getProductLineTreeLinesOnly, getProductModels, getOrgTree, getAllUsers, getEntityByCode, getEntityIbaData, getAllFolderTree, getClsIbaLayout, getClassificationIBAs, getClassification } from '@/api'
+import { getPageLayoutByCode, getProductLineTree, getProductLineTreeLinesOnly, getOrgTree, getAllUsers, getEntityByCode, getEntityIbaData, getAllFolderTree, getClsIbaLayout, getClassificationIBAs, getClassification, getTypeClassificationSubtree } from '@/api'
 import RenderFields from './RenderFields.js'
 
 // ==================== Props & Emits ====================
@@ -102,11 +108,34 @@ const props = defineProps({
   currentStageOid: { type: String, default: null },
   /** 外部传入的阶段选项 [{label, value}]，用于 stage-select 控件 */
   stageOptions: { type: Array, default: () => [] },
+  /**
+   * 跳过产品线 / 组织 / 文件夹树等资源预加载。
+   *
+   * <p>变更单据的表单只用到用户与问题选择器（控件各自按需拉取），预加载产品树会
+   * 按系列逐个请求型号，弹窗打开明显变慢。布局加载与实体数据回填不受影响。
+   */
+  skipResourceLoading: { type: Boolean, default: false },
   /** 类型定义 oid，用于 classification-bound-select 组件加载绑定分类子树 */
   typeDefinitionOid: { type: String, default: null },
+  /**
+   * 控件级外部数据，原样透传给 RenderFields。
+   *
+   * <p>目前唯一用途：变更单据编辑回填时，把详情接口带回的关联问题
+   * （{oid, code, name}）作为 `issueOptions` 交给 change-issue-selector ——
+   * 否则下拉里只有 oid，显示成一串 uuid。
+   */
+  widgetOptions: { type: Object, default: () => ({}) },
+  /**
+   * 需要追加锁定的字段名（在布局自带的 `readonly` 之外）。
+   *
+   * <p>用于"值来自上游单据、不允许在本单改"的场景：变更通告从 ECR 派生时，
+   * 变更类型 / 分级 / 优先级 / 三项影响 / 变更原因 继承的是 ECR 的判定结论，
+   * 在这里只读 —— 判定只在 ECR 上做一次。
+   */
+  readonlyFields: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['update:modelValue', 'table-action'])
+const emit = defineEmits(['update:modelValue', 'table-action', 'object-options'])
 
 // ==================== 状态 ====================
 const formRefRef = ref(null)
@@ -342,6 +371,11 @@ function onTableAction(payload) {
   emit('table-action', payload)
 }
 
+/** 对象选择控件的候选（oid → 文案）转发：上层要用它渲染二级下拉 */
+function onObjectOptions(fieldName, options) {
+  emit('object-options', fieldName, options)
+}
+
 // 监听分类字段变化（clsOid / classificationOid），触发分类属性加载
 watch(
   () => [localFormData.clsOid, localFormData.classificationOid],
@@ -349,8 +383,45 @@ watch(
 )
 
 // ==================== 加载布局 ====================
+/**
+ * 2026-10-11：未绑定分类时，把 classification-bound-select 字段**整体**剔除（含 Form.Item 的
+ * label「分类」）。组件自身的 hideWhenUnbound 只藏控件自己，外层标签与空白框仍留在表单里
+ * （用户反馈："未绑定分类的话，红色框的区域不应该展示"）。
+ * 只走 DynamicForm（创建/编辑表单）—— 设计器预览不经这里、且 hideWhenUnbound=false，展示不受影响。
+ */
+async function stripUnboundClassificationFields(fields) {
+  if (!fields?.length) return fields
+  // 判定依据：外部传入的 typeOid，**或组件自己按 entityCode 反查出来的**（resolvedTypeOid）。
+  // 2026-10-13 修：原先只看 props.typeDefinitionOid —— 调用方没传时（如元器件库「新建IPN」）
+  // bound 恒为 false，「分类」字段连 label 被无条件删掉（用户反馈："分类为什么没有了"）。
+  const typeOid = props.typeDefinitionOid || resolvedTypeOid.value
+  // 拿不到 typeOid（反查也失败）时**不动字段** —— "判不了"不等于"未绑定"：
+  // 控件自身的 hideWhenUnbound 兜得住"未绑定"的展示，但整块删除是不可逆的
+  if (!typeOid) return fields
+  let bound = false
+  try {
+    const res = await getTypeClassificationSubtree(typeOid)
+    const data = res?.data || res
+    bound = !!(data && data.oid)
+  } catch {
+    // 查询失败按"未绑定"处理（失败原因由响应拦截器统一提示，与 ClassificationBoundSelect 同一口径）
+    bound = false
+  }
+  if (bound) return fields
+  const prune = (list) => (list || []).filter(f => {
+    if (f.uiComponent === 'classification-bound-select' || f.type === 'classification-bound-select') return false
+    if (f.children?.length) f.children = prune(f.children)
+    return true
+  })
+  return prune(fields)
+}
+
 async function loadLayout() {
   if (!props.entityCode || !props.operationCode) return
+
+  // 分类字段的取舍要靠 typeOid 判定（见 stripUnboundClassificationFields）——
+  // 外部没传时先按 entityCode 反查，别把"还没解析出来"当成"类型未绑定分类"
+  await resolveTypeDefinitionOid()
 
   loading.value = true
   try {
@@ -365,6 +436,10 @@ async function loadLayout() {
       let layout = res.data.layoutJson
       if (typeof layout === 'string') {
         try { layout = JSON.parse(layout) } catch { layout = null }
+      }
+      // 未绑定分类 → 剔除"分类"字段（连 label 一起），不让空区块出现在表单里
+      if (layout?.form?.fields) {
+        layout.form.fields = await stripUnboundClassificationFields(layout.form.fields)
       }
       layoutData.value = layout
       if (layout?.form?.fields) initDefaultValues(layout.form.fields)
@@ -405,50 +480,41 @@ async function loadProductLineTree() {
   } catch { /* ignore */ }
 }
 
-/** 加载组合产品树（系列 + 型号），用于 product-select 控件（含型号可选） */
+/**
+ * 加载组合产品树（系列 + 型号），用于 product-select 控件（含型号可选）。
+ *
+ * <p>`/product-lines/tree` 本身就把型号挂在系列的 children 里，并带 `nodeType`
+ * （PRODUCT_LINE / PRODUCT_MODEL）。早先这里又按系列逐个查 `/product-models` 再拼一遍，
+ * 结果型号被挂了两份；更糟的是随后递归 children 时把型号当成子系列、覆盖成
+ * PRODUCT_LINE —— 选中型号会存下错的 productType。现在直接按 nodeType 映射一遍。
+ */
 async function loadProductOwnerTree() {
   try {
     const lineRes = await getProductLineTree()
     if (lineRes.code !== 200) return
-    const lines = lineRes.data || []
-    const tree = []
     const typeMap = {}
 
-    // 递归处理产品系列 + 挂载所属型号
-    async function buildNode(lineNode) {
-      const node = {
-        title: lineNode.name || lineNode.code,
-        value: lineNode.oid,
-        key: lineNode.oid,
+    function buildNode(node) {
+      const type = node.nodeType === 'PRODUCT_MODEL' ? 'PRODUCT_MODEL' : 'PRODUCT_LINE'
+      typeMap[node.oid] = type
+      const item = {
+        title: node.name || node.code,
+        value: node.oid,
+        key: node.oid,
+        nodeType: type,
       }
-      typeMap[lineNode.oid] = 'PRODUCT_LINE'
-
-      // 加载该系列下的产品型号
-      try {
-        const modelsRes = await getProductModels({ productLineOid: lineNode.oid })
-        if (modelsRes.code === 200 && modelsRes.data?.length) {
-          const modelNodes = modelsRes.data.map(m => {
-            typeMap[m.oid] = 'PRODUCT_MODEL'
-            return { title: m.name || m.code, value: m.oid, key: m.oid }
-          })
-          node.children = modelNodes
-        }
-      } catch { /* ignore */ }
-
-      // 递归处理子系列
-      if (lineNode.children?.length) {
-        const childNodes = await Promise.all(lineNode.children.map(buildNode))
-        node.children = [...(node.children || []), ...childNodes]
+      if (node.children?.length) {
+        item.children = node.children.map(buildNode)
       }
-      return node
+      return item
     }
 
-    for (const line of lines) {
-      tree.push(await buildNode(line))
-    }
-    productOwnerTree.value = tree
+    productOwnerTree.value = (lineRes.data || []).map(buildNode)
     nodeTypeMap.value = typeMap
-  } catch { /* ignore */ }
+  } catch (e) {
+    // 不要静默吞：这棵树空了会退回纯系列树，「所属产品」看起来能选、却永远选不到型号
+    console.warn('[DynamicForm] 加载产品系列+型号树失败，已退回仅系列树', e)
+  }
 }
 
 async function loadOrgTree() {
@@ -536,6 +602,13 @@ function transformOrgTree(nodes) {
 /** 是否正在加载实体数据 */
 const entityLoading = ref(false)
 
+/** 布局（含分组 / 布局行嵌套）里是否存在某字段 */
+function hasLayoutField(fieldName) {
+  const walk = (list) => (list || []).some(f =>
+    f.fieldName === fieldName || (f.children?.length ? walk(f.children) : false))
+  return walk(layoutData.value?.form?.fields)
+}
+
 /**
  * 通过 entityCode + entityOid 从后端获取实体完整数据，
  * 并填入 localFormData。
@@ -564,6 +637,13 @@ async function loadEntityData() {
           if (typeof v === 'object') continue
           data[k] = v
         }
+      }
+      // 「所属产品」在 DOCUMENT / ENG_DOCUMENT 的基准布局里绑的是 ownerOid，
+      // 实体上的归属列却是 containerOid —— 不补这一笔，编辑时该下拉永远是空的
+      if (data.containerOid) {
+        if (!data.ownerOid && hasLayoutField('ownerOid')) data.ownerOid = data.containerOid
+        // 设计器改过布局时可能写成 productOid（变更单据同款写法）
+        if (!data.productOid && hasLayoutField('productOid')) data.productOid = data.containerOid
       }
       // 先清空再批量赋值，确保 TreeSelect 等控件正确响应值变化
       Object.keys(localFormData).forEach(k => delete localFormData[k])
@@ -645,7 +725,9 @@ function collectRequiredErrors(fields, errors) {
       continue
     }
     if (field.required && field.fieldName) {
-      const val = localFormData[field.fieldName]
+      // 取值口径必须和渲染一致（RenderFields 是 formData ?? defaultValue ?? ''）：
+      // 否则「带默认值的必填项」会一面显示着值、一面提示不能为空
+      const val = localFormData[field.fieldName] ?? field.defaultValue
       if (val === undefined || val === null || val === '') {
         errors.push(`${field.label || field.fieldName} 不能为空`)
       }
@@ -662,12 +744,73 @@ function entityCodeToLower(entityCode) {
   return PART_SOFT_TYPE_IBA.has(entityCode) ? 'PART' : entityCode
 }
 
-defineExpose({ getFormData, getClsIbaFieldNames, getClsIbaValues, validate, loading, entityLoading, layoutData })
+// ==================== 弹窗宽度建议 ====================
+
+/**
+ * 布局里 {@code layout-row} 的最大列数。
+ *
+ * <p>一行 N 列的布局，每列只分到「弹窗宽度 / N」——680px 的弹窗塞两列时，
+ * 单行输入框只剩 ~300px，下拉和日期选择器都被挤成一条。把真实列数暴露给宿主，
+ * 由宿主决定弹窗宽多少，而不是所有表单写死同一个宽度。
+ */
+const layoutColumns = computed(() => {
+  let max = 1
+  const walk = (fields) => {
+    for (const f of fields || []) {
+      if (f.type === 'layout-row' || f.uiComponent === 'layout-row') {
+        const cols = Number(f.columns) || 0
+        if (cols > max) max = cols
+      }
+      if (f.children?.length) walk(f.children)
+    }
+  }
+  walk(layoutData.value?.form?.fields)
+  return max
+})
+
+/**
+ * 建议弹窗宽度：单列 680 / 两列 900 / 三列 1040 / 四列 1180，且不超过视口 94%。
+ *
+ * <p>用法（宿主弹窗）：{@code :width="formRef?.recommendedWidth || '680px'"}。
+ * 布局在弹窗打开前已加载完时不会出现"宽度跳一下"。
+ */
+const recommendedWidth = computed(() => {
+  const width = { 1: 680, 2: 900, 3: 1040, 4: 1180 }[layoutColumns.value] || 1180
+  return `min(${width}px, 94vw)`
+})
+
+defineExpose({
+  getFormData, getClsIbaFieldNames, getClsIbaValues, validate, loading, entityLoading, layoutData,
+  layoutColumns, recommendedWidth,
+})
+
+/**
+ * 布局里是否用到了产品树控件。
+ *
+ * <p>skipResourceLoading 的表单（变更单据等）原本一张树都不拉；一旦布局里配了
+ * 「所属容器」（product-select），不补树就是空下拉 —— 控件在、却什么都选不到。
+ * 这里按布局实际用到的控件决定，避免为不相干的表单白拉接口。
+ */
+function layoutNeedsProductTree() {
+  const walk = (fields) => (fields || []).some(f =>
+    f.uiComponent === 'product-select'
+    || f.uiComponent === 'product-line-select'
+    || (f.children?.length && walk(f.children)))
+  return walk(layoutData.value?.form?.fields)
+}
 
 // ==================== 生命周期 ====================
 onMounted(async () => {
-  // 先并行加载布局和树数据，确保 TreeSelect 等组件渲染前树已就绪
-  await Promise.all([loadLayout(), loadProductLineTree(), loadProductOwnerTree(), loadOrgTree(), loadUserOptions(), loadFolderTree()])
+  // 先并行加载布局和树数据，确保 TreeSelect 等组件渲染前树已就绪；
+  // 轻量表单（如变更单据）只需布局，跳过产品 / 组织 / 文件夹树（见 skipResourceLoading）
+  if (props.skipResourceLoading) {
+    await loadLayout()
+    if (layoutNeedsProductTree()) {
+      await Promise.all([loadProductLineTree(), loadProductOwnerTree()])
+    }
+  } else {
+    await Promise.all([loadLayout(), loadProductLineTree(), loadProductOwnerTree(), loadOrgTree(), loadUserOptions(), loadFolderTree()])
+  }
   // 编辑场景：布局和树数据就绪后，再加载实体数据填入表单（await 确保数据就绪后再渲染）
   if (props.entityOid && props.operationCode === 'update') {
     await loadEntityData()
@@ -676,7 +819,13 @@ onMounted(async () => {
 
 watch(
   () => [props.entityCode, props.operationCode],
-  () => loadLayout()
+  async () => {
+    await loadLayout()
+    // 新建 / 编辑切换时布局可能刚变成含「所属容器」的那份，树没拉过就补一次
+    if (props.skipResourceLoading && layoutNeedsProductTree() && !productOwnerTree.value.length) {
+      await Promise.all([loadProductLineTree(), loadProductOwnerTree()])
+    }
+  }
 )
 
 /** 当传入 entityOid 时自动加载实体数据填入表单（编辑场景统一入口） */
@@ -694,6 +843,15 @@ watch(
 <style scoped>
 .dynamic-form {
   min-height: 120px;
+}
+
+/*
+  字段上下间距 12px（用户 2026-11-01 指定，见弹窗里两处红框；先定 16px，同日改 12px）。
+  间距只能在这里定：antd-vue 会把 Form.Item 的 style 落到**内层** .ant-form-item-row 上，
+  与外层 .ant-form-item 自带的 margin 折叠，写在 RenderFields 里从来不准（16px 曾实际是 24px）。
+*/
+.dynamic-form :deep(.ant-form-item) {
+  margin-bottom: 12px;
 }
 
 .df-cls-section {

@@ -72,6 +72,19 @@ public interface VersionRuleService {
      */
     String getNextRevision(String ruleCode, String currentRevision);
 
+    /**
+     * 当前大版本是否已是规则允许的<b>最后一个</b>。
+     *
+     * <p>单独提供而不靠 {@link #getNextRevision} 的 null 判断：那边 null 同时表示
+     * "已是最后一个" 与 "当前版本不在序列中" —— 前者必须阻止修订并提醒管理员改规则，
+     * 后者只是规则与数据对不上，仍按既有的 char+1 兜底，两者不能混为一谈。
+     *
+     * @param ruleCode        规则编码
+     * @param currentRevision 当前大版本
+     * @return true = 规则里有字母序列且当前已是最后一个；无序列 / 不在序列中均为 false
+     */
+    boolean isLastRevision(String ruleCode, String currentRevision);
+
     // ==================== 类型绑定解析 ====================
 
     /**

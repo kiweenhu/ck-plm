@@ -56,8 +56,21 @@
           <!-- 只有字典里的真分组可改可删；「全部」「未分类」是筛选项，不是分组 -->
           <span v-if="item.group" class="category-item__ops">
             <a @click.stop="openCategoryRename(item)">改名</a>
+            <!-- 组内还有流程时不给删：删掉会把流程丢进「未分类」，后端也会拒（409）。
+                 所以把真实原因和数量直接写在提示上，而不是弹一个"组内必须没有流程"的
+                 确认框 —— 那种问法既不说明当前组里有几条，点了也只会换来一句报错 -->
+            <a
+              v-if="item.count > 0"
+              class="danger is-disabled"
+              :title="`组内还有 ${item.count} 个流程，先把流程移到其它分组再删`"
+              @click.stop
+            >删除</a>
             <a-popconfirm
-              title="删除分组（组内必须没有流程）？"
+              v-else
+              :title="`删除分组「${item.label}」？`"
+              description="组内没有流程，删除后不影响任何模板"
+              ok-text="删除"
+              cancel-text="取消"
               @confirm="removeCategory(item)"
             >
               <a class="danger" @click.stop>删除</a>
@@ -78,6 +91,10 @@
           <a-select v-model:value="enabledFilter" style="width: 130px" :options="enabledOptions" />
           <div class="library-toolbar__right">
             <a-button size="small" :loading="loading" @click="reload">刷新</a-button>
+            <a-button size="small" @click="openMarket">
+              <template #icon><AppstoreOutlined /></template>
+              预置模板
+            </a-button>
             <a-button size="small" type="primary" @click="openCreate">
               <template #icon><PlusOutlined /></template>
               新建流程
@@ -270,6 +287,48 @@
         另有 {{ lockedVersions.length }} 个已部署版本已被锁定（不可选）。
       </div>
     </a-modal>
+
+    <!-- 预置模板市场：只读列包里的流程 DSL，取用后落本租户（未部署） -->
+    <a-drawer v-model:open="marketVisible" title="预置流程模板" width="680">
+      <div class="muted market-intro">
+        来自随产品发布的行业包。取用后在本租户「预置流程」分组下生成一份可编辑的模板（第 1 版，未部署）。
+      </div>
+      <a-spin :spinning="marketLoading">
+        <a-empty
+          v-if="!marketLoading && !marketItems.length"
+          description="没有可取的预置流程"
+          :image-style="{ height: '48px' }"
+        />
+        <div v-for="item in marketItems" :key="item.file" class="market-item">
+          <div class="market-item__main">
+            <div class="market-item__title">
+              {{ item.displayName || item.name }}
+              <a-tag v-if="item.installed" color="success">已取用</a-tag>
+              <a-tag v-else-if="!(item.missingForms || []).length" color="blue">依赖就绪</a-tag>
+            </div>
+            <div class="muted">
+              {{ item.key }} · {{ item.nodeCount }} 个节点 · {{ item.packName || item.packId }} v{{ item.packVersion }}
+            </div>
+            <div v-if="item.description" class="muted">{{ item.description }}</div>
+            <a-alert
+              v-if="item.missingForms.length"
+              type="warning"
+              show-icon
+              class="market-item__alert"
+              :message="`依赖未装齐：缺少表单 ${item.missingForms.join('、')}`"
+              description="流程可以部署，但对应节点的任务页渲染不出表单 —— 建议先安装该行业包。"
+            />
+          </div>
+          <a-button
+            size="small"
+            type="primary"
+            :disabled="item.installed"
+            :loading="adoptingFile === item.file"
+            @click="adopt(item)"
+          >取用</a-button>
+        </div>
+      </a-spin>
+    </a-drawer>
   </div>
 </template>
 
@@ -310,7 +369,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { ApartmentOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { ApartmentOutlined, AppstoreOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { createEmptyDsl } from '@flow-dsl-core'
 import { templateRepository } from './template-service'
 import { UNCATEGORIZED, countTemplatesByCategoryOid } from './category-repo'
@@ -507,6 +566,47 @@ function pickCategory(value) {
   activeCategory.value = value ?? null
   // 回传页面写进 URL：从设计器返回时仍停在原分组
   emit('update:category', activeCategory.value)
+}
+
+// ==================== 预置模板市场（M3）====================
+
+const marketVisible = ref(false)
+const marketLoading = ref(false)
+const marketItems = ref([])
+/** 正在取用的条目（按 file 标识，避免整列都转圈） */
+const adoptingFile = ref('')
+
+async function openMarket() {
+  marketVisible.value = true
+  marketLoading.value = true
+  const result = await templateRepository.market()
+  marketLoading.value = false
+  if (!result.ok) {
+    // 清单读不出来时给空列表 + 提示：抽屉留着，不弹完就关
+    marketItems.value = []
+    message.error(result.error)
+    return
+  }
+  marketItems.value = result.data ?? []
+}
+
+/**
+ * 取用一个预置流程。
+ *
+ * <p>不自动打开设计器：取用只是"拿到模板"，要不要立刻改由用户决定；
+ * 取用后刷新列表，用户能在「预置流程」分组下找到它。
+ */
+async function adopt(item) {
+  adoptingFile.value = item.file
+  const result = await templateRepository.adopt({ packId: item.packId, file: item.file })
+  adoptingFile.value = ''
+  if (!result.ok) {
+    message.error(result.error)
+    return
+  }
+  message.success(`已取用「${result.data?.displayName || result.data?.name}」，可在列表里打开设计`)
+  item.installed = true
+  await reload()
 }
 
 async function reload() {
@@ -868,6 +968,12 @@ defineExpose({ reload })
 .category-item:hover .category-item__ops {
   display: inline-flex;
 }
+/* 组内还有流程：删除置灰（悬停给原因），避免弹了确认框再被后端拒 */
+.category-item__ops .is-disabled,
+.category-item__ops .is-disabled:hover {
+  color: #d9d9d9;
+  cursor: not-allowed;
+}
 .category-empty {
   padding: 4px 14px;
   line-height: 1.6;
@@ -907,6 +1013,33 @@ defineExpose({ reload })
 .versions-tip {
   margin: 6px 0;
   line-height: 1.6;
+}
+/* 预置模板市场：一行一条，右侧「取用」按钮固定不动 */
+.market-intro {
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+.market-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+}
+.market-item__main {
+  flex: 1;
+  min-width: 0;
+}
+.market-item__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.8;
+}
+.market-item__alert {
+  margin-top: 6px;
 }
 .muted {
   font-size: 12px;

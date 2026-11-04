@@ -67,6 +67,22 @@ public class PlmServiceContext {
     }
 
     /**
+     * 流程实例的业务标识（发起时传入的 {@code businessKey}）。
+     *
+     * <p>对"主表不在 {@code ck_softtype_instance} 里"的业务单据（变更请求 / 通告 / 任务
+     * 都是独立主表），{@code targets()} 是空的 —— 它无法定位到单据，只能靠 businessKey。
+     * 单据 oid 就是发起时传的那个 businessKey。
+     */
+    public String businessKey() {
+        String key = execution.getProcessInstanceBusinessKey();
+        if (key == null) {
+            return null;
+        }
+        String trimmed = key.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
      * 执行者（用户名）—— 流程发起人。
      *
      * <p>自动服务的"谁在做"就是发起人：检出/检入等操作要记操作者，

@@ -29,6 +29,7 @@
     <!-- 表格 -->
     <div class="uc-table-wrapper">
       <DataTable
+        scroll-x="max-content"
         :columns="columns"
         :data-source="allUnits"
         :loading="loading"
@@ -36,7 +37,6 @@
         :search-fields="['name', 'display', 'quantityType']"
         :enable-resize="true"
         :show-column-toggle="true"
-        :max-height="480"
         row-key="oid"
         size="middle"
       >
@@ -356,12 +356,20 @@ onMounted(loadData)
 </script>
 
 <style scoped>
+/**
+ * 自然高度（不再撑满容器）。
+ *
+ * <p>此前是 "height:100% + overflow:hidden + 表格 max-height:480" 的撑满型组合：
+ * 表体固定 480px 自带一条竖向滚动条，而窗口一矮，容器本身也放不下 ——
+ * 卡片右侧就出现两条并排的竖向滚动条（用户 2026-11-02 截图反馈）。
+ *
+ * <p>改为让内容决定高度、交给外层 .bc-content 滚动：页面只有一条滚动条，
+ * 表体也不再被截成 480px 的小窗口（与「资源库配置」等自然高型子页同一套口径）。
+ */
 .unit-config-page {
-  height: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 
 /* ===== 页头 ===== */
@@ -429,12 +437,11 @@ onMounted(loadData)
 }
 
 /* ===== 表格容器 ===== */
+/* 不再 flex:1 + overflow:hidden：表体是自然高度，容器跟着长高，由 .bc-content 兜滚动 */
 .uc-table-wrapper {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 /* ===== 表格内样式 ===== */

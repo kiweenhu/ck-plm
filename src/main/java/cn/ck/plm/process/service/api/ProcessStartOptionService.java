@@ -36,4 +36,21 @@ public interface ProcessStartOptionService {
      */
     ProcessStartOptionVO resolve(String typeDefinitionCode, String statusCode, String iterationOid,
                                  String entityOid);
+
+    /**
+     * 按<b>流程 key 直传</b>解析发起选项 —— 用于"不经过类型绑定"的发起入口
+     * （如产品系列页的阶段门 / 评审行：行上自带 {@code process_key}，点「发起」就是它）。
+     *
+     * <p>与 {@link #resolve} 的区别只有"模板从哪来"：这里不再查类型的状态-流程绑定，
+     * 直接按 key 找模板；<b>部署判定与冲突闸门完全同口径</b>（组装逻辑共用一份），
+     * 所以两种入口的 {@code startable} 语义不会漂移。
+     *
+     * @param processKey  流程模板 key（如 {@code technical-review} / {@code gate-decision}）
+     * @param typeCode    发起上下文业务对象的类型编码（可空，仅回显与冲突判定用）
+     * @param statusCode  发起上下文业务对象的当前状态（可空，仅回显）
+     * @param entityOid   发起上下文业务对象 oid（可空）。传了则同样判定"该对象该大版本下是否已有流程在执行"
+     * @return 解析结果；模板不存在 / 未部署 / 有冲突时 {@code startable = false} 且带 {@code reason}
+     * @throws IllegalArgumentException processKey 为空
+     */
+    ProcessStartOptionVO resolveByKey(String processKey, String typeCode, String statusCode, String entityOid);
 }

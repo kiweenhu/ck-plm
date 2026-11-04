@@ -28,7 +28,8 @@ const rendered = computed(() =>
     userOptions: props.userOptions,
     orgTreeData: props.orgTreeData,
     productLineTree: props.productLineTree,
-    folderTree: props.folderTree
+    folderTree: props.folderTree,
+    placeholder: props.placeholder
   })
 )
 </script>

@@ -7,6 +7,7 @@
 
 package cn.ck.plm.bom.mapper;
 
+import cn.ck.plm.bom.dto.BomMaterialVO;
 import cn.ck.plm.bom.entity.BomLinks;
 
 import java.util.List;
@@ -43,4 +44,14 @@ public interface BomLinksMapper {
     int updateResolvedIterationOid(String oid, String resolvedIterationOid);
 
     List<BomLinks> selectAll();
+
+    /**
+     * 某容器（产品系列 / 型号）下<b>归属该容器的零件</b>，一行一个（最新迭代），
+     * BOM 用量合计 / 引用行数 / 父件编码为补充列。
+     *
+     * <p>容器口径：{@code container_oid = 当前容器}，不回溯父系列 —— 型号页不混入父系列零件。
+     *
+     * <p>只取父件<b>最新迭代</b>上的 BOM 行：历史版本的结构已经作废，一并统计会让用量虚高。
+     */
+    List<BomMaterialVO> selectMaterialsByContainerOid(String containerOid);
 }

@@ -26,7 +26,7 @@
       <a-input-group compact style="display:flex;width:100%">
         <a-input
           v-model:value="urlInput"
-          placeholder="请输入文档网络地址，如 https://example.com/doc.pdf"
+          :placeholder="urlPlaceholder"
           @keyup.enter="handleUrlSubmit"
           style="flex:1"
         />
@@ -42,12 +42,12 @@
       v-if="!disabled && mode === 'local' && !currentFile"
       :before-upload="handleUpload"
       :show-upload-list="false"
-      :accept="accept"
+      :accept="effectiveAccept"
       :multiple="false"
     >
       <p class="cfu-drag-icon"><InboxOutlined style="font-size:28px;color:#1677ff" /></p>
       <p class="cfu-drag-text">点击或拖拽文件到此区域上传</p>
-      <p class="cfu-drag-hint" v-if="accept">{{ acceptHint }}</p>
+      <p v-for="line in hintLines" :key="line" class="cfu-drag-hint">{{ line }}</p>
     </a-upload-dragger>
 
     <!-- 已选文件后重新选择 -->
@@ -55,7 +55,7 @@
       v-else-if="!disabled && mode === 'local'"
       :before-upload="handleUpload"
       :show-upload-list="false"
-      :accept="accept"
+      :accept="effectiveAccept"
       :multiple="false"
     >
       <a-button :loading="uploading" size="small">
@@ -90,10 +90,25 @@ import { uploadCKFile, createCKFileFromUrl, getCKFile } from '@/api'
 const props = defineProps({
   value: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
+  /** 可上传扩展名（逗号分隔）。数模主文档未显式配置时走 {@link CAD_MODEL_ACCEPT} */
   accept: { type: String, default: '' },
+  /**
+   * 实体编码。ENG_DOCUMENT 的主文件是 CAD 三维数模 ——
+   * 未显式配置 accept 时按数模格式筛选，并提示哪些格式能转轻量化预览。
+   */
+  entityCode: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:value'])
+
+/**
+ * 三维数模可上传格式。
+ *
+ * <p>STEP / IGES / STL 是中性交换格式，CK-CADForge 能转成轻量化产物（GLB）供三维预览；
+ * CATIA / Creo / NX / SolidWorks 的原生数模只能归档 —— 转换器读不了原生格式，
+ * 需要预览时得先在 CAD 里另存 STEP 再上传。提示文案要如实说明，否则用户会等一个永远不来的预览。
+ */
+const CAD_MODEL_ACCEPT = '.step,.stp,.iges,.igs,.stl,.catpart,.catproduct,.prt,.asm,.sldprt,.sldasm'
 
 const uploading = ref(false)
 const uploadError = ref('')
@@ -101,19 +116,52 @@ const fileInfo = ref(null)
 const mode = ref('local')
 const urlInput = ref('')
 
+/** 是否数模主文档（ENG_DOCUMENT 表单） */
+const isCadModel = computed(() => props.entityCode === 'ENG_DOCUMENT')
+
+const effectiveAccept = computed(() =>
+  props.accept || (isCadModel.value ? CAD_MODEL_ACCEPT : '')
+)
+
 const currentFile = computed(() => {
   if (!fileInfo.value) return null
   return fileInfo.value
 })
 
+const urlPlaceholder = computed(() =>
+  isCadModel.value
+    ? '三维数模网络地址（仅登记链接，不做轻量化转换）'
+    : '请输入文档网络地址，如 https://example.com/doc.pdf'
+)
+
 const acceptHint = computed(() => {
-  if (!props.accept) return '支持所有格式'
-  const labels = props.accept.split(',').map(p => {
-    if (p === '.pdf') return 'PDF'; if (p === '.docx' || p === '.doc') return 'Word'
-    if (p === '.xlsx' || p === '.xls') return 'Excel'; if (p === '.zip' || p === '.rar') return '压缩包'
+  if (!effectiveAccept.value) return '支持所有格式'
+  const labels = effectiveAccept.value.split(',').map(p => {
+    const ext = p.trim().toLowerCase()
+    if (ext === '.pdf') return 'PDF'
+    if (ext === '.docx' || ext === '.doc') return 'Word'
+    if (ext === '.xlsx' || ext === '.xls') return 'Excel'
+    if (ext === '.zip' || ext === '.rar') return '压缩包'
+    if (ext === '.step' || ext === '.stp') return 'STEP'
+    if (ext === '.iges' || ext === '.igs') return 'IGES'
+    if (ext === '.stl') return 'STL'
+    if (ext === '.catpart' || ext === '.catproduct') return 'CATIA'
+    if (ext === '.sldprt' || ext === '.sldasm') return 'SolidWorks'
+    if (ext === '.prt' || ext === '.asm') return 'Creo / NX'
     return p.trim()
   })
   return `支持 ${labels.join('、')}`
+})
+
+/** 上传区提示：数模场景说清楚"哪些能预览、哪些只归档" */
+const hintLines = computed(() => {
+  if (isCadModel.value) {
+    return [
+      'STEP / IGES / STL：上传后可由系统转换成轻量化文件，生成三维预览',
+      'CATIA（.CATPart/.CATProduct）、Creo / NX（.prt/.asm）、SolidWorks（.sldprt/.sldasm）：仅归档保存，需要预览请另存 STEP 后再上传',
+    ]
+  }
+  return effectiveAccept.value ? [acceptHint.value] : []
 })
 
 // 监听 value（oid）变化，自动查询 CKFile 信息用于显示

@@ -117,10 +117,12 @@ public class SysAdminInitializer implements CommandLineRunner {
             jdbcTemplate.update(
                     "UPDATE ck_role SET tenant_oid = ? WHERE tenant_oid IS NULL OR tenant_oid = ?",
                     TenantContext.PLATFORM_TENANT_OID, TenantContext.DEFAULT_TENANT_OID);
-            // 角色成员记录归属平台租户
+            // 角色成员记录归属 = **用户所在租户**（2026-10-11 角色按租户隔离后：成员行与用户同租户才对得上；
+            // 旧写法统一写平台会把租户管理员的成员行改到平台 → 隔离后丢角色）
             jdbcTemplate.update(
-                    "UPDATE ck_role_member SET tenant_oid = ? WHERE tenant_oid IS NULL OR tenant_oid = ?",
-                    TenantContext.PLATFORM_TENANT_OID, TenantContext.DEFAULT_TENANT_OID);
+                    "UPDATE ck_role_member rm SET tenant_oid = u.tenant_oid " +
+                    "FROM ck_user u WHERE u.oid = rm.user_oid " +
+                    "AND (rm.tenant_oid IS NULL OR rm.tenant_oid <> u.tenant_oid)");
             // sysadmin 用户归属平台租户
             jdbcTemplate.update(
                     "UPDATE ck_user SET tenant_oid = ? WHERE username = ?",
@@ -130,17 +132,20 @@ public class SysAdminInitializer implements CommandLineRunner {
                     "UPDATE ck_user SET tenant_oid = ? WHERE tenant_oid IS NULL AND username != ?",
                     TenantContext.DEFAULT_TENANT_OID, SYSADMIN_USERNAME);
 
-            // 强制确保 sysadmin 拥有 PLATFORM_ADMIN 角色（幂等）
+            // 强制确保 sysadmin 拥有 PLATFORM_ADMIN 角色（幂等）。
+            // ★ 角色按租户隔离后 role.code 会在"平台 + 各租户"各有一份，按 code 的 JOIN 必须同时限定平台租户，
+            //   否则会命中租户副本、给 sysadmin 错绑一份租户角色。
             String sql = "INSERT INTO ck_role_member (oid, user_oid, role_oid, tenant_oid, creator, created_at, updater, updated_at) "
                     + "SELECT ?, u.oid, r.oid, ?, 'system', NOW(), 'system', NOW() "
                     + "FROM ck_user u, ck_role r "
-                    + "WHERE u.username = ? AND r.code = ? "
+                    + "WHERE u.username = ? AND r.code = ? AND r.tenant_oid = ? "
                     + "AND NOT EXISTS (SELECT 1 FROM ck_role_member rm WHERE rm.user_oid = u.oid AND rm.role_oid = r.oid)";
             jdbcTemplate.update(sql,
                     java.util.UUID.randomUUID().toString(),
                     TenantContext.PLATFORM_TENANT_OID,
                     SYSADMIN_USERNAME,
-                    PLATFORM_ADMIN_ROLE_CODE);
+                    PLATFORM_ADMIN_ROLE_CODE,
+                    TenantContext.PLATFORM_TENANT_OID);
 
             // 修正 OOTB 类型定义和页面布局的 tenant_oid 为平台租户
             jdbcTemplate.update(

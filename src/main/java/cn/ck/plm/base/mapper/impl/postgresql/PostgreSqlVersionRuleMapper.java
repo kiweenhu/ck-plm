@@ -28,11 +28,13 @@ public interface PostgreSqlVersionRuleMapper extends VersionRuleMapper {
             "#{applicableType}, #{sequenceValue}, #{enabled}, #{tenantOid}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(VersionRule rule);
 
+    // 2026-10-11 起按租户隔离：SET 不再写 tenant_oid —— 否则拦截器见 SQL 含 tenant_oid 会跳过注入，
+    // 且"改归属"本身就是隐患（实体 tenantOid 为空时会把行写成 NULL）。去掉后由拦截器追加本租户条件。
     @Override
     @Update("UPDATE " + TABLE + " SET name = #{name}, code = #{code}, " +
             "rule_definition = #{ruleDefinition}, description = #{description}, " +
             "applicable_type = #{applicableType}, sequence_value = #{sequenceValue}, " +
-            "enabled = #{enabled}, tenant_oid = #{tenantOid}, updater = #{updater}, updated_at = CURRENT_TIMESTAMP " +
+            "enabled = #{enabled}, updater = #{updater}, updated_at = CURRENT_TIMESTAMP " +
             "WHERE oid = #{oid}")
     int update(VersionRule rule);
 

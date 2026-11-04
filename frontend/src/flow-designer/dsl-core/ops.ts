@@ -12,6 +12,7 @@ import {
   ASSIGNEE_NODE_TYPES,
   DSL_VERSION,
   EdgeKind,
+  EdgeRoute,
   GATEWAY_TYPES,
   NodeType,
   SETUP_COVERED_TYPES,
@@ -477,7 +478,7 @@ export function incomingEdges(dsl: FlowDsl, nodeId: string): FlowEdge[] {
  *
  * <p>通知节点用的是 `recipients`，其余参与人节点用 `assignee`。
  * 「设置审批人」活动自身的执行人<b>不算</b>「需要被指定的人员」，故返回 undefined ——
- * 否则它会把自己也算进任务表单（自指）。
+ * 否则它会把自己也算进节点表单（自指）。
  */
 export function participantSpecOf(node: FlowNode): AssigneeSpec | undefined {
   if (!ASSIGNEE_NODE_TYPES.includes(node.type) || node.type === NodeType.SET_ASSIGNEE) {
@@ -501,8 +502,13 @@ export function setupNodes(dsl: FlowDsl): FlowNode[] {
  * 且位于任一设置活动的下游**。刻意<b>不要求活动自己声明</b> ——
  * 「设置审批人」的职责就是把后面所有人工活动的人一次指定好，覆盖是自动的。
  *
- * <p>这是「谁的人员会被设置活动改写」的<b>唯一实现</b>：校验、任务表单、编译三处共用。
+ * <p>这是「谁的人员会被设置活动改写」的<b>唯一实现</b>：校验、节点表单、编译三处共用。
  * 否则会出现「表单列出了某个活动、编译产物却没给它绑定变量」这种两处真相。
+ *
+ * <p>遍历**不沿「驳回」回边**（{@code ignoreReject}）：驳回是回退，不代表"在它之后执行"。
+ * 否则一条"驳回回到上游填报节点"的边，会让那个上游节点被算成下游 ——
+ * 编译时把它的 {@code ${initiator}} 换成 {@code candidateUsers}，
+ * 申请人自己的任务变成"可认领"（前几轮踩过的坑，2026-10-13 一并修掉）。
  */
 export function setupControlledIds(dsl: FlowDsl): Set<string> {
   const ids = new Set<string>()
@@ -514,7 +520,7 @@ export function setupControlledIds(dsl: FlowDsl): Set<string> {
     if (!SETUP_COVERED_TYPES.includes(node.type)) {
       continue
     }
-    if (setters.some((setter) => canReach(dsl, setter.id, node.id))) {
+    if (setters.some((setter) => canReach(dsl, setter.id, node.id, { ignoreReject: true }))) {
       ids.add(node.id)
     }
   }
@@ -525,8 +531,23 @@ export function setupControlledIds(dsl: FlowDsl): Set<string> {
  * 从 fromId 出发能否到达 targetId（含自身）。
  *
  * <p>用于判定「设置审批人活动是否在该活动的上游」—— 不在上游就填不生效。
+ *
+ * <p><b>凡是判定"顺序"（谁在谁之前 / 之后）的调用，一律传 {@code ignoreReject: true}</b>
+ * （2026-10-13 修）：驳回路由是一条<b>回退</b>边，不代表执行先后。带着它走，
+ * 一条"驳回回到上游"的边会让下游活动**反过来**变成上游节点的"可达"，于是出两类错：
+ * <ul>
+ *   <li>「设置审批人」被误报"之前有不由发起人办理的活动"（那活动明明在它之后）——
+ *       用户画完驳回边就存不了盘；</li>
+ *   <li>上游的填报节点被算成"设置审批人的下游"，编译时从 {@code ${initiator}}
+ *       变成 {@code candidateUsers} —— 申请人自己的任务成了"可认领"，没人收到待办。</li>
+ * </ul>
  */
-export function canReach(dsl: FlowDsl, fromId: string, targetId: string): boolean {
+export function canReach(
+  dsl: FlowDsl,
+  fromId: string,
+  targetId: string,
+  options: { ignoreReject?: boolean } = {},
+): boolean {
   if (fromId === targetId) {
     return true
   }
@@ -536,6 +557,9 @@ export function canReach(dsl: FlowDsl, fromId: string, targetId: string): boolea
     const current = queue.shift() as string
     for (const edge of dsl.edges) {
       if (edge.source !== current) {
+        continue
+      }
+      if (options.ignoreReject && edge.route === EdgeRoute.REJECT) {
         continue
       }
       if (edge.target === targetId) {
@@ -692,18 +716,209 @@ export function autoLayout(dsl: FlowDsl, options?: { xGap?: number; yGap?: numbe
     ids.sort((a, b) => (next.layout.nodes[a]?.x ?? 0) - (next.layout.nodes[b]?.x ?? 0))
   })
 
+  /**
+   * 交叉优化：同层相邻换位，直到交叉数不再下降。
+   *
+   * <p><b>为什么光分层不够</b>（用户 2026-11-02 反馈"自动排版后交叉太多"）：分层只保证
+   * "每一层一条横排"，同层的先后却完全照搬旧 x。一个分支短、一个分支长时（快速审批在
+   * 第 4 层、CCB 链到第 8 层），两个汇聚点的左右顺序如果赶上源的分布，几条长边就会在
+   * 中间那一段横竖交错 —— 图上看到的是一团斜线，逻辑却完全正确。
+   *
+   * <p>这里的代价函数很直接：把所有<b>向前边</b>（目标层级更低/同层或回边不参与）按两端
+   * 节点中心连成线段，数"真正穿过"的线段对数（共端点不算）。同层两两换位后交叉数变小
+   * 就保留，变大/不变就换回来 —— 只在"严格更优"时动，所以「左的还在左」这条默认口径
+   * 仍然成立（对称分支互换不减少交叉，一律不动，见上面那段说明与对应单测）。
+   *
+   * <p>手动钉过锚点的节点不参与换位：锚点是用户意图（"这条从左边出"），把它挪到另一侧
+   * 会让线从节点背后绕过去。
+   */
+  const pinned = new Set<string>()
+  next.edges.forEach((edge) => {
+    if (edge.anchor?.source) {
+      pinned.add(edge.source)
+    }
+    if (edge.anchor?.target) {
+      pinned.add(edge.target)
+    }
+  })
+
+  const sizeOf = (id: string) => {
+    const node = next.nodes.find((n) => n.id === id) as FlowNode
+    return defaultNodeSize(node.type)
+  }
   const centerX = 400
+
+  /**
+   * 每层怎么落位：先落在**上游节点的重心**上，再按 xGap 向右铺开。
+   *
+   * <p><b>为什么不能每层都居中到画布中线</b>（用户 2026-11-02 反馈"自动排版后交叉太多"）：
+   * 只有 1 个节点的层会正好落在两列<b>中间</b>，而节点宽 142、列距只有 240 —— 中线到两侧
+   * 只剩 49px，比节点半宽还窄。于是"分支列 → 中列"的长边两侧都被堵死，走线只能在窄缝里
+   * 并排绕行，图上就出现一串贴着的平行竖线 + 横穿。
+   *
+   * <p>跟着上游走之后，单节点层会落在它真正的父节点正下方（本例里是"影响分析会签"那一列），
+   * 另一侧让出完整的空走廊给短分支的长边，走线不必再挤。
+   */
+  const inbound = new Map<string, string[]>()
+  acyclicEdges.forEach((edge) => {
+    if (!inbound.has(edge.target)) {
+      inbound.set(edge.target, [])
+    }
+    ;(inbound.get(edge.target) as string[]).push(edge.source)
+  })
+  const layerIds = [...byLevel.keys()].sort((a, b) => a - b)
+
+  /** 按当前层内顺序算一遍 x（父节点位置已定的按重心，否则沿用原 x） */
+  const layoutOnce = (): Map<string, number> => {
+    const positions = new Map<string, number>()
+    layerIds.forEach((lv) => {
+      const ids = byLevel.get(lv) as string[]
+      const desired = new Map<string, number>()
+      ids.forEach((id) => {
+        const parents = (inbound.get(id) ?? []).filter((p) => positions.has(p))
+        const box = next.layout.nodes[id]
+        desired.set(
+          id,
+          parents.length
+            ? parents.reduce((sum, p) => sum + (positions.get(p) as number), 0) / parents.length
+            : box
+              ? box.x + (box.width ?? sizeOf(id).width) / 2
+              : centerX,
+        )
+      })
+      // 先按"想去的位置"排，同值保持原有左右顺序（稳定排序）
+      ids.sort(
+        (a, b) =>
+          (desired.get(a) as number) - (desired.get(b) as number) ||
+          (next.layout.nodes[a]?.x ?? 0) - (next.layout.nodes[b]?.x ?? 0),
+      )
+      let cursor = Number.NEGATIVE_INFINITY
+      ids.forEach((id) => {
+        const x = Math.max(desired.get(id) as number, cursor + xGap)
+        positions.set(id, x)
+        cursor = x
+      })
+      /**
+       * 铺开只会向右"撑"，整层会整体右偏 —— 最后把这一层挪回它想去的位置。
+       *
+       * <p>这一步是"网关扇出仍然左右对称"的保证：两个分支都想落在网关正下方（重心相同），
+       * 不校正的话会排成"网关 → 右、更右"两条斜线；校正后恢复成一左一右的对称扇形，
+       * 与旧行为一致，视觉上也更好认。
+       */
+      const shift =
+        ids.reduce((sum, id) => sum + ((desired.get(id) as number) - (positions.get(id) as number)), 0) / ids.length
+      if (shift) {
+        ids.forEach((id) => positions.set(id, (positions.get(id) as number) + shift))
+      }
+    })
+    return positions
+  }
+
+  // 两遍：第二遍让"被撑开的下游"重新对齐到它真正的父节点上
+  let positions = layoutOnce()
+  positions = layoutOnce()
+
+  // 给定当前顺序，算出每个节点的中心点（与最终落位同一套公式，避免"优化用的坐标"和"画出来的坐标"不一致）
+  const centersOf = (): Map<string, { x: number; y: number }> => {
+    const centers = new Map<string, { x: number; y: number }>()
+    byLevel.forEach((ids, lv) => {
+      ids.forEach((id) => {
+        const size = sizeOf(id)
+        centers.set(id, {
+          x: positions.get(id) ?? centerX,
+          y: 40 + lv * yGap + size.height / 2,
+        })
+      })
+    })
+    return centers
+  }
+
+  // 只数向前边：回边有自己的外侧车道（见 canvas 的 returnLaneVertices），不在这套直线模型里
+  const forwardEdges = next.edges.filter((edge) => {
+    const from = level.get(edge.source)
+    const to = level.get(edge.target)
+    return from !== undefined && to !== undefined && to > from && edge.source !== edge.target
+  })
+
+  const countCrossings = (): number => {
+    const centers = centersOf()
+    const segments = forwardEdges
+      .map((edge) => [centers.get(edge.source), centers.get(edge.target), edge] as const)
+      .filter(([a, b]) => !!a && !!b)
+    let crossings = 0
+    for (let i = 0; i < segments.length; i++) {
+      for (let j = i + 1; j < segments.length; j++) {
+        const [a1, a2, ea] = segments[i]
+        const [b1, b2, eb] = segments[j]
+        // 共端点的两条边不算交叉：那是同一条走廊里的分支，交叉数惩罚会误伤正常扇出
+        if (ea.source === eb.source || ea.target === eb.target || ea.source === eb.target || ea.target === eb.source) {
+          continue
+        }
+        if (segmentsIntersect(a1 as Pt, a2 as Pt, b1 as Pt, b2 as Pt)) {
+          crossings++
+        }
+      }
+    }
+    return crossings
+  }
+
+  let best = countCrossings()
+  let improved = true
+  // 轮次上限：层数 × 层内节点数都小，几轮就收敛；留个硬上限防止病态图拖慢画布
+  for (let round = 0; round < 8 && improved; round++) {
+    improved = false
+    for (const ids of byLevel.values()) {
+      if (ids.length < 2) {
+        continue
+      }
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          if (pinned.has(ids[i]) || pinned.has(ids[j])) {
+            continue
+          }
+          ;[ids[i], ids[j]] = [ids[j], ids[i]]
+          // 换位会改变铺开结果（重心变了），坐标要跟着重算，否则比较的是旧位置下的交叉数
+          positions = layoutOnce()
+          const crossings = countCrossings()
+          if (crossings < best) {
+            best = crossings
+            improved = true
+          } else {
+            ;[ids[i], ids[j]] = [ids[j], ids[i]]
+            positions = layoutOnce()
+          }
+        }
+      }
+    }
+  }
+
   byLevel.forEach((ids, lv) => {
-    ids.forEach((id, index) => {
-      const node = next.nodes.find((n) => n.id === id) as FlowNode
-      const size = defaultNodeSize(node.type)
-      const offset = (index - (ids.length - 1) / 2) * xGap
+    ids.forEach((id) => {
+      const size = sizeOf(id)
       next.layout.nodes[id] = {
-        x: centerX + offset - size.width / 2,
+        x: (positions.get(id) ?? centerX) - size.width / 2,
         y: 40 + lv * yGap,
         ...size,
       }
     })
   })
   return next
+}
+
+/** 平面坐标点（布局优化内部用） */
+type Pt = { x: number; y: number }
+
+/**
+ * 两条线段是否"真正穿过"。
+ *
+ * <p>用叉积符号判断：只有两条线段各自把对方两端分在两侧才算交叉。端点相接、共线重叠、
+ * 只擦到端点都不算 —— 布局优化里这些情况都不该算作"视觉上的交叉"。
+ */
+function segmentsIntersect(a1: Pt, a2: Pt, b1: Pt, b2: Pt): boolean {
+  const side = (p: Pt, q: Pt, r: Pt): number => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+  const d1 = side(b1, b2, a1)
+  const d2 = side(b1, b2, a2)
+  const d3 = side(a1, a2, b1)
+  const d4 = side(a1, a2, b2)
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
 }

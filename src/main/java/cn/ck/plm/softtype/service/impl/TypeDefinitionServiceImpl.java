@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -30,6 +31,15 @@ import java.util.stream.Collectors;
  */
 @Service
 public class TypeDefinitionServiceImpl implements TypeDefinitionService {
+
+    /**
+     * 类型树根层的「置后」阈值：{@code sort_order >= 90} 的类型排在常规类型之后。
+     *
+     * <p>为什么不是直接改成 {@code ORDER BY sort_order}：那会把全部类型从字母序
+     * 打散成另一套顺序（现在 sort_order 只是几个随手写的值，且有重复：FOOTPRINT 与
+     * CHANGE_NOTICE 都是 31）。这里只把 sort_order 当作一个"优先级标记"用。
+     */
+    private static final int DEFERRED_SORT_ORDER = 90;
 
     private final TypeDefinitionMapper mapper;
     private final TypeIBAMapper typeIBAMapper;
@@ -476,6 +486,12 @@ public class TypeDefinitionServiceImpl implements TypeDefinitionService {
                 roots.add(td);
             }
         }
+        // 置后：sort_order >= 90 的类型沉到根层末尾。
+        // 主排序仍是 mapper 的 ORDER BY code（List.sort 稳定，同组内保持字母序），
+        // sort_order 在这里只承担"优先级标记"——它此前从未参与排序，启用为全量排序键
+        // 会把所有类型从字母序打散成另一套顺序，收益远小于风险。
+        // 约定：0~89 常规（按 code），>=90 置后（同样按 code）。目前是变更三类与 BOM 行。
+        roots.sort(Comparator.comparingInt(td -> td.getSortOrder() >= DEFERRED_SORT_ORDER ? 1 : 0));
         return roots;
     }
 

@@ -29,8 +29,8 @@ public interface PostgreSqlCKAttachmentMapper extends CKAttachmentMapper {
     int insert(CKAttachment attachment);
 
     @Override
-    @Update("UPDATE ck_attachment SET file_name = #{fileName}, file_size = #{fileSize}, " +
-            "storage_path = #{storagePath}, mime_type = #{mimeType}, " +
+    @Update("UPDATE ck_attachment SET owner_oid = #{ownerOid}, file_name = #{fileName}, " +
+            "file_size = #{fileSize}, storage_path = #{storagePath}, mime_type = #{mimeType}, " +
             "updater = #{updater}, updated_at = #{updatedAt} " +
             "WHERE oid = #{oid}")
     int update(CKAttachment attachment);

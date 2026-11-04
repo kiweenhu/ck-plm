@@ -23,6 +23,7 @@
         <!-- 表格 -->
         <div class="lc-table-wrap">
           <DataTable
+            scroll-x="max-content"
             :columns="statusColumns"
             :data-source="statuses"
             :loading="statusLoading"
@@ -30,7 +31,7 @@
             :search-fields="['code', 'displayName']"
             :enable-resize="true"
             :show-column-toggle="true"
-            :max-height="400"
+            stretch
             row-key="code"
             size="middle"
           >
@@ -103,6 +104,7 @@
         <!-- 表格 -->
         <div class="lc-table-wrap">
           <DataTable
+            scroll-x="max-content"
             :columns="templateColumns"
             :data-source="templates"
             :loading="templateLoading"
@@ -110,7 +112,7 @@
             :search-fields="['code', 'name', 'description']"
             :enable-resize="true"
             :show-column-toggle="true"
-            :max-height="400"
+            stretch
             row-key="code"
             size="middle"
           >
@@ -153,6 +155,16 @@
                 <a-tag :color="isPlatformData(record) ? 'purple' : 'green'" size="small">
                   {{ isPlatformData(record) ? '平台' : '本租户' }}
                 </a-tag>
+              </template>
+              <!--
+                描述列：定宽 + 单行省略，hover 出 tooltip。
+                不这么做的话，scroll-x="max-content" 会按这行最长的那句话把整张表撑宽 ——
+                其余列全被挤到一起，用户还得横向拖动才能看完（2026-11-04 用户截图反馈）。
+              -->
+              <template v-else-if="column.key === 'description'">
+                <a-tooltip :title="record.description" placement="topLeft">
+                  <span class="lc-cell-ellipsis">{{ record.description || '—' }}</span>
+                </a-tooltip>
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space size="small">
@@ -257,6 +269,11 @@
                   :disabled="templateModal.form.states.some((ts, i) => i !== idx && ts.statusCode === st.code)"
                 >{{ st.displayName }} ({{ st.code }})</a-select-option>
               </a-select>
+              <!-- 可修订：只有该状态下的对象才允许修订；同一判据也用于"能否发起变更" -->
+              <label class="lc-tmpl-state-revisable" title="关闭后，处于该状态的对象不允许修订，也不能发起变更">
+                <a-switch v-model:checked="s.revisable" size="small" />
+                <span>可修订</span>
+              </label>
               <a-button
                 v-if="templateModal.form.states.length > 1"
                 type="link" size="small" danger @click="removeTmplState(idx)"
@@ -446,7 +463,8 @@ const templateColumns = [
   { title: '流转规则', key: 'transitions', width: 80 },
   { title: '来源', key: 'source', width: 70 },
   { title: '状态', key: 'active', width: 60 },
-  { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
+  // 定宽是省略生效的前提：不给宽度时（scroll-x="max-content"）列宽由内容决定，永远撑得下
+  { title: '描述', dataIndex: 'description', key: 'description', width: 300, ellipsis: true },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 150 },
   { title: '操作', key: 'action', width: 170 }
 ]
@@ -558,7 +576,12 @@ async function openTemplateEdit(record) {
         description: t.description || '',
         active: t.active !== false,
         initialStateCode: t.initialStateCode || '',
-        states: (t.states || []).map(s => ({ statusCode: s.statusCode, statusDisplayName: s.statusDisplayName, sortOrder: s.sortOrder })),
+        states: (t.states || []).map(s => ({
+          statusCode: s.statusCode,
+          statusDisplayName: s.statusDisplayName,
+          sortOrder: s.sortOrder,
+          revisable: s.revisable !== false
+        })),
         transitions: (t.transitions || []).map(tr => ({ fromStatusCode: tr.fromStatusCode, toStatusCode: tr.toStatusCode })),
         rejections: (t.rejections || []).map(rr => ({ fromStatusCode: rr.fromStatusCode, toStatusCode: rr.toStatusCode }))
       }
@@ -568,7 +591,10 @@ async function openTemplateEdit(record) {
 }
 
 function addTmplState() {
-  templateModal.form.states.push({ statusCode: '', statusDisplayName: '', sortOrder: templateModal.form.states.length + 1 })
+  templateModal.form.states.push({
+    statusCode: '', statusDisplayName: '', sortOrder: templateModal.form.states.length + 1,
+    revisable: true
+  })
 }
 
 function removeTmplState(idx) {
@@ -627,7 +653,9 @@ async function handleTemplateSave() {
         .map((s, i) => ({
           statusCode: s.statusCode,
           statusDisplayName: s.statusDisplayName,
-          sortOrder: i + 1
+          sortOrder: i + 1,
+          // 默认允许：存量模板保持原有行为，由管理员按状态显式关闭
+          revisable: s.revisable !== false
         })),
       transitions: templateModal.form.transitions
         .filter(t => t.fromStatusCode && t.toStatusCode)
@@ -756,7 +784,11 @@ watch(activeTab, (val) => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* 2026-10-12：由 hidden 改 visible —— 矮视口下 .lc-table-wrap 有保底高度（见下），
+     被抬起的部分必须放行出去交给 .bc-content 的那条外层滚动条；
+     若继续 hidden，表格下半截与分页器会被直接裁掉（比"表体太小"更糟）。
+     正常视口内容不溢出时，此项无任何影响。 */
+  overflow: visible;
 }
 .lc-tabs :deep(.ant-tabs-content) {
   flex: 1;
@@ -799,10 +831,20 @@ watch(activeTab, (val) => {
   color: #8c8c8c;
 }
 
-/* 表格区域 */
+/* 表格区域：必须是 flex 容器 —— 否则内层 DataTable 的 flex:1 / min-height:0 不生效，
+   表格会按内容自然高（535px）溢出本区域，再被外层 .ant-tabs-content-holder 的
+   overflow:hidden 裁掉 170px（分页器一起看不见，且没有任何滚动条）。
+   配合 DataTable 的 stretch 模式：表体自动滚动、表头与分页器固定。 */
 .lc-table-wrap {
   flex: 1;
-  min-height: 0;
+  /* 保底高度（2026-10-12）：小视口（如 1080×560）下 stretch 表体会被挤到只剩几十像素
+     （统计栏 + 工具栏 + 表头 + 分页器把空间吃光），"看得见页签、看不见清单"。
+     给一个保底后：矮窗口下整页由 .bc-content 滚（仍是唯一一条滚动条），
+     高窗口下 flex:1 照常撑满、不受影响。 */
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .lc-order-badge {
   display: inline-flex;
@@ -823,6 +865,17 @@ watch(activeTab, (val) => {
 .lc-empty-hint {
   font-size: 12px;
   color: #bfbfbf;
+}
+/*
+  单行省略：单元格宽度已由列宽定死，这里只负责"超出就剪掉"。
+  display:block 是必须的 —— a-tooltip 会在 span 外面再包一层，行内元素量不到可用宽度。
+*/
+.lc-cell-ellipsis {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 模板弹窗 */
@@ -863,6 +916,17 @@ watch(activeTab, (val) => {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+/* 每个状态的「可修订」开关：与状态下拉同一行，右侧留白给删除按钮 */
+.lc-tmpl-state-revisable {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: #595959;
+  white-space: nowrap;
+  cursor: pointer;
 }
 .lc-tmpl-state-num {
   width: 22px;

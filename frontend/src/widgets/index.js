@@ -15,7 +15,7 @@ export { default as WidgetSelector } from './components/WidgetSelector.vue'
 export { default as WidgetPreview } from './components/WidgetPreview.vue'
 
 // 数据
-export { WIDGETS, CATEGORIES, getWidgetByType, getWidgetIcon, isContainerWidget, getFieldWidgetTypes } from './catalog'
+export { WIDGETS, CATEGORIES, getWidgetByType, getWidgetIcon, isContainerWidget, getFieldWidgetTypes, normalizeWidgetType } from './catalog'
 
 // 工具
 export { createFieldFromWidget, getWidgetLabel, createCompanionFields } from './registry'

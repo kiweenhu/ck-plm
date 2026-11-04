@@ -450,8 +450,17 @@ export interface TaskNode extends NodeBase {
   type: 'TASK'
   assignee: AssigneeSpec
   formRef?: string
-  /** 交付物（文档类型 code 列表） */
-  deliverables?: string[]
+  /**
+   * 是否需要交付件（2026-10-13 用户口径）。
+   *
+   * <p>原先这里是「交付物」—— 让人手填**文档类型 code**（`deliverables: string[]`）。
+   * 手填 code 既容易错、又说不清"这件交付件是为哪个业务对象准备的"；现在改成：
+   * 先声明**要不要**交付件，要的话用 {@link deliverableObjectTypes} 多选**业务对象类型**
+   * （候选来自对象类型定义清单，与「绑定业务对象」同源）。
+   */
+  needDeliverables?: boolean
+  /** 交付件绑定的业务对象类型（code 列表，可多选）—— 仅在 {@link needDeliverables} 为真时有意义 */
+  deliverableObjectTypes?: string[]
   deadline?: Deadline
   binding?: ObjectBinding
 }
@@ -489,12 +498,39 @@ export interface NotifyNode extends NodeBase {
   attachPrimaryObject?: boolean
 }
 
+/**
+ * 子流程多实例：一个节点拉起 N 个子流程实例。
+ *
+ * <p>典型场景是「一张变更通告派生 N 个变更任务」：父流程里放一个任务清单变量，
+ * 子流程节点按清单逐个拉起，全部结束后才继续往下走 —— 1:M 的父子关系由此成立。
+ *
+ * <p>注意与只会签的差别：会签的多实例人不同、流程定义相同；这里每个实例是<b>独立的流程实例</b>
+ * （各自的 businessKey、各自的办理人、各自的生命周期）。
+ */
+export interface SubProcessMultiInstance {
+  /** 集合变量名（父流程里的 List 变量，如 changeTaskList）；只填变量名，不要写 ${} */
+  collection: string
+  /** 元素变量名（每个实例取到的当前元素），缺省 item */
+  elementVariable?: string
+  /** 串行执行（默认并行；并行天然等待全部子实例结束后再继续） */
+  sequential?: boolean
+  /**
+   * 业务 key 表达式，相对元素变量，如 `oid` → 编译为 `${item.oid}`。
+   *
+   * <p>每个子实例的业务 key 必须不同，否则子流程查不到自己对应的业务单据；
+   * 留空时子实例沿用父流程的 businessKey（会重号，仅适合纯审批型子流程）。
+   */
+  businessKey?: string
+}
+
 export interface SubProcessNode extends NodeBase {
   type: 'SUB_PROCESS'
   /** 被调用的流程定义 key */
   processKey: string
   /** 变量映射：子流程变量 → 父流程表达式 */
   variableMap?: Record<string, string>
+  /** 多实例：不填 = 单实例调用一次 */
+  multiInstance?: SubProcessMultiInstance
 }
 
 export interface TimerNode extends NodeBase {
@@ -617,7 +653,10 @@ const flowNodeSchema: z.ZodType<FlowNode> = z.discriminatedUnion('type', [
     type: z.literal(NodeType.TASK),
     assignee: assigneeSchema,
     formRef: z.string().optional(),
-    deliverables: z.array(z.string()).optional(),
+    // 老模板里的 deliverables（手填文档 code）不在这里 —— zod 默认丢弃未声明键，
+    // 于是老数据在加载时自然被清掉，不会留下"看不见却仍然生效"的配置
+    needDeliverables: z.boolean().optional(),
+    deliverableObjectTypes: z.array(z.string()).optional(),
     deadline: deadlineSchema.optional(),
     binding: objectBindingSchema.optional(),
   }),
@@ -651,6 +690,14 @@ const flowNodeSchema: z.ZodType<FlowNode> = z.discriminatedUnion('type', [
     type: z.literal(NodeType.SUB_PROCESS),
     processKey: z.string().min(1),
     variableMap: z.record(z.string()).optional(),
+    multiInstance: z
+      .object({
+        collection: z.string().min(1),
+        elementVariable: z.string().optional(),
+        sequential: z.boolean().optional(),
+        businessKey: z.string().optional(),
+      })
+      .optional(),
   }),
   z.object({
     ...nodeBase,
@@ -921,50 +968,106 @@ function normalizeLegacyDsl(input: unknown): unknown {
   }
 
   root.meta = meta
-  root.nodes = stripStaleRejectTargets(root.nodes, root.edges)
+  root.nodes = normalizeApprovalMode(stripNodeBinding(stripLegacyReject(root.nodes)))
   return root
 }
 
 /**
- * 已经画了「驳回」出边的节点，清掉它的「驳回目标」。
+ * 清掉老模板里遗留的「驳回」配置（2026-10-13：驳回统一为**画线**）。
  *
- * <p>两者是同一件事的两种做法，必须二选一：留着会变成"看不见却仍然生效"的配置
- * （面板上那个字段已经因画了驳回边而隐藏），而且运行期两条腿都会想动手。
+ * <p>原先是"两套表达"：属性面板的「允许驳回 + 驳回目标（上一步 / 发起人 / 指定节点）」
+ * 与画布上的「驳回」出边。用户口径已统一为画线，面板不再提供那些字段 ——
+ * 加载时必须把老数据里的 {@code reject} 一并清掉，否则它会变成
+ * <b>"看不见却仍然生效"</b>的配置（编译期照旧写进 {@code ckplm:reject}、运行期照旧一键跳回，
+ * 用户却在界面上找不到地方改，也无法理解"为什么没画线也能驳回"）。
  *
- * <p>为什么必须在<b>加载时</b>做：面板的"隐藏即清空"只在编辑该节点时触发，
- * 而从<b>连线</b>面板画驳回边并不经过节点面板 —— 那时残留的目标没人清。
+ * <p>代价说清楚：依赖旧配置驳回的老流程，加载保存后会**不可驳回** ——
+ * 需要在画布上补一条路由为「驳回」的出边（这正是统一之后唯一的做法）。
  */
-function stripStaleRejectTargets(nodes: unknown, edges: unknown): unknown {
-  if (!Array.isArray(nodes) || !Array.isArray(edges)) {
+function stripLegacyReject(nodes: unknown): unknown {
+  if (!Array.isArray(nodes)) {
     return nodes
   }
-  const rejectSources = new Set(
-    edges
-      .filter((edge) => !!edge && typeof edge === 'object'
-        && (edge as Record<string, unknown>).route === EdgeRoute.REJECT)
-      .map((edge) => (edge as Record<string, unknown>).source)
-      .filter((source): source is string => typeof source === 'string'),
-  )
-  if (rejectSources.size === 0) {
-    return nodes
-  }
-  return nodes.map((node) => {
+  let touched = false
+  const next = nodes.map((node) => {
     if (!node || typeof node !== 'object') {
       return node
     }
     const record = node as Record<string, unknown>
-    if (!rejectSources.has(String(record.id))) {
+    if (!('reject' in record)) {
       return node
     }
-    const reject = record.reject
-    if (!reject || typeof reject !== 'object' || !('target' in (reject as Record<string, unknown>))) {
-      return node
-    }
-    const nextReject = { ...(reject as Record<string, unknown>) }
-    delete nextReject.target
-    delete nextReject.targetNodeId
-    return { ...record, reject: nextReject }
+    touched = true
+    const { reject: _legacyReject, ...rest } = record
+    return rest
   })
+  return touched ? next : nodes
+}
+
+/**
+ * 清掉审批 / 会签 / 办理节点上的「绑定业务对象」声明（2026-10-13 用户口径）。
+ *
+ * <p>这三类节点的属性面板已不再提供该开关（见 app/panel/node-schemas.ts）：
+ * 业务对象在流程发起时就绑定了（businessObjectSet），各节点再声明一次既没人读、
+ * 又要用户多配一遍。留着老数据就是"看不见却仍然生效"——它会照旧被编译进
+ * {@code ckplm:binding}。**开始节点的绑定保留**：发起时确定业务对象是它的职责。
+ */
+function stripNodeBinding(nodes: unknown): unknown {
+  if (!Array.isArray(nodes)) {
+    return nodes
+  }
+  // 与 DSL 的 NodeType 取值一致
+  const covered = new Set(['APPROVAL', 'COUNTERSIGN_APPROVAL', 'TASK'])
+  let touched = false
+  const next = nodes.map((node) => {
+    if (!node || typeof node !== 'object') {
+      return node
+    }
+    const record = node as Record<string, unknown>
+    if (!covered.has(String(record.type)) || !('binding' in record)) {
+      return node
+    }
+    touched = true
+    const { binding: _legacyBinding, ...rest } = record
+    return rest
+  })
+  return touched ? next : nodes
+}
+
+/**
+ * 把**审批节点**的审批模式统一成「单签」（2026-10-13 用户口径）。
+ *
+ * <p>审批模式的唯一出口固定为单签：需要多人集体决策时用「会签审批」节点
+ * （见 app/panel/node-schemas.ts 的 APPROVAL 字段说明）。老模板里配过串行 / 并行全员 /
+ * 或签 / 会签的节点，加载时一并规范化 —— 否则会变成"面板上没有这个开关、编译却照旧出多实例"
+ * 的看不见却生效的配置；连带把只对会签有意义的 `passRule` 清掉。
+ *
+ * <p>注意这是一次**行为规范化**：原本多签的审批活动，重新保存部署后按单签跑
+ * （已部署的实例不受影响，它们用的还是当时那一版定义）。
+ */
+function normalizeApprovalMode(nodes: unknown): unknown {
+  if (!Array.isArray(nodes)) {
+    return nodes
+  }
+  let touched = false
+  const next = nodes.map((node) => {
+    if (!node || typeof node !== 'object') {
+      return node
+    }
+    const record = node as Record<string, unknown>
+    if (record.type !== 'APPROVAL') {
+      return node
+    }
+    const modeOk = record.approvalMode === 'SINGLE'
+    const hasPassRule = 'passRule' in record
+    if (modeOk && !hasPassRule) {
+      return node
+    }
+    touched = true
+    const { passRule: _legacyPassRule, ...rest } = record
+    return { ...rest, approvalMode: 'SINGLE' }
+  })
+  return touched ? next : nodes
 }
 
 /** 校验任意 JSON 是否为合法 DSL（返回首个错误信息，供导入/加载时提示） */

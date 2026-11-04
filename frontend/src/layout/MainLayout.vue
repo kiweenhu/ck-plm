@@ -41,6 +41,11 @@
           <span>系列/型号</span>
         </a-menu-item>
 
+        <!-- 数模转换（2026-10-26 迁走）：不再占主导航一项。
+             队列与服务配置是同一条链路的两个视角，已合并到
+             「业务配置 → 轻量化转换」的两个页签里（见 BusinessConfig.vue）；
+             旧链接 /cad/center 由路由重定向到那里，书签不会失效。 -->
+
         <!-- 变更控制 -->
         <a-menu-item key="/change">
           <template #icon><branches-outlined /></template>
@@ -57,6 +62,16 @@
         <a-menu-item key="/system/classifications" v-if="isTenantAdmin">
           <template #icon><folder-outlined /></template>
           <span>分类管理</span>
+        </a-menu-item>
+
+        <!-- MPN 厂商：制造商 / 供应商名录 —— MPN 管理的基础字典（先建字典，再到件上挂 AML/AVL）。
+             显示名与内部标识（key / 路由 path: master-data）是两回事，与本项目其它处同惯例
+             （如 path: resource 显示「企业资源」）。
+             2026-10-11 用户定名：「MPN 数据」→「MPN 厂商」（菜单 / 面包屑 / 标签页 / 页面标题四处同改）。
+             显隐与「企业资源 → MPN 库」同一开关（MPN_MANAGEMENT）：能力关掉，菜单与页签一起消失 -->
+        <a-menu-item key="/master-data" v-if="hasMpn">
+          <template #icon><team-outlined /></template>
+          <span>MPN 厂商</span>
         </a-menu-item>
 
         <!-- 业务配置（仅租户管理员可见） -->
@@ -83,8 +98,15 @@
           <template #icon><apartment-outlined /></template>
           <template #title>工作流</template>
           <a-menu-item key="/workflow/task">任务中心</a-menu-item>
-          <a-menu-item key="/workflow/monitor">流程监控</a-menu-item>
-          <a-menu-item key="/workflow/design">流程清单</a-menu-item>
+          <!-- 流程监控（仅租户管理员可见，2026-10-29 用户要求）：
+               这一页是**全公司**的流程实例清单，带挂起 / 终止 / 删除 —— 属于管理动作。
+               普通成员看自己的待办去「任务中心」，跟进自己参与的流程用业务对象上的
+               「关联流程」或评审行的「查看流程」（那条路径不受此限制）。 -->
+          <a-menu-item key="/workflow/monitor" v-if="isTenantAdmin">流程监控</a-menu-item>
+          <!-- 流程清单（仅租户管理员可见，2026-10-26 用户要求）：
+               这一页是**流程模板的设计与部署**入口（新建 / 复制 / 启停 / 删除 / 部署），
+               属于企业级方法论配置，不是普通成员的日常操作 —— 与「业务配置」同级。 -->
+          <a-menu-item key="/workflow/design" v-if="isTenantAdmin">流程清单</a-menu-item>
         </a-sub-menu>
 
         <!-- 操作日志（所有登录用户可见） -->
@@ -101,6 +123,7 @@
           <a-menu-item key="/system/storage">文件存储</a-menu-item>
           <a-menu-item key="/system/security">安全策略</a-menu-item>
           <a-menu-item key="/system/tenants">租户审核</a-menu-item>
+          <a-menu-item key="/system/industry-packs">行业包</a-menu-item>
         </a-sub-menu>
       </a-menu>
 
@@ -137,7 +160,7 @@
             v-model:value="searchKeyword"
             :options="searchOptions"
             :filter-option="false"
-            placeholder="搜索产品/零组件/文档（名称或编码）"
+            placeholder="搜索产品 / 零组件 / 文档 / 变更（名称或编码）"
             allow-clear
             @search="onSearchInput"
             @select="onSearchSelect"
@@ -276,6 +299,14 @@ import {
   ApartmentOutlined, FolderOutlined,
   FileTextOutlined, SoundOutlined
 } from '@ant-design/icons-vue'
+import { useCapabilities } from '@/composables/useCapabilities'
+
+// 导航项按「本租户能力账本」显隐（ck_tenant_capability）——
+// 与页面内的入口同一开关：能力关掉，菜单与页签一起消失，不会出现"菜单点进去什么都没有"。
+// 取不到能力（未装包 / 接口异常）时 has() 为 false → 不显示入口（宁可不显示，也不给空诺）。
+const { load: loadCapabilities, loaded: capLoaded, has } = useCapabilities()
+/** MPN 管理（制造商 / 供应商名录 + AML/AVL）是否对本租户启用 */
+const hasMpn = computed(() => has('MPN_MANAGEMENT'))
 
 const router = useRouter()
 const route = useRoute()
@@ -283,6 +314,21 @@ const userStore = useUserStore()
 
 // 初始化 user store
 userStore.init()
+
+// 能力账本要在**任何入口**都先加载：导航项按它显隐，而用户可能直接落在 /home。
+// 不放在这里的话，只有进过企业资源等页面的用户才看得到受能力控制的菜单项。
+//
+// 2026-10-12 加退避重试：瞬态失败（后端重启窗口 / 装包正写账本时）如果只试一次，
+// 用户会看到"受能力控制的一堆入口集体消失"（企业资源页只剩 3 个不受控子库页签），
+// 且旧实现失败永久缓存、只能整页刷新 —— 现在 3 秒后自动重试一次（仅一次）。
+function bootstrapCapabilities(allowRetry = true) {
+  loadCapabilities().then(() => {
+    if (!capLoaded.value && allowRetry) {
+      setTimeout(() => bootstrapCapabilities(false), 3000)
+    }
+  })
+}
+bootstrapCapabilities()
 
 const collapsed = ref(false)
 
@@ -323,6 +369,7 @@ const breadcrumbMap = {
   '/home': '工作台',
   '/product/:productId': '系列/型号',
   '/resource': '企业资源',
+  '/master-data': 'MPN 厂商（制造商 / 供应商）',
   '/change': '变更控制',
   '/improve': '持续改进',
   '/media': '产品图册',
@@ -345,6 +392,7 @@ const breadcrumbMap = {
   '/system/security': '系统配置 / 安全策略',
   '/system/designer': '业务配置 / 页面设计器',
   '/system/tenants': '系统配置 / 租户审核',
+  '/system/industry-packs': '系统配置 / 行业包',
   '/log': '操作日志',
   '/profile': '个人信息'
 }
@@ -434,10 +482,17 @@ const searchOptions = ref([])
 let searchTimer = null
 
 function searchTypeColor(type) {
-  return ({ PRODUCT_LINE: 'blue', PRODUCT_MODEL: 'cyan', PART: 'green', DOCUMENT: 'orange' })[type] || 'default'
+  return ({
+    PRODUCT_LINE: 'blue', PRODUCT_MODEL: 'cyan', PART: 'green', DOCUMENT: 'orange',
+    // 2026-11-01：工程文档与变更单也能被搜到（后端 /global-search 加了这两类）
+    ENG_DOCUMENT: 'volcano', CHANGE_REQUEST: 'purple', CHANGE_NOTICE: 'magenta'
+  })[type] || 'default'
 }
 function searchTypeLabel(type) {
-  return ({ PRODUCT_LINE: '产品系列', PRODUCT_MODEL: '产品型号', PART: '零组件', DOCUMENT: '文档' })[type] || type
+  return ({
+    PRODUCT_LINE: '产品系列', PRODUCT_MODEL: '产品型号', PART: '零组件', DOCUMENT: '文档',
+    ENG_DOCUMENT: '工程文档', CHANGE_REQUEST: '变更请求', CHANGE_NOTICE: '变更通告'
+  })[type] || type
 }
 
 function onSearchInput(val) {
@@ -474,6 +529,17 @@ function onSearchSelect(value, option) {
     case 'DOCUMENT':
       tip = `文档「${item.code} ${item.name}」请到所属产品线下查看`
       path = '/product'
+      break
+    case 'ENG_DOCUMENT':
+      tip = `工程文档「${item.code} ${item.name}」请到所属产品线下查看`
+      path = '/product'
+      break
+    case 'CHANGE_REQUEST':
+      // 带着 oid 跳：变更控制页会按 ?requestOid= 直接把那张单的详情抽屉打开
+      path = `/change?tab=request&requestOid=${item.oid}`
+      break
+    case 'CHANGE_NOTICE':
+      path = `/change?tab=notice&noticeOid=${item.oid}`
       break
   }
   if (tip) message.info(tip)

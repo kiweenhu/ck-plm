@@ -1,0 +1,20 @@
+{
+  "root": {
+    "code": "CORP_RESOURCE",
+    "name": "企业资源库",
+    "description": "企业级资源库（元器件、封装图符、标准件、通用件、技术文档、产品图册等统一归属）"
+  },
+  "children": [
+    { "code": "STD_PART",       "name": "标准件库" },
+    { "code": "GEN_PART",       "name": "通用件库" },
+    { "code": "TECH_DOC",       "name": "技术文档知识库" },
+    { "code": "MEDIA",          "name": "产品图册" },
+    { "code": "OTHER",          "name": "其他" }
+  ],
+  "stages": [
+    { "code": "STD_PART",       "name": "标准件库", "containerCode": "STD_PART" },
+    { "code": "GEN_PART",       "name": "通用件库", "containerCode": "GEN_PART" },
+    { "code": "OTHER",          "name": "其他",     "containerCode": "OTHER" }
+  ],
+  "note": "企业资源库容器树（根 + 5 个通用子库）+ 3 个通用资源子库的归属阶段（Part.stage_oid 非空 → 资源子库需要 stage 行，落 ck_stage.owner_type='LINE'）。电子行业的两个子库（元器件库 / 封装·图符库）及它们的归属阶段不在这里，随 electronics-core 走（2026-10 拆出）—— 平台只留与行业无关的部分。原先只有「元器件库」由初始化器建、另外三个由各自 Mapper 在首次打开时懒建（描述文案还不一致），现统一随包播种：开箱即完整、且描述与平台原有文案逐个对齐（封装图符库用「企业资源库-封装图符库归属阶段」，其余用「企业资源库-资源子库归属阶段」）。2026-10-15 补「其他」库的归属阶段：该库要做「左文件夹树 + 右业务对象列表」的通用页面，而 /folders/tree 的 stageOid 必填 —— 没有 stage 行就一个文件夹都建不了（存量租户由 CHANGELOG「升级说明」节的幂等 SQL 补齐）。阈值/标准件入库配置不进包：它们是「用则存」的用户配置（平台默认值在代码里兜底），当前库中 0 行，进包等于凭空造数据。"
+}

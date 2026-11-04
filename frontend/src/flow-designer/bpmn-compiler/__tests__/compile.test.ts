@@ -64,6 +64,67 @@ describe('基本编译', () => {
   })
 })
 
+describe('终止同层分支（局部终止的声明层）', () => {
+  /** start → 并行网关 → 两支 → 同一个结束 */
+  function parallelFlow(): FlowDsl {
+    return dsl({
+      nodes: [
+        { id: 'start_1', type: NodeType.START, name: '开始', initiator: { strategy: AssigneeStrategy.INITIATOR } },
+        { id: 'pg_1', type: NodeType.PARALLEL_GATEWAY, name: '并行' },
+        { id: 'task_a', type: NodeType.TASK, name: '分支A', assignee: { strategy: AssigneeStrategy.INITIATOR } },
+        { id: 'task_b', type: NodeType.TASK, name: '分支B', assignee: { strategy: AssigneeStrategy.INITIATOR } },
+        { id: 'end_1', type: NodeType.END, name: '结束' },
+      ],
+      edges: [
+        { id: 'flow_1', source: 'start_1', target: 'pg_1', kind: EdgeKind.NORMAL },
+        {
+          id: 'flow_a',
+          source: 'pg_1',
+          target: 'task_a',
+          kind: EdgeKind.CONDITION,
+          condition: { mode: ConditionMode.EXPRESSION, expression: 'approved' },
+          terminateSiblings: true,
+        },
+        { id: 'flow_b', source: 'pg_1', target: 'task_b', kind: EdgeKind.CONDITION, condition: { mode: ConditionMode.EXPRESSION, expression: '!approved' } },
+        { id: 'flow_a_end', source: 'task_a', target: 'end_1', kind: EdgeKind.NORMAL },
+        { id: 'flow_b_end', source: 'task_b', target: 'end_1', kind: EdgeKind.NORMAL },
+      ],
+      layout: {
+        nodes: {
+          start_1: { x: 40, y: 40 },
+          pg_1: { x: 40, y: 120 },
+          task_a: { x: 40, y: 200 },
+          task_b: { x: 200, y: 200 },
+          end_1: { x: 120, y: 280 },
+        },
+      },
+    })
+  }
+
+  it('连线与源节点各写一份声明（运行期读节点即可判定）', () => {
+    const { xml } = compileToBpmnXml(parallelFlow())
+    expect(xml).toContain('ckplm:terminateOn="flow_a"')
+    expect(xml).toContain('ckplm:terminateSiblings="true"')
+  })
+
+  it('往返无损：连线属性被剥掉时，用源节点汇总还原', () => {
+    const { xml } = compileToBpmnXml(parallelFlow())
+    // 模拟「解析器丢弃 sequenceFlow 上的自定义属性」——后端实测过这类情况
+    const stripped = xml.replace(' ckplm:terminateSiblings="true"', '')
+    expect(stripped).not.toContain('ckplm:terminateSiblings')
+
+    const parsed = parseBpmnXml(stripped, { key: 'test_flow' })
+    expect(parsed.dsl.edges.find((e) => e.id === 'flow_a')?.terminateSiblings).toBe(true)
+    expect(parsed.dsl.edges.find((e) => e.id === 'flow_b')?.terminateSiblings).toBeUndefined()
+  })
+
+  it('告警说明运行期会收口，并提示需要汇聚点', () => {
+    const { warnings } = compileToBpmnXml(parallelFlow())
+    expect(warnings.some((w) => w.includes('收口同层其它分支'))).toBe(true)
+    expect(warnings.some((w) => w.includes('汇聚点'))).toBe(true)
+  })
+})
+
 describe('审批人策略映射', () => {
   it('角色 → candidateGroups（运行期身份来自 ck_role.code）', () => {
     const { xml } = compileToBpmnXml(
@@ -92,15 +153,46 @@ describe('审批人策略映射', () => {
     expect(many).toContain('flowable:candidateUsers="u1,u2"')
   })
 
-  it('部门主管 → 运行期变量约定 + 明确告警', () => {
-    const { xml } = compileToBpmnXml(
+  it('部门主管 → 只留声明（部门字段随 ckplm:assignee 一起带上）', () => {
+    const { xml, warnings } = compileToBpmnXml(
       dsl({
         nodes: [
           { id: 'a1', type: NodeType.APPROVAL, name: '主管审批', assignee: { strategy: AssigneeStrategy.DEPT_LEADER, deptFieldKey: 'dept' }, approvalMode: ApprovalMode.SINGLE },
         ],
       }),
     )
-    expect(xml).toContain('flowable:assignee="${ckplmDeptLeader}"')
+    // 声明在 ckplm:assignee 里（strategy + deptFieldKey），运行期按业务对象的部门字段反查组织
+    expect(xml).toContain('DEPT_LEADER')
+    expect(xml).toContain('deptFieldKey')
+    expect(xml).not.toContain('ckplmDeptLeader')
+    expect(warnings.some((w) => w.includes('未实现'))).toBe(false)
+  })
+
+  it('部门主管但没配部门字段 → 告警（运行期读不到部门）', () => {
+    const { warnings } = compileToBpmnXml(
+      dsl({
+        nodes: [
+          { id: 'a1', type: NodeType.APPROVAL, name: '主管审批', assignee: { strategy: AssigneeStrategy.DEPT_LEADER }, approvalMode: ApprovalMode.SINGLE },
+        ],
+      }),
+    )
+    expect(warnings.some((w) => w.includes('部门字段'))).toBe(true)
+  })
+
+  it('发起人上级 → 只留声明，由运行期在任务创建时解析', () => {
+    const { xml, warnings } = compileToBpmnXml(
+      dsl({
+        nodes: [
+          { id: 'a1', type: NodeType.APPROVAL, name: '上级审批', assignee: { strategy: AssigneeStrategy.INITIATOR_LEADER }, approvalMode: ApprovalMode.SINGLE },
+        ],
+      }),
+    )
+    // 声明留在 ckplm:assignee 的 strategy 里，运行期据此解析（发起人 → 所属组织 → 部门主管）
+    expect(xml).toContain('INITIATOR_LEADER')
+    // 不再写 ${ckplmInitiatorLeader}：变量式只能"发起时快照"，主管换人/调部门都不生效
+    expect(xml).not.toContain('ckplmInitiatorLeader')
+    expect(xml).not.toContain('flowable:assignee="${')
+    expect(warnings.some((w) => w.includes('未实现'))).toBe(false)
   })
 
   it('角色未选具体角色 → 不生成审批人属性且告警', () => {
@@ -133,7 +225,8 @@ describe('会签编译', () => {
     expect(xml).toContain('<multiInstanceLoopCharacteristics isSequential="false"')
     expect(xml).toContain('flowable:collection="${ckplmApprovers}"')
     expect(xml).toContain('flowable:elementVariable="ckplmApprover"')
-    expect(xml).toContain('${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 80}')
+    // `|| ckplmVetoed`：本轮已不可能达到比例时提前结束，不让人白办（见 RUNTIME_VETO_VARIABLE）
+    expect(xml).toContain('${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 80 || ckplmVetoed}')
   })
 
   it('票数通过 → completionCondition 按票数', () => {
@@ -151,10 +244,10 @@ describe('会签编译', () => {
         ],
       }),
     )
-    expect(xml).toContain('${nrOfCompletedInstances &gt;= 3}')
+    expect(xml).toContain('${nrOfCompletedInstances &gt;= 3 || ckplmVetoed}')
   })
 
-  it('一票否决 → 不生成 completionCondition 且明示需运行期支持', () => {
+  it('一票否决 → 全部办完或已不可能通过时结束（提前收口）', () => {
     const { xml, warnings } = compileToBpmnXml(
       dsl({
         nodes: [
@@ -170,7 +263,8 @@ describe('会签编译', () => {
       }),
     )
     expect(warnings.some((w) => w.includes('一票否决'))).toBe(true)
-    expect(xml).not.toContain('completionCondition')
+    // 保留 nrOfCompletedInstances：纯 ${ckplmVetoed} 会让"无 ckplm 标记"的存量产物推断不出会签
+    expect(xml).toContain('${nrOfCompletedInstances &gt;= nrOfInstances || ckplmVetoed}')
     expect(xml).toContain('ckplm:passRule')
   })
 
@@ -307,7 +401,7 @@ describe('服务 / 通知 / 子流程 / 定时', () => {
     expect(xml).toContain('ckplm:templateCode')
   })
 
-  it('子流程 → callActivity calledElement', () => {
+  it('子流程 → callActivity calledElement，变量映射落成 flowable:in', () => {
     const { xml } = compileToBpmnXml(
       dsl({
         nodes: [{ id: 'sp1', type: NodeType.SUB_PROCESS, name: '子流程', processKey: 'sub_flow', variableMap: { a: 'b' } }],
@@ -316,6 +410,67 @@ describe('服务 / 通知 / 子流程 / 定时', () => {
     expect(xml).toContain('<callActivity id="sp1"')
     expect(xml).toContain('calledElement="sub_flow"')
     expect(xml).toContain('ckplm:variableMap')
+    // 只写 ckplm 声明的话，子流程实例启动时拿不到任何父流程变量
+    expect(xml).toContain('<flowable:in source="b" target="a"/>')
+  })
+
+  it('变量映射是表达式时用 sourceExpression（source 只认变量名）', () => {
+    const { xml } = compileToBpmnXml(
+      dsl({
+        nodes: [
+          {
+            id: 'sp1',
+            type: NodeType.SUB_PROCESS,
+            name: '子流程',
+            processKey: 'sub_flow',
+            variableMap: { taskAssignee: '${task.assignee}' },
+          },
+        ],
+      }),
+    )
+    // 写成 source 会被当成"名为 ${task.assignee} 的变量"，取不到就静默传 null
+    expect(xml).toContain('<flowable:in sourceExpression="${task.assignee}" target="taskAssignee"/>')
+    expect(xml).not.toContain('source="${task.assignee}"')
+  })
+
+  it('子流程多实例 → 按集合拉起 N 个实例，每个实例带自己的业务 key', () => {
+    const { xml, warnings } = compileToBpmnXml(
+      dsl({
+        nodes: [
+          {
+            id: 'sp1',
+            type: NodeType.SUB_PROCESS,
+            name: '变更任务',
+            processKey: 'change-task',
+            multiInstance: { collection: 'changeTaskList', elementVariable: 'task', businessKey: 'oid' },
+          },
+        ],
+      }),
+    )
+    expect(xml).toContain('<multiInstanceLoopCharacteristics isSequential="false"')
+    expect(xml).toContain('flowable:collection="${changeTaskList}"')
+    expect(xml).toContain('flowable:elementVariable="task"')
+    // 每个子实例的 businessKey 必须不同，否则子流程分不清自己在办哪张单
+    expect(xml).toContain('flowable:businessKey="${task.oid}"')
+    expect(xml).toContain('ckplm:multiInstance')
+    expect(warnings.some((w) => w.includes('业务 key'))).toBe(false)
+  })
+
+  it('多实例未配业务 key → 告警而不是静默共用父流程 key', () => {
+    const { warnings } = compileToBpmnXml(
+      dsl({
+        nodes: [
+          {
+            id: 'sp1',
+            type: NodeType.SUB_PROCESS,
+            name: '子流程',
+            processKey: 'sub_flow',
+            multiInstance: { collection: 'items' },
+          },
+        ],
+      }),
+    )
+    expect(warnings.some((w) => w.includes('没配业务 key'))).toBe(true)
   })
 
   it('定时节点 → intermediateCatchEvent + timeDuration', () => {

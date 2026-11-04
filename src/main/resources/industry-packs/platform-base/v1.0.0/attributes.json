@@ -1,0 +1,2172 @@
+{
+    "note": "平台基础对象的实体字段声明 —— 注意：本段是\"实体本来就有的列\"，不是 IBA 扩展属性。真源是 Java 实体类与 schema.sql。两条写入通路各管一份：平台租户那份由 AttributeInitializer 启动时反射实体字段注册（对 PART/DOCUMENT/FUNCTIONAL/ENG_DOCUMENT 走「先清后建」）；**租户那份**由 AttributeInstaller 按本文件的 entityFields 声明逐条写入（2026-10-11 起属性定义按租户隔离，不声明就等于该租户在页面设计器里看不到这些字段）。声明后仍做双向对齐校验：声明了库里没有的字段会如实报出（并提示\"若其实是 IBA，请放进 ibaGroups[]\"），实体侧有、声明里没有的只提醒。内容按库现状抄录（PART 29 —— 已退役 folderOid / stageOid；DOCUMENT 29 / ENG_DOCUMENT 40 / PRODUCT_LINE 12 / PRODUCT_MODEL 12；2026-11-01 补变更域三实体 CHANGE_REQUEST 26 / CHANGE_NOTICE 23 / CHANGE_TASK 14 —— 此前只注册在平台租户，业务租户没有声明可装，于是「页面设计器 → 字段」是空的；其中 attachmentOid（补充材料，指向 ck_attachment）与 PART / DOCUMENT 同名同义，变更单据评审时上传的佐证材料就存在这一列，共 185 条）。IBA 扩展属性不在本段，见各行业包的 ibaGroups 段。",
+    "ibaGroups": [
+        {
+            "code": "PRODUCT_LINE_TARGET",
+            "name": "产品系列经营目标（产品级 IBA）",
+            "bindTo": ["PRODUCT_LINE"],
+            "attributes": [
+                {
+                    "code": "TARGET_LAUNCH_DATE",
+                    "name": "目标上市日期",
+                    "dataType": "DATE",
+                    "required": false,
+                    "editable": true,
+                    "listable": true,
+                    "searchable": false,
+                    "uiComponent": "datepicker",
+                    "note": "格式 YYYY-MM-DD。指标「上市时间偏差」= 上市决策评审（LDCP）通过日 − 此日期：正数延期、负数提前、0 按期。留空 = 未设定，运行期不做继承。"
+                },
+                {
+                    "code": "TARGET_COST",
+                    "name": "目标成本(元)",
+                    "dataType": "FLOAT",
+                    "required": false,
+                    "editable": true,
+                    "listable": true,
+                    "searchable": false,
+                    "uiComponent": "input-number",
+                    "note": "人民币元，口径须与 BOM 行「单位成本」一致（同币种、同含税口径）。指标「成本达成率」= 目标成本 / BOM 卷积成本。留空 = 未设定，不拿父系列顶替。"
+                }
+            ]
+        },
+        {
+            "code": "PRODUCT_MODEL_TARGET",
+            "name": "产品型号经营目标（产品级 IBA）",
+            "bindTo": ["PRODUCT_MODEL"],
+            "attributes": [
+                {
+                    "code": "TARGET_LAUNCH_DATE",
+                    "name": "目标上市日期",
+                    "dataType": "DATE",
+                    "required": false,
+                    "editable": true,
+                    "listable": true,
+                    "searchable": false,
+                    "uiComponent": "datepicker",
+                    "note": "格式 YYYY-MM-DD。型号与系列各算各的，不继承：型号没填就显示「暂未评估」，不拿系列日期顶替。"
+                },
+                {
+                    "code": "TARGET_COST",
+                    "name": "目标成本(元)",
+                    "dataType": "FLOAT",
+                    "required": false,
+                    "editable": true,
+                    "listable": true,
+                    "searchable": false,
+                    "uiComponent": "input-number",
+                    "note": "型号自己的目标价，与所在容器的 BOM 卷积成本比较。不继承系列预算池。"
+                }
+            ]
+        }
+    ],
+    "entityFields": [
+        {
+            "code": "DOCUMENT_BASE",
+            "name": "文档（DOCUMENT）基本属性",
+            "bindTo": [
+                "DOCUMENT"
+            ],
+            "attributes": [
+                {
+                    "code": "name",
+                    "name": "名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "number",
+                    "name": "编号",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 3,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "typeDefinitionCode",
+                    "name": "类型定义编码",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 10,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "clsOid",
+                    "name": "分类OID",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 20,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "containerOid",
+                    "name": "所属容器",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 30,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "containerType",
+                    "name": "容器类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 31,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "folderOid",
+                    "name": "所属文件夹",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 40,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "stageOid",
+                    "name": "研发阶段",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 50,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "description",
+                    "name": "描述",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": true,
+                    "uiComponent": "textarea"
+                },
+                {
+                    "code": "masterOid",
+                    "name": "主文档OID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "revision",
+                    "name": "大版本",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 61,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "iteration",
+                    "name": "小版本号",
+                    "dataType": "INTEGER",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 62,
+                    "searchable": false,
+                    "uiComponent": "input-number"
+                },
+                {
+                    "code": "checkedOut",
+                    "name": "已检出",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 63,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "checkedOutBy",
+                    "name": "检出人",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 64,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "checkedOutComment",
+                    "name": "检出注释",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 65,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "latest",
+                    "name": "最新版本",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 66,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "derivedFromOid",
+                    "name": "来源版本OID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 67,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "derivedAt",
+                    "name": "副本创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 68,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "status",
+                    "name": "生命周期状态",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 70,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "lifecycleTemplateIterationOid",
+                    "name": "生命周期模板迭代版本",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 71,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "versionSort",
+                    "name": "版本排序",
+                    "dataType": "INTEGER",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 72,
+                    "searchable": false,
+                    "uiComponent": "input-number"
+                },
+                {
+                    "code": "branchId",
+                    "name": "分支ID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 73,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "deleteMark",
+                    "name": "删除标记",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 74,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "ckfileOid",
+                    "name": "主文档文件",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 75,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "createdAt",
+                    "name": "创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 92,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "creator",
+                    "name": "创建者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 93,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "updatedAt",
+                    "name": "更新时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 94,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "updater",
+                    "name": "更新者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 95,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "displayVersion",
+                    "name": "显示版本",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 103,
+                    "searchable": true,
+                    "uiComponent": "input"
+                }
+            ]
+        },
+        {
+            "code": "ENG_DOCUMENT_BASE",
+            "name": "工程数据（ENG_DOCUMENT）基本属性",
+            "bindTo": [
+                "ENG_DOCUMENT"
+            ],
+            "attributes": [
+                {
+                    "code": "name",
+                    "name": "名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "number",
+                    "name": "编号",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 3,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "typeDefinitionCode",
+                    "name": "类型定义编码",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 10,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "clsOid",
+                    "name": "分类OID",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 20,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "containerOid",
+                    "name": "所属容器",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 30,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "containerType",
+                    "name": "容器类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 31,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "folderOid",
+                    "name": "所属文件夹",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 40,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "stageOid",
+                    "name": "研发阶段",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 50,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "description",
+                    "name": "描述",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": true,
+                    "uiComponent": "textarea"
+                },
+                {
+                    "code": "masterOid",
+                    "name": "主文档OID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "revision",
+                    "name": "大版本",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 61,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "iteration",
+                    "name": "小版本号",
+                    "dataType": "INTEGER",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 62,
+                    "searchable": false,
+                    "uiComponent": "input-number"
+                },
+                {
+                    "code": "checkedOut",
+                    "name": "已检出",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 63,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "checkedOutBy",
+                    "name": "检出人",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 64,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "checkedOutComment",
+                    "name": "检出注释",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 65,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "latest",
+                    "name": "最新版本",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 66,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "derivedFromOid",
+                    "name": "来源版本OID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 67,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "derivedAt",
+                    "name": "副本创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 68,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "status",
+                    "name": "生命周期状态",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 70,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "lifecycleTemplateIterationOid",
+                    "name": "生命周期模板迭代版本",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 71,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "versionSort",
+                    "name": "版本排序",
+                    "dataType": "INTEGER",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 72,
+                    "searchable": false,
+                    "uiComponent": "input-number"
+                },
+                {
+                    "code": "branchId",
+                    "name": "分支ID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 73,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "deleteMark",
+                    "name": "删除标记",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 74,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "ckfileOid",
+                    "name": "主文档文件",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 75,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "cadName",
+                    "name": "CAD 名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 78,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "cadType",
+                    "name": "CAD 类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 79,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "cadTool",
+                    "name": "来源 CAD 工具",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 80,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "sheetSize",
+                    "name": "图幅",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 81,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "scale",
+                    "name": "比例",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 82,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "sheetNumber",
+                    "name": "图号",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 83,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "sheetCount",
+                    "name": "图纸张数",
+                    "dataType": "INTEGER",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 84,
+                    "searchable": false,
+                    "uiComponent": "input-number"
+                },
+                {
+                    "code": "projection",
+                    "name": "投影方式",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 85,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "author",
+                    "name": "设计者",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 86,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "material",
+                    "name": "材料",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 87,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "weight",
+                    "name": "重量",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 88,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "createdAt",
+                    "name": "创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 92,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "creator",
+                    "name": "创建者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 93,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "updatedAt",
+                    "name": "更新时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 94,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "updater",
+                    "name": "更新者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 95,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "displayVersion",
+                    "name": "显示版本",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 103,
+                    "searchable": true,
+                    "uiComponent": "input"
+                }
+            ]
+        },
+        {
+            "code": "PART_BASE",
+            "name": "部件（PART）基本属性",
+            "bindTo": [
+                "PART"
+            ],
+            "attributes": [
+                {
+                    "code": "name",
+                    "name": "名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "number",
+                    "name": "编号",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 3,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "typeDefinitionCode",
+                    "name": "类型定义编码",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 10,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "clsOid",
+                    "name": "分类OID",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 20,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "containerOid",
+                    "name": "所属容器",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 30,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "containerType",
+                    "name": "容器类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 31,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "masterOid",
+                    "name": "主文档OID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "description",
+                    "name": "描述",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": true,
+                    "uiComponent": "textarea"
+                },
+                {
+                    "code": "revision",
+                    "name": "大版本",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 61,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "iteration",
+                    "name": "小版本号",
+                    "dataType": "INTEGER",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 62,
+                    "searchable": false,
+                    "uiComponent": "input-number"
+                },
+                {
+                    "code": "checkedOut",
+                    "name": "已检出",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 63,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "checkedOutBy",
+                    "name": "检出人",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 64,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "checkedOutComment",
+                    "name": "检出注释",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 65,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "latest",
+                    "name": "最新版本",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 66,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "derivedFromOid",
+                    "name": "来源版本OID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 67,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "derivedAt",
+                    "name": "副本创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 68,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "view",
+                    "name": "所属视图",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 69,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "status",
+                    "name": "生命周期状态",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 70,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "lifecycleTemplateIterationOid",
+                    "name": "生命周期模板迭代版本",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 71,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "versionSort",
+                    "name": "版本排序",
+                    "dataType": "INTEGER",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 72,
+                    "searchable": false,
+                    "uiComponent": "input-number"
+                },
+                {
+                    "code": "branchId",
+                    "name": "分支ID",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 73,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "deleteMark",
+                    "name": "删除标记",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 74,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "unit",
+                    "name": "单位",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 76,
+                    "searchable": true,
+                    "uiComponent": "unit-select"
+                },
+                {
+                    "code": "source",
+                    "name": "来源",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 77,
+                    "searchable": true,
+                    "uiComponent": "source-select"
+                },
+                {
+                    "code": "createdAt",
+                    "name": "创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 92,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "creator",
+                    "name": "创建者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 93,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "updatedAt",
+                    "name": "更新时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 94,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "updater",
+                    "name": "更新者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 95,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "displayVersion",
+                    "name": "显示版本",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 103,
+                    "searchable": true,
+                    "uiComponent": "input"
+                }
+            ]
+        },
+        {
+            "code": "PRODUCT_LINE_BASE",
+            "name": "产品系列（PRODUCT_LINE）基本属性",
+            "bindTo": [
+                "PRODUCT_LINE"
+            ],
+            "attributes": [
+                {
+                    "code": "code",
+                    "name": "编码",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 1,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "name",
+                    "name": "名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "thumbnail",
+                    "name": "缩略图",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 3,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "teamOid",
+                    "name": "关联团队",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 4,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "parentOid",
+                    "name": "父产品线",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 5,
+                    "searchable": false,
+                    "uiComponent": "tree-select"
+                },
+                {
+                    "code": "containerType",
+                    "name": "容器类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 31,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "description",
+                    "name": "描述",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": true,
+                    "uiComponent": "textarea"
+                },
+                {
+                    "code": "deleteMark",
+                    "name": "删除标记",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 74,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "createdAt",
+                    "name": "创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 92,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "creator",
+                    "name": "创建者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 93,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "updatedAt",
+                    "name": "更新时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 94,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "updater",
+                    "name": "更新者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 95,
+                    "searchable": false,
+                    "uiComponent": "input"
+                }
+            ]
+        },
+        {
+            "code": "PRODUCT_MODEL_BASE",
+            "name": "产品型号（PRODUCT_MODEL）基本属性",
+            "bindTo": [
+                "PRODUCT_MODEL"
+            ],
+            "attributes": [
+                {
+                    "code": "code",
+                    "name": "编码",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 1,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "name",
+                    "name": "名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "thumbnail",
+                    "name": "缩略图",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 3,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "teamOid",
+                    "name": "关联团队",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 4,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "parentOid",
+                    "name": "父产品线",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 5,
+                    "searchable": false,
+                    "uiComponent": "tree-select"
+                },
+                {
+                    "code": "containerType",
+                    "name": "容器类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 31,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "description",
+                    "name": "描述",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": true,
+                    "uiComponent": "textarea"
+                },
+                {
+                    "code": "deleteMark",
+                    "name": "删除标记",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 74,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "createdAt",
+                    "name": "创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 92,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "creator",
+                    "name": "创建者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 93,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "updatedAt",
+                    "name": "更新时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 94,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "updater",
+                    "name": "更新者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 95,
+                    "searchable": false,
+                    "uiComponent": "input"
+                }
+            ]
+        },
+        {
+            "code": "CHANGE_REQUEST_BASE",
+            "name": "变更请求（CHANGE_REQUEST）基本属性",
+            "bindTo": [
+                "CHANGE_REQUEST"
+            ],
+            "attributes": [
+                {
+                    "code": "code",
+                    "name": "编码",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 1,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "name",
+                    "name": "名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "changeLevel",
+                    "name": "变更分级",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "certImpact",
+                    "name": "认证/合规影响",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 3,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "customerImpact",
+                    "name": "客户/合同影响",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 4,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "owner",
+                    "name": "责任人",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 4,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "inventoryImpact",
+                    "name": "在制/库存影响",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 5,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "requester",
+                    "name": "提出人",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 5,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "changeType",
+                    "name": "变更类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 7,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "priority",
+                    "name": "优先级",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 8,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "dueDate",
+                    "name": "计划完成",
+                    "dataType": "DATE",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 9,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "acceptedAt",
+                    "name": "受理时间",
+                    "dataType": "DATETIME",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 11,
+                    "searchable": true,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "sourceIssueOid",
+                    "name": "来源问题",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 20,
+                    "searchable": false,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "productOid",
+                    "name": "所属容器",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 30,
+                    "searchable": true,
+                    "uiComponent": "product-select"
+                },
+                {
+                    "code": "productType",
+                    "name": "容器类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 31,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "reason",
+                    "name": "变更原因",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 45,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "proposal",
+                    "name": "建议方案",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 46,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "description",
+                    "name": "描述",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": true,
+                    "uiComponent": "textarea"
+                },
+                {
+                    "code": "status",
+                    "name": "生命周期状态",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 70,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "closedAt",
+                    "name": "关闭时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 90,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "createdAt",
+                    "name": "创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 92,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "creator",
+                    "name": "创建者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 93,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "updatedAt",
+                    "name": "更新时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 94,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "updater",
+                    "name": "更新者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 95,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "processInstanceId",
+                    "name": "流程实例",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 97,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "attachmentOid",
+                    "name": "补充材料",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 66,
+                    "searchable": false,
+                    "uiComponent": "file-upload"
+                }
+            ]
+        },
+        {
+            "code": "CHANGE_NOTICE_BASE",
+            "name": "变更通告（CHANGE_NOTICE）基本属性",
+            "bindTo": [
+                "CHANGE_NOTICE"
+            ],
+            "attributes": [
+                {
+                    "code": "code",
+                    "name": "编码",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 1,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "name",
+                    "name": "名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "owner",
+                    "name": "责任人",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 4,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "requestOid",
+                    "name": "来源变更请求",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 6,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "planStart",
+                    "name": "计划开始",
+                    "dataType": "DATE",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 9,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "planEnd",
+                    "name": "计划完成",
+                    "dataType": "DATE",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 10,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "productOid",
+                    "name": "所属容器",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 30,
+                    "searchable": true,
+                    "uiComponent": "product-select"
+                },
+                {
+                    "code": "productType",
+                    "name": "容器类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 31,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "approvalBypassed",
+                    "name": "免审",
+                    "dataType": "BOOLEAN",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 32,
+                    "searchable": false,
+                    "uiComponent": "switch"
+                },
+                {
+                    "code": "bypassReason",
+                    "name": "免审理由",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 33,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "bypassedBy",
+                    "name": "免审操作人",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 34,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "bypassedAt",
+                    "name": "免审时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 35,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "description",
+                    "name": "描述",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": true,
+                    "uiComponent": "textarea"
+                },
+                {
+                    "code": "status",
+                    "name": "生命周期状态",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 70,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "approvedAt",
+                    "name": "审批通过时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 88,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "completedAt",
+                    "name": "完成时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 89,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "closedAt",
+                    "name": "关闭时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 90,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "createdAt",
+                    "name": "创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 92,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "creator",
+                    "name": "创建者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 93,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "updatedAt",
+                    "name": "更新时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 94,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "updater",
+                    "name": "更新者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 95,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "processInstanceId",
+                    "name": "流程实例",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 97,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "attachmentOid",
+                    "name": "补充材料",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 66,
+                    "searchable": false,
+                    "uiComponent": "file-upload"
+                }
+            ]
+        },
+        {
+            "code": "CHANGE_TASK_BASE",
+            "name": "变更任务（CHANGE_TASK）基本属性",
+            "bindTo": [
+                "CHANGE_TASK"
+            ],
+            "attributes": [
+                {
+                    "code": "code",
+                    "name": "编码",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 1,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "name",
+                    "name": "名称",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": true,
+                    "sortOrder": 2,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "noticeOid",
+                    "name": "所属变更通告",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 6,
+                    "searchable": true,
+                    "uiComponent": "select"
+                },
+                {
+                    "code": "taskType",
+                    "name": "任务类型",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 7,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "assignee",
+                    "name": "责任人",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 8,
+                    "searchable": true,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "planStart",
+                    "name": "计划开始",
+                    "dataType": "DATE",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 9,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "planEnd",
+                    "name": "计划完成",
+                    "dataType": "DATE",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 10,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "description",
+                    "name": "描述",
+                    "dataType": "STRING",
+                    "editable": true,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 60,
+                    "searchable": true,
+                    "uiComponent": "textarea"
+                },
+                {
+                    "code": "status",
+                    "name": "生命周期状态",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 70,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "completedAt",
+                    "name": "完成时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 89,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "createdAt",
+                    "name": "创建时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 92,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "creator",
+                    "name": "创建者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 93,
+                    "searchable": false,
+                    "uiComponent": "input"
+                },
+                {
+                    "code": "updatedAt",
+                    "name": "更新时间",
+                    "dataType": "DATETIME",
+                    "editable": false,
+                    "listable": false,
+                    "required": false,
+                    "sortOrder": 94,
+                    "searchable": false,
+                    "uiComponent": "datepicker"
+                },
+                {
+                    "code": "updater",
+                    "name": "更新者",
+                    "dataType": "STRING",
+                    "editable": false,
+                    "listable": true,
+                    "required": false,
+                    "sortOrder": 95,
+                    "searchable": false,
+                    "uiComponent": "input"
+                }
+            ]
+        }
+    ]
+}

@@ -25,6 +25,7 @@ import {
   RejectTarget,
   createEmptyDsl,
   parseFlowDsl,
+  setupControlledIds,
   validateDsl,
   type FlowDsl,
   type FlowEdge,
@@ -128,22 +129,112 @@ describe('出边路由 · 编译', () => {
 })
 
 describe('出边路由 · 加载归一', () => {
-  it('已画驳回边的节点：残留的「驳回目标」在加载时被清掉（不能留着看不见却生效）', () => {
-    // 从"配目标"改成"画驳回边"时，目标字段在面板上已隐藏；残留值必须清，
-    // 否则运行期两条腿都会想动手（设计期也会一直报 EDGE_ROUTE_CONFLICT）
+  it('老模板残留的「驳回目标」在加载时被清掉（统一为画线，不留看不见却生效的配置）', () => {
+    // 驳回已统一为"画线"（属性面板不再有「允许驳回 / 驳回目标」），所以加载时把老数据里的
+    // reject 一并清掉 —— 否则它会继续被编译进 BPMN、运行期继续一键跳回，而界面上无处可改
     const dsl = flow({ rejectTarget: true })
+    expect(dsl.nodes.find((item) => item.id === 'appr_1')).toHaveProperty('reject')
     const result = parseFlowDsl(JSON.parse(JSON.stringify(dsl)))
     expect(result.ok).toBe(true)
     if (result.ok) {
       const node = result.dsl.nodes.find((item: FlowNode) => item.id === 'appr_1') as
-        | { reject?: { enabled?: boolean; target?: string } }
+        | { reject?: unknown }
         | undefined
-      expect(node?.reject?.enabled).toBe(true)
-      expect(node?.reject?.target).toBeUndefined()
-      // 归一之后不再有冲突
-      expect(validateDsl(result.dsl).issues.map((issue) => issue.code))
-        .not.toContain(IssueCode.EDGE_ROUTE_CONFLICT)
+      expect(node?.reject).toBeUndefined()
     }
+  })
+})
+
+describe('加载归一 · 节点字段', () => {
+  it('审批 / 办理节点的「绑定业务对象」在加载时被清掉，开始节点保留', () => {
+    const base = createEmptyDsl({ key: 'binding_strip', name: '绑定清理' })
+    const dsl = {
+      ...base,
+      nodes: [
+        {
+          id: 'start_1',
+          type: NodeType.START,
+          name: '开始',
+          initiator: { strategy: AssigneeStrategy.INITIATOR },
+          binding: { objectType: 'PART' },
+        },
+        {
+          id: 'appr_1',
+          type: NodeType.APPROVAL,
+          name: '审批',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: 'SINGLE',
+          binding: { objectType: 'PART' },
+        },
+        { id: 'end_1', type: NodeType.END, name: '结束' },
+      ],
+      edges: [
+        { id: 'e1', kind: EdgeKind.NORMAL, source: 'start_1', target: 'appr_1' },
+        { id: 'e2', kind: EdgeKind.NORMAL, source: 'appr_1', target: 'end_1' },
+      ],
+    } as FlowDsl
+
+    const result = parseFlowDsl(JSON.parse(JSON.stringify(dsl)))
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      const nodes = result.dsl.nodes as unknown as { id: string; binding?: unknown }[]
+      expect(nodes.find((node) => node.id === 'start_1')?.binding).toEqual({ objectType: 'PART' })
+      expect(nodes.find((node) => node.id === 'appr_1')?.binding).toBeUndefined()
+    }
+  })
+})
+
+describe('出边路由 · 驳回回环不算"顺序"', () => {
+  /** 开始 → 申请填报(TASK) → 设置审批人 → 初审(审批) -驳回→ 申请填报（回环） */
+  function loopedFlow(): FlowDsl {
+    const base = createEmptyDsl({ key: 'reject_loop', name: '驳回回环' })
+    return {
+      ...base,
+      nodes: [
+        { id: 'start_1', type: NodeType.START, name: '开始', initiator: { strategy: AssigneeStrategy.INITIATOR } },
+        {
+          id: 'task_apply',
+          type: NodeType.TASK,
+          name: '申请填报',
+          assignee: { strategy: AssigneeStrategy.INITIATOR },
+        },
+        {
+          id: 'set_1',
+          type: NodeType.SET_ASSIGNEE,
+          name: '设置审批人',
+          assignee: { strategy: AssigneeStrategy.INITIATOR },
+        },
+        {
+          id: 'appr_1',
+          type: NodeType.APPROVAL,
+          name: '初审',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: 'SINGLE',
+        },
+        { id: 'end_1', type: NodeType.END, name: '结束' },
+      ],
+      edges: [
+        { id: 'e1', kind: EdgeKind.NORMAL, source: 'start_1', target: 'task_apply' },
+        { id: 'e2', kind: EdgeKind.NORMAL, source: 'task_apply', target: 'set_1' },
+        { id: 'e3', kind: EdgeKind.NORMAL, source: 'set_1', target: 'appr_1' },
+        { id: 'e4', kind: EdgeKind.NORMAL, source: 'appr_1', target: 'end_1', route: EdgeRoute.PASS },
+        // 驳回回到上游的填报节点：形成回环 —— 但它是"回退"，不代表执行顺序
+        { id: 'e5', kind: EdgeKind.NORMAL, source: 'appr_1', target: 'task_apply', route: EdgeRoute.REJECT },
+      ],
+    } as FlowDsl
+  }
+
+  it('下游审批不会被误报成「设置审批人之前的活动」（否则用户画完驳回边存不了盘）', () => {
+    expect(codesOf(loopedFlow())).not.toContain(IssueCode.SETUP_NOT_FIRST)
+  })
+
+  it('上游填报节点不会被算成「设置审批人的下游」（否则它的 ${initiator} 会变成候选人）', () => {
+    const controlled = setupControlledIds(loopedFlow())
+    expect(controlled.has('task_apply')).toBe(false)
+    expect(controlled.has('appr_1')).toBe(true)
+    const { xml } = compileToBpmnXml(loopedFlow())
+    expect(xml).toMatch(/id="task_apply"[^>]*flowable:assignee="\$\{initiator\}"/)
+    expect(xml).not.toContain('candidateUsers="${ckplmSetupAssignees_task_apply}"')
   })
 })
 
@@ -189,17 +280,6 @@ describe('出边路由 · 校验', () => {
   it('声明了路由却没有「通过」路由 → 错误（同意后无路可走）', () => {
     expect(codesOf(flow({ routes: [undefined, EdgeRoute.REJECT] })))
       .toContain(IssueCode.EDGE_ROUTE_NO_PASS)
-  })
-
-  it('画了驳回路由但节点没开启「允许驳回」→ 错误（那条边走不到）', () => {
-    const issue = issueOf(flow({ rejectEnabled: false }), IssueCode.EDGE_ROUTE_WITHOUT_REJECT)
-    expect(issue?.level).toBe(IssueLevel.ERROR)
-  })
-
-  it('驳回路由与「驳回目标」同时存在 → 错误（两套机制抢戏，需二选一）', () => {
-    const issue = issueOf(flow({ rejectTarget: true }), IssueCode.EDGE_ROUTE_CONFLICT)
-    expect(issue?.level).toBe(IssueLevel.ERROR)
-    expect(issue?.message).toContain('二选一')
   })
 
   it('审批节点多条出边却都没声明路由 → 提示（会被当成并行，两条都走）', () => {

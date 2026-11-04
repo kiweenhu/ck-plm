@@ -9,10 +9,12 @@ package cn.ck.plm.process.controller;
 
 import cn.ck.plm.iam.dto.ApiResponse;
 import cn.ck.plm.process.dto.ProcessTemplateDeployResult;
+import cn.ck.plm.process.dto.ProcessTemplateMarketItem;
 import cn.ck.plm.process.dto.ProcessVersionDeleteResult;
 import cn.ck.plm.process.entity.ProcessTemplate;
 import cn.ck.plm.process.entity.ProcessTemplateVersion;
 import cn.ck.plm.process.service.api.ProcessTemplateService;
+import cn.ck.plm.process.support.ProcessTemplateMarket;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -44,9 +46,11 @@ import java.util.Map;
 public class ProcessTemplateController {
 
     private final ProcessTemplateService service;
+    private final ProcessTemplateMarket market;
 
-    public ProcessTemplateController(ProcessTemplateService service) {
+    public ProcessTemplateController(ProcessTemplateService service, ProcessTemplateMarket market) {
         this.service = service;
+        this.market = market;
     }
 
     @GetMapping
@@ -157,6 +161,38 @@ public class ProcessTemplateController {
     @PostMapping("/{oid}/disable")
     public ApiResponse<ProcessTemplate> disable(@PathVariable String oid) {
         return toggle(oid, false);
+    }
+
+    /**
+     * 预置流程模板市场 —— 行业包里可取的流程清单（只读，不落库）。
+     *
+     * <p>路由放在 {@code /{oid}/...} 之前不影响匹配（Spring 精确路径优先于变量路径），
+     * 这里按"先静态、后变量"排列只是为了读起来清楚。
+     */
+    @GetMapping("/market")
+    public ApiResponse<List<ProcessTemplateMarketItem>> marketItems() {
+        try {
+            return ApiResponse.ok(market.list());
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "读取预置流程清单失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 取用一个预置流程（body: {@code { packId, file, key?, name? }}）。
+     *
+     * <p>{@code key} / {@code name} 留空即沿用包内 DSL 的值。
+     */
+    @PostMapping("/market/adopt")
+    public ApiResponse<ProcessTemplate> adopt(@RequestBody Map<String, Object> body) {
+        try {
+            return ApiResponse.ok(market.adopt(
+                    str(body, "packId"), str(body, "file"), str(body, "key"), str(body, "name")));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "取用预置流程失败: " + e.getMessage());
+        }
     }
 
     @GetMapping("/{oid}/versions")

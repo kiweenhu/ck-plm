@@ -18,6 +18,8 @@ import cn.ck.plm.iam.service.api.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -31,6 +33,9 @@ public class NotificationServiceImpl implements NotificationService {
 
     /** 平台管理员角色 — 负责接收租户注册等平台级通知 */
     private static final String ADMIN_ROLE_CODE = "PLATFORM_ADMIN";
+
+    /** 租户管理员角色 — 负责接收本企业内的配置提醒（如版本规则已用尽） */
+    private static final String TENANT_ADMIN_ROLE_CODE = "TENANT_ADMIN";
 
     private final NotificationMapper notificationMapper;
     private final UserService userService;
@@ -105,6 +110,46 @@ public class NotificationServiceImpl implements NotificationService {
             send(admin.getOid(), title, content, type, targetType, targetOid);
         }
         log.info("已向 {} 位管理员发送通知: {}", admins.size(), title);
+    }
+
+    /**
+     * 向本租户的 TENANT_ADMIN 发送通知（如「版本规则已到最后一个大版本」）。
+     *
+     * <p>逐用户写入，与既有"一人一行 + isRead"模型一致，铃铛计数/已读沿用现成机制。
+     * 停用/锁定账号跳过 —— 给不会再登录的人写消息没有意义。
+     *
+     * <p><b>REQUIRES_NEW</b>：调用方（修订校验）发完通知就会抛异常回滚业务事务。
+     * 通知若跟着回滚，等于没发 —— 管理员永远不会知道"该改版本规则了"，
+     * 这正是本需求最不能出现的结果。
+     */
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public int sendToTenantAdmins(String title, String content, String type,
+                                  String targetType, String targetOid) {
+        if (!channelService.isUsable(NotificationProperties.CHANNEL_CK_PLM)) {
+            log.debug("站内通知未启用，跳过租户管理员通知: title={}", title);
+            return 0;
+        }
+        cn.ck.plm.iam.entity.Role role = roleMapper.selectByCode(TENANT_ADMIN_ROLE_CODE);
+        if (role == null) {
+            log.warn("未找到 {} 角色，无法发送租户管理员通知", TENANT_ADMIN_ROLE_CODE);
+            return 0;
+        }
+        List<User> admins = userService.findUsersByRoleOid(role.getOid());
+        if (admins == null || admins.isEmpty()) {
+            log.info("本租户没有管理员用户，跳过通知发送: title={}", title);
+            return 0;
+        }
+        int sent = 0;
+        for (User admin : admins) {
+            if (!admin.isEnabled() || admin.isLocked()) {
+                continue;
+            }
+            insertOne(admin.getOid(), title, content, type, targetType, targetOid);
+            sent++;
+        }
+        log.info("已向 {} 位租户管理员发送通知: {}", sent, title);
+        return sent;
     }
 
     @Override

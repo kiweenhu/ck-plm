@@ -163,7 +163,9 @@ public class RoleServiceImpl implements RoleService {
             return;
         }
         RoleMember rm = new RoleMember(userOid, roleOid);
-        rm.setTenantOid(role.getTenantOid());
+        // 成员行归属 = **用户所在租户**（2026-10-11 角色按租户隔离后：角色副本与成员行同租户才对得上；
+        // 旧写法用"角色的租户"，绑平台角色时会把成员行写到平台 —— 隔离后本租户看不见该成员）
+        rm.setTenantOid(cn.ck.plm.base.util.TenantContext.get());
         rm.setCreatedAt(LocalDateTime.now());
         rm.setUpdatedAt(LocalDateTime.now());
         roleMemberMapper.insert(rm);

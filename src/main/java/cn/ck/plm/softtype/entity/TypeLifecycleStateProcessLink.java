@@ -62,7 +62,7 @@ public class TypeLifecycleStateProcessLink extends BaseEntity implements TenantE
      */
     private String lifecycleTemplateIterationOid;
 
-    /** 状态编码（对应状态字典 code，如 DRAFT / IN_WORK / RELEASED） */
+    /** 状态编码（对应状态字典 code，如 DRAFT / WORKING / PUBLISHED） */
     private String statusCode;
 
     /** 该状态使用的流程模板 oid（ck_process_template.oid） */

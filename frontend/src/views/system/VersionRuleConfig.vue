@@ -38,6 +38,7 @@
         :search-fields="['code', 'name', 'description']"
         :enable-resize="true"
         :show-column-toggle="true"
+        scroll-x="max-content"
         :max-height="420"
         row-key="oid"
         size="middle"

@@ -237,5 +237,8 @@ public class FileStorageService {
         EXT_MIME_MAP.put(".catproduct", "application/x-catia");
         EXT_MIME_MAP.put(".sldprt", "application/x-solidworks");
         EXT_MIME_MAP.put(".sldasm", "application/x-solidworks");
+        // CAD 轻量化产物（CAD 预览用）：GLB 是 glTF 的二进制单文件形式
+        EXT_MIME_MAP.put(".glb", "model/gltf-binary");
+        EXT_MIME_MAP.put(".gltf", "model/gltf+json");
     }
 }

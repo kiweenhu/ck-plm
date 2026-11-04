@@ -69,8 +69,7 @@ public interface PostgreSqlStageTemplateMapper extends StageTemplateMapper {
             "default_folders, industry, managed_object_types, tenant_oid, " +
             "creator, created_at, updater, updated_at " +
             "FROM ck_stage_template WHERE code = #{code} " +
-            "AND tenant_oid IN (#{tenantOid}, #{platformOid}) " +
-            "ORDER BY CASE WHEN tenant_oid = #{tenantOid} THEN 0 ELSE 1 END LIMIT 1")
+            "AND tenant_oid = #{tenantOid} LIMIT 1")
     @ResultMap("stageTemplateResult")
     StageTemplate selectByCode(@Param("code") String code,
                                @Param("tenantOid") String tenantOid,

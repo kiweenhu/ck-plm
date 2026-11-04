@@ -22,8 +22,28 @@ import {
   PictureOutlined, HighlightOutlined, TableOutlined,
   FolderOutlined, PaperClipOutlined, ExperimentOutlined, CloudUploadOutlined,
   TagOutlined, NodeIndexOutlined, BarcodeOutlined,
-  ToolOutlined, ThunderboltOutlined, BranchesOutlined
+  ToolOutlined, ThunderboltOutlined, BranchesOutlined, BugOutlined
 } from '@ant-design/icons-vue'
+
+// ==================== 控件别名 ====================
+
+/**
+ * 控件 type 的历史别名 → 目录中的标准写法。
+ *
+ * 布局 / 属性定义里可能把变更单据控件写成下划线形式（change_issue_selector），
+ * 目录与渲染分支统一用 kebab-case，读写时都先过 normalizeWidgetType()。
+ */
+export const WIDGET_TYPE_ALIASES = {
+  change_user_selector: 'change-user-selector',
+  change_issue_selector: 'change-issue-selector',
+  change_affected_object_selector: 'change-affected-object-selector',
+  change_request_selector: 'change-request-selector'
+}
+
+/** 归一化控件 type，未登记的原样返回（缺省 input） */
+export function normalizeWidgetType(type) {
+  return WIDGET_TYPE_ALIASES[type] || type || 'input'
+}
 
 // ==================== 控件定义 ====================
 
@@ -190,7 +210,7 @@ export const WIDGETS = [
     category: 'media',
     icon: shallowRef(CloudUploadOutlined),
     dataType: 'STRING',
-    description: 'CKFile 主文档上传，支持本地上传和网络 URL 两种来源',
+    description: 'CKFile 主文档上传，支持本地上传和网络 URL 两种来源。ENG_DOCUMENT 表单中按 CAD 三维数模格式筛选：STEP / IGES / STL 可转轻量化预览，CATIA / Creo / NX / SolidWorks 原生数模仅归档',
     bindFields: ['ckfileOid'],
     defaults: { uiComponent: 'ckfile-upload', required: false, placeholder: '上传主文档或录入URL' }
   },
@@ -205,12 +225,22 @@ export const WIDGETS = [
     defaults: { uiComponent: 'document-type-select', required: false, placeholder: '请选择文档类型' }
   },
   {
+    type: 'eng-document-type-select',
+    label: '工程数据类型',
+    category: 'system',
+    icon: shallowRef(FolderOutlined),
+    dataType: 'STRING',
+    description: 'ENG_DOCUMENT 类型子树选择（工程数据 / 封装 / PCB设计 / 原理图 / 原理图图符）',
+    bindFields: ['typeDefinitionCode'],
+    defaults: { uiComponent: 'eng-document-type-select', required: false, placeholder: '请选择工程数据类型' }
+  },
+  {
     type: 'folder-select',
     label: '所属文件夹',
     category: 'system',
     icon: shallowRef(FolderOutlined),
     dataType: 'STRING',
-    description: '文件夹树形选择器，选择文档所属的过程资料目录',
+    description: '文件夹树形选择器，选择文档所属的研发资料目录',
     bindFields: ['folderOid'],
     defaults: { uiComponent: 'folder-select', required: false, placeholder: '请选择所属文件夹' }
   },
@@ -314,6 +344,46 @@ export const WIDGETS = [
     bindFields: ['number'],
     defaults: { uiComponent: 'number-preview', required: false, readonly: true }
   },
+  // ---------- 变更单据业务控件 ----------
+  {
+    type: 'change-user-selector',
+    label: '变更责任人',
+    category: 'system',
+    icon: shallowRef(UserOutlined),
+    dataType: 'STRING',
+    description: '变更单据专用用户选择，取值为登录账号 username（与审批人回写、时间线记录口径一致）。新建变更请求 / 变更通告的「责任人」「处理人」字段使用它',
+    defaults: { uiComponent: 'change-user-selector', required: false, placeholder: '默认为当前用户' }
+  },
+  {
+    type: 'change-issue-selector',
+    label: '关联问题',
+    category: 'system',
+    icon: shallowRef(BugOutlined),
+    dataType: 'ARRAY',
+    description: '变更单据关联问题多选，按编号或标题服务端搜索（最多 20 条）。取值为问题 oid 数组，落库字段 issueOids',
+    bindFields: ['issueOids'],
+    defaults: { uiComponent: 'change-issue-selector', required: false, placeholder: '可选：输入编号或标题搜索' }
+  },
+  {
+    type: 'change-affected-object-selector',
+    label: '变更对象',
+    category: 'system',
+    icon: shallowRef(ClusterOutlined),
+    dataType: 'ARRAY',
+    description: '预估受影响对象多选（零件 / 文档 / 工程文档），按编号或名称服务端搜索。取值为对象 oid 数组，落库字段 affectedObjectOids',
+    bindFields: ['affectedObjectOids'],
+    defaults: { uiComponent: 'change-affected-object-selector', required: false, placeholder: '可选：输入编号或名称搜索零件 / 文档' }
+  },
+  {
+    type: 'change-request-selector',
+    label: '来源变更请求',
+    category: 'system',
+    icon: shallowRef(BranchesOutlined),
+    dataType: 'STRING',
+    description: '变更通告的来源变更请求单选（最近 200 条），取值请求 oid，可清空 —— 变更通告允许独立存在；已绑定其它变更通告的请求置灰不可选',
+    bindFields: ['requestOid'],
+    defaults: { uiComponent: 'change-request-selector', required: false, placeholder: '可选 —— 变更通告允许独立存在' }
+  },
   {
     type: 'form-group',
     label: '分组',
@@ -394,21 +464,21 @@ export function getCategorizedWidgets() {
  * 根据 type 获取控件定义，找不到返回 null
  */
 export function getWidgetByType(type) {
-  return widgetByType[type] || null
+  return widgetByType[normalizeWidgetType(type)] || null
 }
 
 /**
  * 根据 type 获取图标 shallowRef
  */
 export function getWidgetIcon(type) {
-  return widgetIconByType[type] || FALLBACK_ICON
+  return widgetIconByType[normalizeWidgetType(type)] || FALLBACK_ICON
 }
 
 /**
  * 判断是否为容器类控件（如分组、布局行）
  */
 export function isContainerWidget(type) {
-  const w = widgetByType[type]
+  const w = widgetByType[normalizeWidgetType(type)]
   return w?.special === 'group' || w?.special === 'layout-row' || w?.special === 'data-table'
 }
 

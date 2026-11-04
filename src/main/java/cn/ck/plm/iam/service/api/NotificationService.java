@@ -26,6 +26,18 @@ public interface NotificationService {
     /** 向所有 ADMIN 角色用户发送通知 */
     void sendToAdmins(String title, String content, String type, String targetType, String targetOid);
 
+    /**
+     * 向<b>当前租户</b>的 TENANT_ADMIN 角色用户发送通知。
+     *
+     * <p>与 {@link #sendToAdmins} 的区别：那个发的是平台管理员（租户注册审核）。
+     * 角色已按租户隔离，所以本方法依赖调用线程上的 TenantContext。
+     *
+     * <p>渠道未启用时静默跳过（与 {@link #send} 同一口径），返回 0。
+     *
+     * @return 实际写入的收件人数
+     */
+    int sendToTenantAdmins(String title, String content, String type, String targetType, String targetOid);
+
     /** 获取用户未读通知数 */
     int countUnread(String userOid);
 

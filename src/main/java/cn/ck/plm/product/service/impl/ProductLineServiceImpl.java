@@ -22,11 +22,13 @@ import cn.ck.plm.product.mapper.TeamMemberMapper;
 import cn.ck.plm.product.service.api.FolderService;
 import cn.ck.plm.product.service.api.ProductLineService;
 import cn.ck.plm.product.service.api.ProductModelService;
+import cn.ck.plm.product.service.api.MethodologyInstanceService;
 import cn.ck.plm.product.service.api.StageService;
 import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
 import cn.ck.plm.softtype.entity.TypeDefinition;
 import cn.ck.plm.softtype.mapper.TypeDefinitionMapper;
 import cn.ck.plm.softtype.service.api.SoftTypeInstanceCapability;
+import cn.ck.plm.softtype.service.api.IBADataService;
 import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,8 +66,15 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
     private final FolderService folderService;
     private final StageService stageService;
     private final IbaDataSupport ibaDataSupport;
+    /** 详情读取时把 IBA 值（TARGET_LAUNCH_DATE / TARGET_COST …）摊平到返回 JSON */
+    private final IBADataService ibaDataService;
     private final ObjectMapper objectMapper;
     private final ProductModelService productModelService;
+    private final MethodologyInstanceService methodologyInstanceService;
+    /** 团队可见性过滤（2026-10-12）：不在系列/型号团队中的用户看不到对应记录 */
+    private final ProductTeamVisibility teamVisibility;
+    /** 建容器时顺带建同名 Part（BOM 父件） */
+    private final ContainerPartProvisioner containerPartProvisioner;
 
     public ProductLineServiceImpl(ProductLineMapper productLineMapper,
                                    ProductModelMapper productModelMapper,
@@ -76,8 +85,12 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
                                    FolderService folderService,
                                    StageService stageService,
                                    IbaDataSupport ibaDataSupport,
+                                   IBADataService ibaDataService,
                                    ObjectMapper objectMapper,
-                                   ProductModelService productModelService) {
+                                   ProductModelService productModelService,
+                                   MethodologyInstanceService methodologyInstanceService,
+                                   ProductTeamVisibility teamVisibility,
+                                   ContainerPartProvisioner containerPartProvisioner) {
         this.productLineMapper = productLineMapper;
         this.productModelMapper = productModelMapper;
         this.typeDefinitionMapper = typeDefinitionMapper;
@@ -87,8 +100,12 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
         this.folderService = folderService;
         this.stageService = stageService;
         this.ibaDataSupport = ibaDataSupport;
+        this.ibaDataService = ibaDataService;
         this.objectMapper = objectMapper;
         this.productModelService = productModelService;
+        this.methodologyInstanceService = methodologyInstanceService;
+        this.teamVisibility = teamVisibility;
+        this.containerPartProvisioner = containerPartProvisioner;
     }
 
     // ==================== 能力宿主策略（SoftTypeInstanceCapability）====================
@@ -131,7 +148,7 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
         ProductLine pl = findByOid(oid);
         if (pl != null) {
             pl.setNodeType("PRODUCT_LINE");
-            return pl;
+            return withIba(pl, HOST, oid);
         }
         ProductModel model = productModelService.findByOid(oid);
         if (model != null) {
@@ -144,9 +161,27 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
             result.setTeamOid(model.getTeamOid());
             result.setParentOid(model.getParentOid()); // 产品型号的父级是产品系列
             result.setNodeType("PRODUCT_MODEL");
-            return result;
+            return withIba(result, "PRODUCT_MODEL", oid);
         }
         return null;
+    }
+
+    /**
+     * 详情读取时把 IBA 值摊平到返回的 JSON 上（系列 / 型号两条路径都用）。
+     *
+     * <p>{@code ProductLine} / {@code ProductModel} 不是 {@code IBAExtensible}（没有 extAttrs 容器），
+     * 没法像 Part / Document 那样靠 {@code restore} 注入。但页面布局里的 IBA 字段
+     * （{@code TARGET_LAUNCH_DATE} / {@code TARGET_COST}）要回填到编辑表单 ——
+     * **只写不读**的话，用户打开编辑弹窗只看到空值，一保存就把库里的值冲掉。
+     */
+    private Object withIba(Object entity, String entityType, String oid) {
+        if (entity == null) return null;
+        Map<String, Object> flat = objectMapper.convertValue(entity,
+                new TypeReference<Map<String, Object>>() {
+                });
+        Map<String, Object> iba = ibaDataService.getValues(entityType, oid);
+        if (iba != null && !iba.isEmpty()) flat.putAll(iba);
+        return flat;
     }
 
     @Override
@@ -195,6 +230,20 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
         team.setDescription(productLine.getName() + "研发团队");
         teamMapper.insert(team);
 
+        // 创建者自动成为「产品经理」—— 团队是刚建的、必无成员，故不必再用 existsByTeamAndUser 兜底。
+        // 口径说明：ck_team_member.user_id 存 username（与前端手动添加成员、
+        // buildMemberVOs 里的 userMapper.selectByUsername 一致）；role_name 是**自由文本**
+        // （"产品经理"不是 ck_role 的角色码 —— 那 16 个是系统权限角色，两套东西别混）。
+        // UserContext 用全限定名，免得为一行再动 import 块（本项目既有惯例，见 TypeDefinitionServiceImpl）。
+        String creator = cn.ck.plm.base.util.UserContext.get();
+        if (creator != null && !creator.trim().isEmpty()) {
+            TeamMember productManager = new TeamMember();
+            productManager.setTeamOid(team.getOid());
+            productManager.setUserId(creator.trim());
+            productManager.setRoleName("产品经理");
+            teamMemberMapper.insert(productManager);
+        }
+
         productLine.setTeamOid(team.getOid());
         if (productLine.getDeleteMark() == null) {
             productLine.setDeleteMark(false);
@@ -204,6 +253,11 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
         // 根据本租户的研发阶段模板初始化阶段到 ck_stage 表（先生成 stage OID）
         List<Stage> stages = stageService.initDefaultStages(productLine.getOid(), Stage.OWNER_TYPE_LINE, null);
 
+        // 六类方法论实例（交付件 / 阶段门 / 评审 / 检查规则 / 指标 / 驾驶舱）：
+        // 与阶段同一口径 —— 从本租户模板「快照」而来、幂等（已有即跳过）；
+        // 模板以后改了不回灌，实例上的裁剪也不会被模板覆盖。
+        methodologyInstanceService.initFor(productLine.getOid(), Stage.OWNER_TYPE_LINE);
+
         // 根据阶段自带的 defaultFolders 创建各研发阶段的系统默认文件夹
         for (Stage stage : stages) {
             List<String> folderNames = parseDefaultFolders(stage.getDefaultFolders());
@@ -211,6 +265,11 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
                 folderService.initSystemFolders(productLine.getOid(), stage.getOid(), folderNames);
             }
         }
+
+        // 同名 Part：BOM 的父件只能是一个 Part，先备好 —— 阶段已建完，落到概念阶段
+        containerPartProvisioner.provision(productLine.getName(), productLine.getOid(),
+                ContainerPartProvisioner.CONTAINER_LINE,
+                stages.isEmpty() ? null : stages.get(0).getOid(), creator);
 
         return productLine;
     }
@@ -317,7 +376,8 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
 
     @Override
     public List<ProductLine> findAll() {
-        return productLineMapper.selectAll();
+        // 团队可见性（2026-10-12）：不在系列团队中 → 不可见；管理员不过滤
+        return teamVisibility.filterLines(productLineMapper.selectAll());
     }
 
     @Override
@@ -325,13 +385,13 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
         if (keyword == null || keyword.trim().isEmpty()) {
             return findAll();
         }
-        return productLineMapper.search(keyword.trim());
+        return teamVisibility.filterLines(productLineMapper.search(keyword.trim()));
     }
 
     @Override
     public List<ProductLine> findTree() {
-        // 获取所有产品系列的根节点
-        List<ProductLine> roots = productLineMapper.selectRoots();
+        // 获取所有产品系列的根节点（先按团队可见性过滤；可见集含"祖先补齐"，树不会断）
+        List<ProductLine> roots = teamVisibility.filterLines(productLineMapper.selectRoots());
         // 设置产品系列的类型标识和图标
         for (ProductLine root : roots) {
             root.setNodeType("PRODUCT_LINE");
@@ -343,7 +403,7 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
 
     @Override
     public List<ProductLine> findLinesOnlyTree() {
-        List<ProductLine> roots = productLineMapper.selectRoots();
+        List<ProductLine> roots = teamVisibility.filterLines(productLineMapper.selectRoots());
         for (ProductLine root : roots) {
             root.setNodeType("PRODUCT_LINE");
             root.setIcon("ApartmentOutlined");
@@ -352,10 +412,10 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
         return roots;
     }
 
-    /** 递归构建子节点（仅子系列，不含产品型号） */
+    /** 递归构建子节点（仅子系列，不含产品型号）—— 子节点同样按团队可见性过滤（2026-10-12） */
     private void buildLinesOnlyChildren(ProductLine parent) {
         List<ProductLine> children = new ArrayList<>();
-        List<ProductLine> subLines = productLineMapper.selectByParentOid(parent.getOid());
+        List<ProductLine> subLines = teamVisibility.filterLines(productLineMapper.selectByParentOid(parent.getOid()));
         for (ProductLine sub : subLines) {
             sub.setNodeType("PRODUCT_LINE");
             sub.setIcon("ApartmentOutlined");
@@ -410,8 +470,8 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
     private void buildChildren(ProductLine parent) {
         List<ProductLine> children = new ArrayList<>();
 
-        // 1. 加载子系列
-        List<ProductLine> subLines = productLineMapper.selectByParentOid(parent.getOid());
+        // 1. 加载子系列（按团队可见性过滤，2026-10-12）
+        List<ProductLine> subLines = teamVisibility.filterLines(productLineMapper.selectByParentOid(parent.getOid()));
         for (ProductLine sub : subLines) {
             sub.setNodeType("PRODUCT_LINE");
             sub.setIcon("ApartmentOutlined");
@@ -419,8 +479,8 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
             children.add(sub);
         }
 
-        // 2. 加载产品型号（作为子节点）
-        List<ProductModel> models = productModelMapper.selectByProductLineOid(parent.getOid());
+        // 2. 加载产品型号（作为子节点；按"自身团队 ∪ 父系列/祖先团队"过滤，2026-10-12）
+        List<ProductModel> models = teamVisibility.filterModels(productModelMapper.selectByProductLineOid(parent.getOid()));
         for (ProductModel model : models) {
             ProductLine modelNode = convertToTreeNode(model);
             children.add(modelNode);
@@ -439,7 +499,7 @@ public class ProductLineServiceImpl implements ProductLineService, SoftTypeInsta
         node.setTeamOid(model.getTeamOid());
         node.setThumbnail(model.getThumbnail());
         node.setNodeType("PRODUCT_MODEL");
-        node.setIcon("TagOutlined");  // 来自 TypeDefinitionInitializer 中 ProductModel 的图标
+        node.setIcon("TagOutlined");  // 与 platform-base 包 softtypes.json 里 PRODUCT_MODEL 的图标一致
         return node;
     }
 

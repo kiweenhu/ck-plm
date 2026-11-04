@@ -1,6 +1,6 @@
 import {
   BellOutlined, ClockCircleOutlined, CheckCircleOutlined,
-  SoundOutlined, SwapOutlined, ApartmentOutlined, UserSwitchOutlined,
+  SoundOutlined, SwapOutlined, ApartmentOutlined, UserSwitchOutlined, BranchesOutlined,
 } from '@ant-design/icons-vue'
 
 /**
@@ -8,7 +8,7 @@ import {
  *
  * <p>类型编码由后端写入 `ck_notification.type`：TASK 待办 / TASK_DELEGATE 委派 /
  * TASK_TRANSFER 转办 / PROCESS_RESULT 流程结果 / ANNOUNCEMENT 公告 /
- * TENANT_REGISTRATION 租户注册审核。
+ * TENANT_REGISTRATION 租户注册审核 / VERSION_RULE 版本规则（修订被规则用尽拦截时提醒管理员）。
  */
 
 /** 类型 → 展示元信息（图标直接给组件，模板用 <component :is>） */
@@ -26,6 +26,8 @@ export function notifTypeMeta(type) {
       return { label: '公告', color: 'gold', icon: SoundOutlined }
     case 'TENANT_REGISTRATION':
       return { label: '租户审核', color: 'purple', icon: ApartmentOutlined }
+    case 'VERSION_RULE':
+      return { label: '版本规则', color: 'volcano', icon: BranchesOutlined }
     default:
       return { label: '通知', color: 'default', icon: BellOutlined }
   }
@@ -44,11 +46,16 @@ export function notifLink(notification) {
     case 'TASK':
       return '/workflow/task'
     case 'PROCESS_INSTANCE':
-      return '/workflow/monitor'
+      // 流程结果通知发给**发起人**（不一定是管理员），所以落到实例详情页；
+      // 「流程监控」自 2026-10-29 起仅租户管理员可见，普通成员点进来会被守卫拦回工作台
+      return oid ? `/workflow/instance/${oid}` : '/workflow/monitor'
     case 'TENANT':
       return '/system/tenants'
     case 'PART':
       return oid ? `/part/${oid}` : ''
+    case 'VERSION_RULE':
+      // 直接落到「业务配置 → 版本规则」页签；oid 是规则编码，仅作定位信息
+      return '/org/config?module=versionrule'
     default:
       return ''
   }

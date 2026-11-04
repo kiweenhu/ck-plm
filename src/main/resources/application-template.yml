@@ -11,10 +11,13 @@ spring:
     username: your_username
     password: your_password
     driver-class-name: org.postgresql.Driver
-#  sql:
-#    init:
-#      mode: never
-#      schema-locations: classpath:schema.sql
+  # 启动时自动补齐表结构（schema.sql 幂等，重跑无副作用）。
+  # 与 application.yml 保持一致；若部署环境由 DBA 统一管理 DDL，可改回 mode: never 并手工执行脚本。
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: false
   servlet:
     multipart:
       max-file-size: 50MB

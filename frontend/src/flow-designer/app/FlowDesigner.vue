@@ -161,8 +161,9 @@ import { dslSignature } from './template-repo'
 import { getNotificationChannels } from '@/api'
 import { setSystemNotifyChannels, validateOptions } from './system-channels'
 // 流程表单模板：企业自定义的在后端表里（业务配置 → 流程表单），启动时拉一次注入注册表，
-// 节点的「节点表单」下拉才能同步列出它们
-import { loadFormTemplates } from './form-templates'
+// 节点的「节点表单」下拉才能同步列出它们。
+// 用 ensure 版（幂等）：办理页也要同一份清单来显示表名，两处共享一次请求
+import { ensureFormTemplates } from './form-templates'
 
 const props = defineProps({
   /** 模板 oid；为空时退化为「离线草稿」（不可保存/部署） */
@@ -298,8 +299,12 @@ watch(() => props.templateOid, loadTemplate)
 // 取不到就当没有（校验跳过该规则），绝不让设计器因为读不到系统配置而打不开
 onMounted(loadSystemNotifyChannels)
 
-// 表单模板要在用户选中节点之前就绪：面板的下拉是同步渲染的（见 form-templates.ts）
-onMounted(loadFormTemplates)
+// 表单模板要在用户选中节点之前就绪：面板的下拉是同步渲染的（见 form-templates.ts）。
+// 每次进设计器强制重拉：办完「业务配置 → 流程表单」里的新建/启用后回到这里，必须立刻能选到，
+// 否则表现就是"表单没注册"——实际只是第一次注入的缓存（2026-10-29 踩过）。
+onMounted(() => {
+  ensureFormTemplates({ force: true })
+})
 
 async function loadSystemNotifyChannels() {
   try {

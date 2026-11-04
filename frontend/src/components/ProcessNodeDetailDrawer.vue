@@ -22,6 +22,31 @@
       </a-descriptions-item>
     </a-descriptions>
 
+    <!-- 表单填写：这一步到底填了什么（结论 / 意见在上面，这里只看表单类流程变量） -->
+    <div class="pnd-section">
+      <div class="pnd-section-title">
+        表单填写
+        <span class="pnd-section-hint">
+          {{ filledFormItems.length }} 项有值<template v-if="emptyFormCount">，另有 {{ emptyFormCount }} 项未填</template>
+        </span>
+        <a-button size="small" type="link" :loading="formLoading" @click="loadForm">刷新</a-button>
+      </div>
+
+      <a-spin :spinning="formLoading" size="small">
+        <a-empty
+          v-if="!filledFormItems.length && !formLoading"
+          :image-style="{ height: '32px' }"
+          description="该节点没有表单填写记录（审批节点通常只填意见；或办理时未填表单）"
+        />
+        <div v-else class="pnd-form">
+          <div v-for="item in filledFormItems" :key="item.key" class="pnd-form-row">
+            <div class="pnd-form-label" :title="item.key">{{ item.label }}</div>
+            <div class="pnd-form-value">{{ item.value }}</div>
+          </div>
+        </div>
+      </a-spin>
+    </div>
+
     <div class="pnd-section">
       <div class="pnd-section-title">
         执行日志
@@ -77,7 +102,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { getInstanceNodeLogs } from '@/api'
+import { getInstanceNodeLogs, getActivityForm } from '@/api'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -119,11 +144,12 @@ const timeText = computed(() => {
   return item.endTime ? `${start} → ${fmtTime(item.endTime)}` : `${start} 起`
 })
 
-/** 打开时按该节点拉一次日志（切节点即重拉） */
+/** 打开时按该节点拉一次：后台执行日志 + 表单填写（切节点即重拉） */
 watch(() => [props.open, props.activity?.activityId, props.instanceId], ([open]) => {
   if (!open) return
   expanded.value = {}
   load()
+  loadForm()
 })
 
 async function load() {
@@ -139,6 +165,36 @@ async function load() {
     logs.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// ==================== 表单填写（这一步填了什么） ====================
+
+const formItems = ref([])
+const formLoading = ref(false)
+
+/**
+ * 只列**有值**的项：「设置审批人」这类节点会一次性写 8 个变量（各环节审批人），
+ * 其中通常只有 1 个有值 —— 逐条列出 7 行空值就是噪音，空值只在提示里给个数。
+ */
+const filledFormItems = computed(() => formItems.value.filter(
+  (it) => it.value !== null && it.value !== undefined && String(it.value).trim() !== ''
+))
+const emptyFormCount = computed(() => formItems.value.length - filledFormItems.value.length)
+
+async function loadForm() {
+  if (!props.instanceId || !props.activity?.activityId) {
+    formItems.value = []
+    return
+  }
+  formLoading.value = true
+  try {
+    const res = await getActivityForm(props.instanceId, props.activity.activityId)
+    formItems.value = res?.code === 200 ? (res.data || []) : []
+  } catch {
+    formItems.value = []
+  } finally {
+    formLoading.value = false
   }
 }
 
@@ -276,5 +332,32 @@ function close() {
   background: #fafafa;
   border-radius: 4px;
   padding: 8px 10px;
+}
+
+/* ===== 表单填写（节点办理时填的表单类变量） ===== */
+.pnd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pnd-form-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  background: #fafafa;
+  border-radius: 4px;
+}
+.pnd-form-label {
+  flex: 0 0 46%;
+  color: #595959;
+  font-size: 13px;
+  word-break: break-all;
+}
+.pnd-form-value {
+  flex: 1;
+  color: #1a1a2e;
+  font-size: 13px;
+  word-break: break-all;
 }
 </style>

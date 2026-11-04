@@ -41,6 +41,7 @@
     <!-- 成员表格（当前选中角色的成员） -->
     <div class="am-table-wrapper">
       <DataTable
+        scroll-x="max-content"
         :columns="columns"
         :data-source="members"
         :loading="loading"

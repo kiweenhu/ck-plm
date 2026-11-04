@@ -62,29 +62,18 @@ public class ResourceLibraryServiceImpl implements ResourceLibraryService {
     @Override
     public String getBindingRootOid(String resourceCode) {
         String code = resolveCode(resourceCode);
-        // 1) 当前租户的绑定
+        // 只认本租户的绑定（2026-10-11 起资源库与分类树都按租户隔离）：
+        // "本租户没有就回退平台绑定"只会返回一个**本租户读不到**的分类 oid（平台那份本租户不可见），
+        // 已删除该回退 —— 未绑定时返回 null，前端按空态处理，管理员在本租户下重新绑定即可。
         String oid = mapper.selectBindingRootOid(TenantContext.get(), code);
-        if (oid != null && !oid.isEmpty()) {
-            return oid;
-        }
-        // 2) 回退平台租户：三个资源子库（COMPONENT/STD_PART/GEN_PART）是平台级共享容器，
-        //    其分类绑定可能由平台管理员（sysadmin）在平台租户下维护，
-        //    普通租户读取时若本租户无绑定，应回退读取平台级的绑定配置
-        if (!TenantContext.PLATFORM_TENANT_OID.equals(TenantContext.get())) {
-            return mapper.selectBindingRootOid(TenantContext.PLATFORM_TENANT_OID, code);
-        }
-        return null;
+        return (oid != null && !oid.isEmpty()) ? oid : null;
     }
 
     @Override
     public Map<String, String> getAllBindings() {
         Map<String, String> map = new HashMap<>();
-        // 1) 当前租户
+        // 只合并本租户的绑定（同上：不再回退平台租户那份）
         mergeBindings(mapper.selectAllBindingRootOids(TenantContext.get()), map);
-        // 2) 回退平台租户：资源库是平台级共享容器；当前租户有的优先，缺的用平台租户的补
-        if (!TenantContext.PLATFORM_TENANT_OID.equals(TenantContext.get())) {
-            mergeBindings(mapper.selectAllBindingRootOids(TenantContext.PLATFORM_TENANT_OID), map);
-        }
         return map;
     }
 
@@ -122,7 +111,7 @@ public class ResourceLibraryServiceImpl implements ResourceLibraryService {
             throw new IllegalArgumentException("分类节点不存在: " + rootClassificationOid);
         }
         String tenantOid = TenantContext.get();
-        ResourceContainer resourceNode = resourceContainerMapper.selectByCode(code);
+        ResourceContainer resourceNode = resourceContainerMapper.selectByCode(code, tenantOid);
         if (mapper.countBinding(tenantOid, code) > 0) {
             mapper.updateBinding(tenantOid, code, rootClassificationOid.trim(), LocalDateTime.now());
         } else {
@@ -148,18 +137,19 @@ public class ResourceLibraryServiceImpl implements ResourceLibraryService {
         ctx.put("containerType", ResourceContainer.CONTAINER_TYPE);
         ctx.put("resourceCode", code);
         ctx.put("typeCode", resolveTypeCode(code));
-        // 资源子库节点（平台级共享容器，启动时预置）：COMPONENT / STD_PART / GEN_PART
-        ResourceContainer lib = resourceContainerMapper.selectByCode(code);
+        String tenantOid = TenantContext.get();
+        // 资源子库节点（按租户隔离，装包时各建一份）：COMPONENT / STD_PART / GEN_PART
+        ResourceContainer lib = resourceContainerMapper.selectByCode(code, tenantOid);
         if (lib != null) {
             ctx.put("containerOid", lib.getOid());
             ctx.put("containerCode", lib.getCode());
             ctx.put("containerName", lib.getName());
-            String stageOid = mapper.selectResourceStageOid(lib.getOid());
+            String stageOid = mapper.selectResourceStageOid(lib.getOid(), tenantOid);
             if (stageOid == null) {
-                // 兜底：阶段缺失时按资源节点补建（平台租户）
+                // 兜底：阶段缺失时按资源节点补建（**本租户**）
                 mapper.insertResourceStage(UUID.randomUUID().toString(), code,
-                        lib.getName(), lib.getOid(), LocalDateTime.now());
-                stageOid = mapper.selectResourceStageOid(lib.getOid());
+                        lib.getName(), lib.getOid(), tenantOid, LocalDateTime.now());
+                stageOid = mapper.selectResourceStageOid(lib.getOid(), tenantOid);
             }
             ctx.put("stageOid", stageOid);
         } else {

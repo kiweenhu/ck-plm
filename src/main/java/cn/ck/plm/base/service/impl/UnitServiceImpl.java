@@ -8,6 +8,7 @@ package cn.ck.plm.base.service.impl;
 import cn.ck.plm.base.entity.Unit;
 import cn.ck.plm.base.mapper.UnitMapper;
 import cn.ck.plm.base.service.api.UnitService;
+import cn.ck.plm.base.util.TenantContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,16 +24,33 @@ public class UnitServiceImpl implements UnitService {
         this.mapper = mapper;
     }
 
+    /**
+     * 当前租户 —— 单位的读写一律**显式**带上它（与 {@code ClassificationServiceImpl} 同款口径）。
+     *
+     * <p>为什么不只靠 {@code TenantStatementInterceptor} 注入：拦截器在上下文为空时不加租户条件，
+     * 那时业务表会看到所有租户的数据；显式传参则与上下文无关 —— 漏设上下文会**直接报错**，
+     * 而不是静默地跨租户读写。
+     */
+    private String tenantOid() {
+        String tenantOid = TenantContext.getOrNull();
+        if (tenantOid == null || tenantOid.isBlank()) {
+            throw new IllegalStateException("无法识别当前租户，单位读写需要租户上下文");
+        }
+        return tenantOid;
+    }
+
     @Override
     @Transactional
     public Unit create(Unit unit) {
         if (unit.getName() == null || unit.getName().isBlank()) {
             throw new IllegalArgumentException("单位名称（name）不能为空");
         }
-        if (mapper.existsByName(unit.getName()) > 0) {
+        String tenantOid = tenantOid();
+        if (mapper.existsByName(unit.getName(), tenantOid) > 0) {
             throw new IllegalArgumentException("单位名称已存在: " + unit.getName());
         }
         unit.setOid(UUID.randomUUID().toString());
+        unit.setTenantOid(tenantOid);
         if (unit.getIsSI() == null) unit.setIsSI(false);
         if (unit.getFactor() == null) unit.setFactor(1.0);
         if (unit.getOffset() == null) unit.setOffset(0.0);
@@ -47,8 +65,9 @@ public class UnitServiceImpl implements UnitService {
         Unit existing = mapper.selectByOid(oid);
         if (existing == null) throw new IllegalArgumentException("单位不存在: " + oid);
 
+        String tenantOid = tenantOid();
         if (unit.getName() != null && !unit.getName().equals(existing.getName())) {
-            if (mapper.existsByName(unit.getName()) > 0) {
+            if (mapper.existsByName(unit.getName(), tenantOid) > 0) {
                 throw new IllegalArgumentException("单位名称已存在: " + unit.getName());
             }
             existing.setName(unit.getName());
@@ -71,8 +90,8 @@ public class UnitServiceImpl implements UnitService {
     public void delete(String oid) {
         Unit unit = mapper.selectByOid(oid);
         if (unit == null) throw new IllegalArgumentException("单位不存在: " + oid);
-        // 检查是否有其他单位以它为基准
-        List<Unit> dependents = mapper.selectByBaseUnitName(unit.getName());
+        // 检查是否有其他单位以它为基准（限本租户：跨租户的同名基准互不相干）
+        List<Unit> dependents = mapper.selectByBaseUnitName(unit.getName(), tenantOid());
         if (dependents != null && !dependents.isEmpty()) {
             throw new IllegalArgumentException(
                     "无法删除该单位，以下单位以其为基准: " +
@@ -83,7 +102,7 @@ public class UnitServiceImpl implements UnitService {
 
     @Override
     public Unit getByName(String name) {
-        return mapper.selectByName(name);
+        return mapper.selectByName(name, tenantOid());
     }
 
     @Override
@@ -93,12 +112,12 @@ public class UnitServiceImpl implements UnitService {
 
     @Override
     public List<Unit> listByQuantityType(String quantityType) {
-        return mapper.selectByQuantityType(quantityType);
+        return mapper.selectByQuantityType(quantityType, tenantOid());
     }
 
     @Override
     public Map<String, List<Unit>> listAllGrouped() {
-        return mapper.selectAll().stream()
+        return mapper.selectAll(tenantOid()).stream()
                 .collect(Collectors.groupingBy(
                         u -> u.getQuantityType() != null ? u.getQuantityType() : "CUSTOM",
                         LinkedHashMap::new,
@@ -107,13 +126,14 @@ public class UnitServiceImpl implements UnitService {
 
     @Override
     public List<Unit> listAll() {
-        return mapper.selectAll();
+        return mapper.selectAll(tenantOid());
     }
 
     @Override
     public double convertFactor(String fromUnitName, String toUnitName) {
-        Unit from = mapper.selectByName(fromUnitName);
-        Unit to = mapper.selectByName(toUnitName);
+        String tenantOid = tenantOid();
+        Unit from = mapper.selectByName(fromUnitName, tenantOid);
+        Unit to = mapper.selectByName(toUnitName, tenantOid);
         if (from == null) throw new IllegalArgumentException("单位不存在: " + fromUnitName);
         if (to == null) throw new IllegalArgumentException("单位不存在: " + toUnitName);
         if (!Objects.equals(from.getQuantityType(), to.getQuantityType())) {

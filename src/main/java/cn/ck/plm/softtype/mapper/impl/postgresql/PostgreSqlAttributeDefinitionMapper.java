@@ -24,11 +24,11 @@ public interface PostgreSqlAttributeDefinitionMapper extends AttributeDefinition
     @Override
     @Insert("INSERT INTO ck_attribute_definition (oid, entity_name, field_name, display_name, " +
             "data_type, source, iba_oid, required, searchable, listable, editable, " +
-            "ui_component, default_value, constraints_json, sort_order, enabled, " +
+            "ui_component, default_value, constraints_json, sort_order, enabled, tenant_oid, " +
             " creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{entityName}, #{fieldName}, #{displayName}, " +
             "#{dataType}, #{source}, #{ibaOid}, #{required}, #{searchable}, #{listable}, #{editable}, " +
-            "#{uiComponent}, #{defaultValue}, #{constraintsJson}, #{sortOrder}, #{enabled}, " +
+            "#{uiComponent}, #{defaultValue}, #{constraintsJson}, #{sortOrder}, #{enabled}, #{tenantOid}, " +
             "#{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(AttributeDefinition def);
 
@@ -49,7 +49,7 @@ public interface PostgreSqlAttributeDefinitionMapper extends AttributeDefinition
     @Override
     @Select("SELECT oid, entity_name, field_name, display_name, " +
             "data_type, source, iba_oid, required, searchable, listable, editable, " +
-            "ui_component, default_value, constraints_json, sort_order, enabled, " +
+            "ui_component, default_value, constraints_json, sort_order, enabled, tenant_oid, " +
             " creator, created_at, updater, updated_at " +
             "FROM ck_attribute_definition WHERE oid=#{oid}")
     @Results(id = "attrDefResult", value = {
@@ -69,6 +69,7 @@ public interface PostgreSqlAttributeDefinitionMapper extends AttributeDefinition
             @Result(property = "constraintsJson", column = "constraints_json"),
             @Result(property = "sortOrder",       column = "sort_order"),
             @Result(property = "enabled",         column = "enabled"),
+            @Result(property = "tenantOid",       column = "tenant_oid"),
             @Result(property = "creator",         column = "creator"),
             @Result(property = "createdAt",       column = "created_at"),
             @Result(property = "updater",         column = "updater"),
@@ -79,7 +80,7 @@ public interface PostgreSqlAttributeDefinitionMapper extends AttributeDefinition
     @Override
     @Select("SELECT oid, entity_name, field_name, display_name, " +
             "data_type, source, iba_oid, required, searchable, listable, editable, " +
-            "ui_component, default_value, constraints_json, sort_order, enabled, " +
+            "ui_component, default_value, constraints_json, sort_order, enabled, tenant_oid, " +
             " creator, created_at, updater, updated_at " +
             "FROM ck_attribute_definition WHERE entity_name=#{entityName} " +
             "AND editable = true " +
@@ -89,15 +90,18 @@ public interface PostgreSqlAttributeDefinitionMapper extends AttributeDefinition
 
     @Override
     @Select("SELECT COUNT(*) FROM ck_attribute_definition " +
-            "WHERE entity_name=#{entityName} AND field_name=#{fieldName}")
+            "WHERE entity_name=#{entityName} AND field_name=#{fieldName} AND tenant_oid=#{tenantOid}")
     int existsByEntityAndField(@Param("entityName") String entityName,
-                               @Param("fieldName") String fieldName);
+                               @Param("fieldName") String fieldName,
+                               @Param("tenantOid") String tenantOid);
 
     @Override
     @Delete("DELETE FROM ck_attribute_definition WHERE iba_oid=#{ibaOid}")
     int deleteByIbaOid(@Param("ibaOid") String ibaOid);
 
     @Override
-    @Delete("DELETE FROM ck_attribute_definition WHERE entity_name=#{entityName} AND source='SYSTEM'")
-    int deleteByEntityName(@Param("entityName") String entityName);
+    @Delete("DELETE FROM ck_attribute_definition WHERE entity_name=#{entityName} "
+            + "AND source='SYSTEM' AND tenant_oid=#{tenantOid}")
+    int deleteSystemByEntityAndTenant(@Param("entityName") String entityName,
+                                      @Param("tenantOid") String tenantOid);
 }

@@ -21,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -44,7 +43,7 @@ public class VersionRuleServiceImpl implements VersionRuleService {
     @Autowired
     private TypeVersionRuleLinkService typeVersionRuleLinkService;
 
-    // 默认版本规则的「种子」不在这里 —— 已挪到 cn.ck.plm.base.config.VersionRuleInitializer（@Order(1)）：
+    // 默认版本规则的「种子」不在这里 —— 已挪到 electronics-core 行业包的 versionRules.json（VersionRuleInstaller 落地）：
     //   · 初始化器有明确的启动顺序（@Order），而 service 的 @PostConstruct 没有，容易在"租户上下文还没准备好"
     //     的时候写库（历史上就是这么把 8 条规则写进默认租户的）；
     //   · 种子与业务实现分离，service 只管规则的增删改查与版本推演。
@@ -78,6 +77,10 @@ public class VersionRuleServiceImpl implements VersionRuleService {
         }
         if (rule.getEnabled() == null) {
             rule.setEnabled(true);
+        }
+        // 按租户隔离（2026-10-11）：归属必须显式落本租户（同 DefaultNumberService.create）
+        if (rule.getTenantOid() == null) {
+            rule.setTenantOid(TenantContext.get());
         }
         mapper.insert(rule);
         return rule;
@@ -178,31 +181,74 @@ public class VersionRuleServiceImpl implements VersionRuleService {
         return seq.get(idx + 1);
     }
 
+    @Override
+    public boolean isLastRevision(String ruleCode, String currentRevision) {
+        if (currentRevision == null || currentRevision.trim().isEmpty()) return false;
+        List<String> seq = getRevisionSequence(ruleCode);
+        if (seq.isEmpty()) return false;                 // 规则无字母序列 → 不受限（保留 char+1 兜底）
+        int idx = seq.indexOf(currentRevision);
+        return idx >= 0 && idx + 1 >= seq.size();        // 在序列中且已是最后一项
+    }
+
     /**
      * 从规则定义中提取大版本字母序列。
-     * 支持格式：(A,B,C,D,E,F) 或 (A-Z) 以及分隔符逗号/破折号等
+     *
+     * <p>三种写法都要认（历史上都出现过）：
+     * <ul>
+     *   <li>范围：{@code (A-Z)}、{@code (A-D)}</li>
+     *   <li>括号逗号序列：{@code (A,B,C)}</li>
+     *   <li>裸逗号序列：{@code A,B,C,D} —— 平台种子 {@code LETTER_26} 就是这种写法；
+     *       少了括号曾导致整条规则被当成"没有字母序列"，一路 char+1，到了 Z 之后既没有
+     *       下一个字母、也无从判断"已是最后一个"</li>
+     * </ul>
+     *
+     * <p>顺序不能反：{@code (A-Z)} 会被逗号序列的正则匹配成单个元素 "A-Z"，
+     * 必须先单独展开范围，再匹配逗号序列。
      */
     List<String> parseRevisionSequence(String ruleDefinition) {
-        // 匹配括号内的字母序列，如 (A,B,C,D,E,F,G,H) 或 (A-Z)
-        Pattern p = Pattern.compile("\\(([A-Z]([,\\-][A-Z])*)\\)");
-        Matcher m = p.matcher(ruleDefinition);
-        if (m.find()) {
-            String content = m.group(1);
-            return Arrays.asList(content.split("[,]"));
+        if (ruleDefinition == null || ruleDefinition.trim().isEmpty()) {
+            return java.util.Collections.emptyList();
         }
-        // 也支持单个字母范围 (A-Z)
-        Pattern range = Pattern.compile("\\(([A-Z])-([A-Z])\\)");
-        Matcher rm = range.matcher(ruleDefinition);
-        if (rm.find()) {
-            char start = rm.group(1).charAt(0);
-            char end = rm.group(2).charAt(0);
+        String def = ruleDefinition.trim();
+
+        // 1. 字母范围 (A-Z)
+        Matcher range = Pattern.compile("\\(([A-Z])\\s*-\\s*([A-Z])\\)").matcher(def);
+        if (range.find()) {
+            char start = range.group(1).charAt(0);
+            char end = range.group(2).charAt(0);
+            if (end < start) {
+                return java.util.Collections.emptyList();
+            }
             List<String> result = new java.util.ArrayList<>();
             for (char c = start; c <= end; c++) {
                 result.add(String.valueOf(c));
             }
             return result;
         }
+
+        // 2. 括号内的逗号序列 (A,B,C)
+        Matcher m = Pattern.compile("\\(([A-Z](?:\\s*,\\s*[A-Z])*)\\)").matcher(def);
+        if (m.find()) {
+            return splitLetters(m.group(1));
+        }
+
+        // 3. 裸逗号序列 A,B,C（平台种子 LETTER_26）
+        if (def.matches("[A-Z](?:\\s*,\\s*[A-Z])*")) {
+            return splitLetters(def);
+        }
         return java.util.Collections.emptyList();
+    }
+
+    /** 逗号分隔的字母串 → 列表（去空白，忽略空项） */
+    private List<String> splitLetters(String content) {
+        List<String> result = new java.util.ArrayList<>();
+        for (String part : content.split(",")) {
+            String value = part.trim();
+            if (!value.isEmpty()) {
+                result.add(value);
+            }
+        }
+        return result;
     }
 
     /**

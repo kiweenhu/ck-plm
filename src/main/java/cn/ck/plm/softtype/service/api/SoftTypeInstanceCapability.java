@@ -113,11 +113,36 @@ public interface SoftTypeInstanceCapability {
      *
      * @param oid             主对象 oid
      * @param entityVersion   大版本（如 A）；为空表示当前最新大版本
-     * @param targetStateCode 目标状态 code（如 IN_WORK / PUBLISHED）
+     * @param targetStateCode 目标状态 code（如 WORKING / PUBLISHED）
      * @throws IllegalArgumentException 目标状态不存在 / 当前状态不允许迁到它
      */
     default void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode) {
+        setLifecycleStateInstance(oid, entityVersion, targetStateCode, null);
+    }
+
+    /**
+     * 同上，但可先把对象<b>迁移</b>到目标模板，再设置状态（同一事务）。
+     *
+     * <p>用于"业务配置改过模板、对象还固着旧模板"的场景：用户在弹窗里选了「迁移到新模板」，
+     * 执行侧先把迭代的 {@code lifecycleTemplateIterationOid} 换掉（状态按 code 保留，保留
+     * 不了就落到新模板初始状态），再按新模板的迁移规则设置目标状态 —— 一步落库，不会出现
+     * "迁了模板但状态没设上"。
+     *
+     * @param migrateToTemplateIterationOid 目标模板子版本 oid；null 表示不迁移
+     */
+    default void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode,
+                                           String migrateToTemplateIterationOid) {
         throw unsupported("设置生命周期状态");
+    }
+
+    /**
+     * 该对象当前<b>绑定</b>的生命周期模板子版本 oid（迭代里的 {@code lifecycleTemplateIterationOid}）。
+     *
+     * <p>业务配置里的模板是"应该用哪个"，这里是"实际用的是哪个" —— 两者不一致时界面要提示
+     * 用户选择迁移还是保留。未绑定返回 null。
+     */
+    default String lifecycleTemplateIterationOfInstance(String oid, String entityVersion) {
+        throw unsupported("读取生命周期模板绑定");
     }
 
     /**
@@ -130,6 +155,16 @@ public interface SoftTypeInstanceCapability {
      * @param entityVersion 大版本（如 A）；为空表示当前最新大版本
      */
     default void resetLifecycleStateInstance(String oid, String entityVersion) {
+        resetLifecycleStateInstance(oid, entityVersion, null);
+    }
+
+    /**
+     * 同上，但可先把对象<b>迁移</b>到目标模板，再沿回退规则退回初始状态（同一事务）。
+     *
+     * @param migrateToTemplateIterationOid 目标模板子版本 oid；null 表示不迁移
+     */
+    default void resetLifecycleStateInstance(String oid, String entityVersion,
+                                             String migrateToTemplateIterationOid) {
         throw unsupported("退回初始状态");
     }
 

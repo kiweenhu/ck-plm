@@ -1,10 +1,12 @@
 <template>
   <div class="pid-page">
-    <!-- 页头：从流程监控点进来，返回入口就在最左边（独立页面必须有明确出口） -->
+    <!-- 页头：从流程监控点进来，返回入口就在最左边（独立页面必须有明确出口）。
+         流程监控已改为仅租户管理员可见，普通成员是从评审「查看流程」进来的 ——
+         那种情况按钮显示「返回」并回上一页，不能把人扔到 /home。 -->
     <div class="pid-head">
-      <a-button type="text" class="pid-back" @click="goMonitor">
+      <a-button type="text" class="pid-back" @click="goBack">
         <template #icon><ArrowLeftOutlined /></template>
-        流程监控
+        {{ canMonitor ? '流程监控' : '返回' }}
       </a-button>
       <a-divider type="vertical" />
       <h2 class="pid-title">{{ detail?.processDefinitionName || '流程详情' }}</h2>
@@ -16,7 +18,7 @@
       <a-result v-if="notFound" status="info" title="看不到这条流程实例" :sub-title="notFoundMessage">
         <template #extra>
           <a-space>
-            <a-button type="primary" @click="goMonitor">返回流程监控</a-button>
+            <a-button type="primary" @click="goBack">{{ canMonitor ? '返回流程监控' : '返回' }}</a-button>
             <a-button @click="reload">刷新看看</a-button>
           </a-space>
         </template>
@@ -95,6 +97,7 @@ import ProcessNodeDetailDrawer from '@/components/ProcessNodeDetailDrawer.vue'
 import EntityRefLabel from '@/components/EntityRefLabel.vue'
 import { useEntityInfo } from '@/composables/useEntityInfo'
 import { buildEntityLabel } from '@/utils/entityRef'
+import { useUserStore } from '@/stores/user'
 
 /**
  * 流程实例详情 —— 独立页面（原先是从监控列表弹的模态框）。
@@ -195,8 +198,27 @@ async function loadActivities() {
   }
 }
 
-function goMonitor() {
-  router.push('/workflow/monitor')
+const userStore = useUserStore()
+
+/**
+ * 当前用户是否能看到「流程监控」（仅租户管理员）。
+ *
+ * <p>与路由守卫 {@code ADMIN_ROUTES} 同口径：普通成员进得来这个详情页
+ * （评审行的「查看流程」），但回不去监控列表 —— 硬跳会被守卫拦回 /home。
+ */
+const canMonitor = computed(() => {
+  const roles = userStore.roles || []
+  return roles.includes('TENANT_ADMIN') || roles.includes('ADMIN') || roles.includes('PLATFORM_ADMIN')
+})
+
+function goBack() {
+  if (canMonitor.value) {
+    router.push('/workflow/monitor')
+    return
+  }
+  // 直链打开时没有上一页可回，退回工作台
+  if (window.history.length > 1) router.back()
+  else router.push('/home')
 }
 
 /** 节点执行详情抽屉（点开流程进度里的节点） */

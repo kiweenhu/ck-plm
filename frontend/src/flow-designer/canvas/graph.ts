@@ -9,7 +9,7 @@
  * —— 判定矩阵的唯一实现在 `@flow-dsl-core` 的 `canConnect`，避免两处规则分叉。
  */
 
-import { Graph, type Edge } from '@antv/x6'
+import { Graph, type Edge, type Node } from '@antv/x6'
 import { Snapline } from '@antv/x6-plugin-snapline'
 import { Selection } from '@antv/x6-plugin-selection'
 import { Keyboard } from '@antv/x6-plugin-keyboard'
@@ -394,6 +394,100 @@ function syncPortVisibility(graph: Graph): void {
   }
 }
 
+/**
+ * 两个节点之间保留的最小外沿间距（px）。
+ *
+ * <p>为什么要有它（2026-10-13 用户实测反馈）：两个节点贴在一起时，它们之间的连线
+ * 短到只剩一个箭头、甚至完全被节点框盖住，画布看起来"断了"。
+ * 24px ≈ 两个网格，够画出连线与箭头，也不至于把紧凑的布局推开太多。
+ */
+export const MIN_NODE_GAP = 24
+
+/** 轴对齐矩形（与 X6 的 BBox 同形，但只依赖这四个数，便于单测） */
+export interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * 把「自己」从与其它节点贴得太近的位置让开 —— **纯几何，不碰画布**。
+ *
+ * <p>规则（顺序即优先级）：
+ * <ol>
+ *   <li><b>完全 / 部分重叠</b>：沿"出去所需位移最小"的方向让开（同等距离时向上）；</li>
+ *   <li><b>水平投影重叠</b>（上下相邻）：垂直外沿间隙不足 {@code gap} → 往远离对方的一侧让；</li>
+ *   <li><b>垂直投影重叠</b>（左右相邻）：同理沿水平方向让；</li>
+ *   <li><b>斜对角</b>（两个投影都不重叠）：不动 —— 那是"错开摆放"，不是贴住。</li>
+ * </ol>
+ * 让开后可能与第三个节点又贴住，故最多迭代几轮（无处可去时停在最后一轮的结果，
+ * 这是兜底而不是布局算法 —— 真正的排布由「自动排版」负责）。
+ *
+ * @returns 建议的左上角坐标（与入参相同表示不需要移动）
+ */
+export function pushApartFrom(self: Box, others: Box[], gap: number): { x: number; y: number } {
+  let { x, y } = self
+  for (let round = 0; round < 4; round++) {
+    let moved = false
+    for (const box of others) {
+      const overlapX = Math.min(x + self.width, box.x + box.width) - Math.max(x, box.x)
+      const overlapY = Math.min(y + self.height, box.y + box.height) - Math.max(y, box.y)
+      if (overlapX > 0 && overlapY > 0) {
+        const up = y + self.height - box.y
+        const down = box.y + box.height - y
+        const left = x + self.width - box.x
+        const right = box.x + box.width - x
+        const shortest = Math.min(up, down, left, right)
+        if (shortest === up) {
+          y = box.y - self.height - gap
+        } else if (shortest === down) {
+          y = box.y + box.height + gap
+        } else if (shortest === left) {
+          x = box.x - self.width - gap
+        } else {
+          x = box.x + box.width + gap
+        }
+        moved = true
+      } else if (overlapX > 0) {
+        const current = y > box.y ? y - (box.y + box.height) : box.y - (y + self.height)
+        if (current < gap) {
+          y = y > box.y ? box.y + box.height + gap : box.y - self.height - gap
+          moved = true
+        }
+      } else if (overlapY > 0) {
+        const current = x > box.x ? x - (box.x + box.width) : box.x - (x + self.width)
+        if (current < gap) {
+          x = x > box.x ? box.x + box.width + gap : box.x - self.width - gap
+          moved = true
+        }
+      }
+    }
+    if (!moved) {
+      break
+    }
+  }
+  return { x: Math.round(x), y: Math.round(y) }
+}
+
+/** 拖动结束后把节点推开（只动被拖的那一个；其余节点保持用户摆好的位置） */
+function resolveTooClose(graph: Graph, nodeId: string): void {
+  const cell = graph.getCellById(nodeId)
+  if (!cell || !cell.isNode()) {
+    return
+  }
+  const node = cell as Node
+  const self = node.getBBox()
+  const others = graph.getNodes()
+    .filter((item) => item.id !== nodeId)
+    .map((item) => item.getBBox())
+  const next = pushApartFrom(self, others, MIN_NODE_GAP)
+  if (next.x !== self.x || next.y !== self.y) {
+    // 位置变化会触发 node:change:position → 上层照常回写 DSL（新坐标就是最终坐标）
+    node.setPosition(next.x, next.y)
+  }
+}
+
 /** 创建画布图实例 */
 export function createFlowGraph(container: HTMLElement, hooks: FlowGraphHooks): Graph {
   ensureFlowNodeRegistered()
@@ -461,12 +555,53 @@ export function createFlowGraph(container: HTMLElement, hooks: FlowGraphHooks): 
 
   // ==================== 手势 → 回调（不在此处改 DSL）====================
 
+  /**
+   * 拖动过、且还没松手的节点 —— 松手时用它决定"要不要把贴得太近的让开"。
+   *
+   * <p>为什么不用 X6 的 `node:moved`：Selection 插件的拖动**不派发**它
+   * （2026-10-13 实测：拖到间距 5px 松手，仍是 12px，纠正没跑），
+   * 而 window 上的 mouseup 一定收得到 —— 与连线手势同一套路（见 onWindowMouseUp）。
+   */
+  const draggedNodes = new Set<string>()
+
+  /**
+   * 位置停下来之后再纠正（debounce）。
+   *
+   * <p>拖动过程会连续改坐标，此刻纠正会与手势打架 —— 等它停 150ms 再检查：
+   * 松手后必然触发；拖动中停顿也触发，但那只是"吸开一下"，用户继续拖即可（幂等，不会反复跳）。
+   */
+  let settleTimer: ReturnType<typeof setTimeout> | null = null
+  let settleNodeId: string | null = null
+  const settle = (): void => {
+    settleTimer = null
+    const id = settleNodeId
+    settleNodeId = null
+    if (!id) {
+      return
+    }
+    // 成组移动（多选）时保持用户摆好的相对关系，不逐个纠正
+    const selectedNodes = graph.getSelectedCells().filter((cell) => cell.isNode())
+    if (selectedNodes.length > 1) {
+      return
+    }
+    resolveTooClose(graph, id)
+  }
+  const scheduleResolve = (nodeId: string): void => {
+    settleNodeId = nodeId
+    if (settleTimer) {
+      clearTimeout(settleTimer)
+    }
+    settleTimer = setTimeout(settle, 150)
+  }
+
   graph.on('node:change:position', ({ node, current }: { node: { id: string }; current?: { x: number; y: number } }) => {
     if (!current || applyingDatasets.has(graph)) {
       // 本轮坐标是本层按 DSL 写的，不是用户挪的 —— 回写会形成渲染回环
       return
     }
     hooks.onNodeMoved?.(node.id, { x: Math.round(current.x), y: Math.round(current.y) })
+    draggedNodes.add(node.id)
+    scheduleResolve(node.id)
   })
 
   // 松手才记一步（拖动过程只更新 layout）
@@ -678,8 +813,25 @@ export function createFlowGraph(container: HTMLElement, hooks: FlowGraphHooks): 
     }
   }
   container.addEventListener('mousedown', onContainerMouseDown)
-  // 松手即结束：必须挂 window —— 在画布外松手也要收尾，否则标签会一直挂着
-  const onWindowMouseUp = () => setConnecting(false)
+  // 松手即结束：必须挂 window —— 在画布外松手也要收尾，否则标签会一直挂着。
+  // 顺带在这里做「贴太近就让开」：这一刻节点坐标已经定下来（user 实测：两节点贴住时
+  // 它们之间的连线短到看不见）；单个节点拖动才纠正 —— 成组移动时保持用户摆好的相对关系。
+  const onWindowMouseUp = () => {
+    setConnecting(false)
+    if (draggedNodes.size > 0) {
+      // 成组移动（多选）时保持用户摆好的相对关系，不逐个纠正
+      const selectedNodes = graph.getSelectedCells().filter((cell) => cell.isNode())
+      if (selectedNodes.length <= 1) {
+        const [draggedId] = draggedNodes
+        resolveTooClose(graph, draggedId)
+      }
+      // 拖动收尾也在这里：X6 的 node:moved 对 Selection 插件的拖动不派发（2026-10-13 实测），
+      // 只靠它的话「拖完记一步撤销」会失效（拖完按 Ctrl+Z 回不到拖动前）。
+      // 两处都调用是安全的：撤销栈对"与当前快照相同"的 push 直接忽略（见 undo-stack.ts）
+      hooks.onNodeMoveEnd?.()
+    }
+    draggedNodes.clear()
+  }
   window.addEventListener('mouseup', onWindowMouseUp)
   domCleanups.set(graph, () => {
     container.removeEventListener('mousedown', onContainerMouseDown)

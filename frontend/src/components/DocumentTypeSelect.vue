@@ -26,6 +26,12 @@ const props = defineProps({
   modelValue: { type: [String, Number], default: undefined },
   placeholder: { type: String, default: '请选择文档类型' },
   disabled: { type: Boolean, default: false },
+  /**
+   * 类型树根节点编码：默认 DOCUMENT（文档类型）。
+   * 工程数据（ENG_DOCUMENT）传 'ENG_DOCUMENT' —— 否则下拉里只有文档类型，
+   * 新建工程数据时根本选不到 FOOTPRINT / PCB_LAYOUT / SCHEMATIC 这些数模类型。
+   */
+  rootCode: { type: String, default: 'DOCUMENT' },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -87,21 +93,21 @@ function addTitle(nodes) {
 }
 
 /**
- * 从完整类型树中提取 Document 节点及其子树。
- * 返回一个包含 Document 节点（含其 children）的树，
- * 让用户可以选择 Document 本身或其子类型。
+ * 从完整类型树中提取指定根节点（默认 DOCUMENT）及其子树。
+ * 返回一个包含该根节点（含其 children）的树，
+ * 让用户可以选择根类型本身或其子类型。
  */
-function extractDocSubtree(nodes) {
+function extractSubtree(nodes, rootCode) {
   for (const node of nodes) {
-    if (node.code === 'DOCUMENT') {
-      // 返回 Document 节点本身，其 children 保留为子选项
+    if (node.code === rootCode) {
+      // 返回根节点本身，其 children 保留为子选项
       return addTitle([{
         ...node,
         children: node.children || []
       }])
     }
     if (node.children?.length) {
-      const found = extractDocSubtree(node.children)
+      const found = extractSubtree(node.children, rootCode)
       if (found) return found
     }
   }
@@ -115,10 +121,10 @@ async function loadTree() {
   try {
     const res = await getTypeDefinitionTree()
     if (res.code === 200 && res.data) {
-      docTypeTree.value = extractDocSubtree(res.data)
+      docTypeTree.value = extractSubtree(res.data, props.rootCode)
     }
   } catch {
-    message.error('加载文档类型树失败')
+    message.error('加载类型树失败')
   } finally {
     loading.value = false
   }

@@ -9,6 +9,9 @@ package cn.ck.plm.product.service.impl;
 
 import cn.ck.plm.base.entity.StageTemplate;
 import cn.ck.plm.base.service.api.StageTemplateService;
+import cn.ck.plm.base.util.TenantContext;
+import cn.ck.plm.iam.entity.Tenant;
+import cn.ck.plm.iam.mapper.TenantMapper;
 import cn.ck.plm.product.entity.Stage;
 import cn.ck.plm.product.mapper.StageMapper;
 import cn.ck.plm.product.service.api.StageService;
@@ -33,10 +36,13 @@ public class StageServiceImpl implements StageService {
 
     private final StageMapper stageMapper;
     private final StageTemplateService stageTemplateService;
+    private final TenantMapper tenantMapper;
 
-    public StageServiceImpl(StageMapper stageMapper, StageTemplateService stageTemplateService) {
+    public StageServiceImpl(StageMapper stageMapper, StageTemplateService stageTemplateService,
+                            TenantMapper tenantMapper) {
         this.stageMapper = stageMapper;
         this.stageTemplateService = stageTemplateService;
+        this.tenantMapper = tenantMapper;
     }
 
     @Override
@@ -89,10 +95,26 @@ public class StageServiceImpl implements StageService {
     }
 
     /**
-     * 推断本租户默认行业模板：优先 TRADITIONAL（向后兼容），否则取第一个模板的行业。
-     * 用于创建产品系列/型号但未指定行业时，按本租户实际配置的模板动态选择。
+     * 本租户的方法论（行业）—— 与六类实例同源：读 {@code ck_tenant.dev_method_code}（引导页选定、平台权威）。
+     *
+     * <p><b>为什么不再"猜"</b>：旧口径是"本租户有 TRADITIONAL 模板就用 TRADITIONAL，否则取第一条"，
+     * 于是出现"阶段按传统六阶段建、交付件按 IPD 建"的错位 —— 阶段页签下永远过滤不出交付件
+     * （2026-10-09 真实踩过：一个 10-02 用传统模板引导、之后又装了 IPD 包的租户）。
+     * 六类实例（MethodologyInstanceServiceImpl）一开始就用的 dev_method_code，阶段这里必须对齐。
+     *
+     * <p>读不到（未引导 / 老租户 / 异常）才退回旧口径：优先 TRADITIONAL（向后兼容），否则取第一条模板的行业。
      */
     private String resolveDefaultIndustry() {
+        try {
+            Tenant tenant = tenantMapper.selectByOid(TenantContext.get());
+            if (tenant != null && tenant.getDevMethodCode() != null
+                    && !tenant.getDevMethodCode().trim().isEmpty()) {
+                return tenant.getDevMethodCode().trim();
+            }
+        } catch (Exception e) {
+            log.warn("读取租户方法论失败，退回模板推断: {}", e.getMessage());
+        }
+        // 退回：优先 TRADITIONAL（向后兼容），否则取第一个模板的行业
         List<StageTemplate> all = stageTemplateService.findAll();
         for (StageTemplate t : all) {
             if ("TRADITIONAL".equals(t.getIndustry())) return "TRADITIONAL";

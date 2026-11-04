@@ -347,7 +347,26 @@
                                 {{ s.statusDisplayName || s.statusCode }}
                                 <span v-if="lcDetail?.initialStateCode === s.statusCode" style="font-size:10px;margin-left:2px">(初始)</span>
                               </a-tag>
+                              <!-- 可修订：租户管理员在这里按状态决定。权限开关不产生模板新版本，
+                                   改动对该模板所有子版本生效，在途对象也立即按新规则判定。
+                                   变更单据（ECR / ECN / ECT）没有修订概念，不展示该开关 -->
+                              <span v-if="showStateRevisable && canEditLifecycleTemplate" class="st-state-revisable">
+                                <a-switch
+                                  :checked="s.revisable !== false"
+                                  size="small"
+                                  :loading="lcRevisableSaving === s.statusCode"
+                                  @change="(v) => handleToggleStateRevisable(s, v)"
+                                />
+                                <span>可修订</span>
+                              </span>
+                              <a-tag
+                                v-else-if="showStateRevisable"
+                                :color="s.revisable === false ? 'default' : 'blue'"
+                                style="margin:0"
+                                :title="s.revisable === false ? '处于该状态的对象不允许修订' : '处于该状态的对象可以修订'"
+                              >{{ s.revisable === false ? '不可修订' : '可修订' }}</a-tag>
                               <a-select
+                                v-if="showStateProcessBinding"
                                 :value="lcStateProcesses[s.statusCode] || undefined"
                                 :options="processTemplateOptions"
                                 size="small"
@@ -358,6 +377,12 @@
                                 style="flex:1;min-width:200px"
                                 @change="(v) => handleBindStateProcess(s, v)"
                               />
+                              <!-- 变更域（ECR / ECN）：流程由单据自己的「发起评审 / 发起审批」拉起，
+                                   读的是 ck_change_config 的流程 key；在这里按状态再绑一条不会被执行，
+                                   只会留下一个"配了也没用"的下拉，故不提供该配置 -->
+                              <span v-else class="st-state-process-hint">
+                                流程由「变更控制 → 配置」的流程 key 决定，不在此处按状态绑定
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -439,6 +464,7 @@
                 <!-- 已分配 IBA -->
                 <a-tab-pane key="mappings" tab="已分配">
                   <DataTable
+                    scroll-x="max-content"
                     :columns="ibaColumns"
                     :data-source="ibaMappings"
                     :loading="ibaLoading"
@@ -478,6 +504,7 @@
                     <span class="st-iba-def-count">共 {{ ibaDefs.length }} 项</span>
                   </div>
                   <DataTable
+                    scroll-x="max-content"
                     :columns="ibaDefColumns"
                     :data-source="ibaDefs"
                     :loading="ibaDefLoading"
@@ -514,6 +541,7 @@
                   <a-tag color="blue" size="small" style="margin-left:6px">{{ attributeDefs.length }} 项</a-tag>
                 </h4>
                   <DataTable
+                    scroll-x="max-content"
                     :columns="attrColumns"
                     :data-source="attributeDefs"
                     :loading="attrLoading"
@@ -611,6 +639,7 @@
       <a-spin :spinning="ibaSelectLoading">
         <a-input-search v-model:value="ibaSearchKeyword" placeholder="搜索 IBA 属性" style="margin-bottom:12px" @search="loadUnassignedIBAs" size="large" />
         <DataTable
+          scroll-x="max-content"
           :columns="ibaSelectColumns"
           :data-source="unassignedIBAs"
           :loading="ibaSelectLoading"
@@ -716,7 +745,7 @@ import {
   getInheritedMappings,
   getNumberRules, getNumberRule,
   getVersionRules, getVersionRuleByCode,
-  getLifecycleTemplates, getLifecycleTemplate,
+  getLifecycleTemplates, getLifecycleTemplate, setLifecycleStateRevisable,
   getTypeLifecycleStateProcesses, bindTypeLifecycleStateProcess,
   listProcessTemplates,
   getTypeClassificationLink, bindTypeClassification, unbindTypeClassification,
@@ -1288,9 +1317,73 @@ const vrDetailLoading = ref(false)
 const lcDetail = ref(null)
 const lcDetailLoading = ref(false)
 
+/**
+ * 当前模板的「可修订」能否在此处修改。
+ *
+ * <p>平台模板属于全体租户，只有平台管理员能改；租户自己的模板由本租户管理员改
+ * （页面本身只对租户管理员可见，见 MainLayout 的「业务配置」入口）。
+ */
+const canEditLifecycleTemplate = computed(() => {
+  const t = lcDetail.value
+  if (!t?.tenantOid) return true
+  if (t.tenantOid === PLATFORM_OID) return isPlatformAdmin.value
+  return true
+})
+
+/** 正在保存可修订的状态 code（行内 loading，避免连点） */
+const lcRevisableSaving = ref('')
+
+/**
+ * 切换某状态的可修订。
+ *
+ * <p>后端是就地更新（不产生模板新版本）并写到该模板全部子版本 —— 在途对象固化的是旧子版本，
+ * 不这样做就会出现"配置改了、老对象照样能修订"。
+ */
+async function handleToggleStateRevisable(state, checked) {
+  const code = selectedLifecycleTemplateCode.value || lcDetail.value?.code
+  if (!code) return
+  lcRevisableSaving.value = state.statusCode
+  try {
+    const res = await setLifecycleStateRevisable(code, state.statusCode, checked)
+    if (res?.code === 200) {
+      state.revisable = checked
+      message.success(`「${state.statusDisplayName || state.statusCode}」已设为${checked ? '可修订' : '不可修订'}`)
+    } else {
+      message.error(res?.message || '保存失败')
+    }
+  } catch (e) {
+    message.error('保存失败: ' + (e?.response?.data?.message || e?.message || '网络错误'))
+  } finally {
+    lcRevisableSaving.value = ''
+  }
+}
+
 // ============ 生命周期状态 → 流程模板 绑定（就地配置）============
 /** statusCode → 流程模板 oid（后端返回的是映射，模板名称由下面的全量列表解析） */
 const lcStateProcesses = ref({})
+/**
+ * 变更域三类单据（ECR / ECN / ECT）。
+ *
+ * <p>它们既不是受控版本对象（没有"修订"可言），流程也不由生命周期状态驱动：发起评审 / 发起审批 /
+ * 发起任务时服务端直接按 {@code ck_change_config} 的 requestProcessKey / approvalProcessKey /
+ * taskProcessKey 拉起（ChangeRequestServiceImpl / ChangeNoticeServiceImpl）。在这里按状态再绑
+ * 一条不会被任何代码读到，只会让人以为"包少配了" —— 故「可修订」与「状态 → 流程」两项都不提供。
+ */
+const CHANGE_DOC_TYPES = ['CHANGE_REQUEST', 'CHANGE_NOTICE', 'CHANGE_TASK']
+/** 当前正在看的类型码（类型详情加载前的兜底是树节点） */
+const currentTypeCode = computed(() =>
+  (selectedNode.value?.code || detail.value?.code || '').toUpperCase())
+
+const showStateProcessBinding = computed(() => !CHANGE_DOC_TYPES.includes(currentTypeCode.value))
+
+/**
+ * 是否展示「可修订」开关。
+ *
+ * <p>可修订是给**受控版本对象**用的（部件 / 文档 / 工程文档 / BOM 行）：处于该状态时允许
+ * checkout 出新迭代。变更请求 / 通告 / 任务本身没有版本，修订概念不成立 —— 开关留着只会
+ * 让人以为"打开它变更单就能改版"。2026-11-01 起这三类不再展示。
+ */
+const showStateRevisable = computed(() => !CHANGE_DOC_TYPES.includes(currentTypeCode.value))
 /** 全量流程模板：既用来解析名称，也用来标注「未部署 / 停止部署」 */
 const processTemplates = ref([])
 // 绑定本身允许选未部署的模板（先配生命周期、后部署流程是常见顺序），
@@ -1345,7 +1438,12 @@ watch(selectedLifecycleTemplateCode, async (code) => {
   try { const r = await getLifecycleTemplate(code); lcDetail.value = r?.data || r || null }
   catch { lcDetail.value = null } finally { lcDetailLoading.value = false }
   // 「状态 → 流程模板」绑定就地配置：绑定主语是类型，与详情一起加载（流程模板清单只拉一次）
-  await Promise.all([loadProcessTemplateOptions(), loadStateProcesses(selectedNode.value?.oid)])
+  // 变更域（ECR / ECN）不展示该配置，也就不拉流程清单与绑定
+  if (showStateProcessBinding.value) {
+    await Promise.all([loadProcessTemplateOptions(), loadStateProcesses(selectedNode.value?.oid)])
+  } else {
+    lcStateProcesses.value = {}
+  }
 })
 
 // ==================== 分类绑定 ====================
@@ -1724,7 +1822,9 @@ function goToPageDesigner() {
   const oid = selectedNode.value.oid
   if (!oid) { console.warn('[goToPageDesigner] selectedNode has no oid', selectedNode.value); message.error('节点数据异常，请刷新重试'); return }
   console.log('[goToPageDesigner] 跳转参数:', { entityOid: oid, entityType: 'SOFT_TYPE', entityCode: selectedNode.value.code || '', entityName: selectedNode.value.name || '' })
-  router.push({ path: '/system/designer', query: { entityOid: oid, entityType: 'SOFT_TYPE', entityCode: selectedNode.value.code || '', entityName: selectedNode.value.name || '' } })
+  // 2026-10-11：补传 typeKind（此前设计器读 route.query.typeKind 却收不到 —— 传的键名是 entityType，
+  // 于是永远吃默认值 'SOFT_TYPE'）；设计器据此判断"当前是否根类型"，根类型不显示「克隆根类型布局」按钮
+  router.push({ path: '/system/designer', query: { entityOid: oid, entityType: 'SOFT_TYPE', typeKind: selectedNode.value.typeKind || 'SOFT_TYPE', entityCode: selectedNode.value.code || '', entityName: selectedNode.value.name || '' } })
 }
 
 // ============ 初始化 ============
@@ -1906,6 +2006,17 @@ onMounted(() => { loadTree() })
 .st-state-list { margin-top: 4px; }
 /* 状态 → 流程模板：一行一个状态，右侧是该状态使用的流程模板下拉 */
 .st-state-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+/* 不提供按状态绑定流程的类型（ECR / ECN）：原下拉位置改放一句说明，保持行对齐 */
+.st-state-process-hint { flex: 1; min-width: 200px; font-size: 12px; color: #8c8c8c; }
+/* 可修订开关：紧跟在状态标签后，不挤压右侧的流程模板下拉 */
+.st-state-revisable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #595959;
+  white-space: nowrap;
+}
 .st-rule-preview-row { margin-top: 4px; padding-top: 6px; border-top: 1px dashed #f0f0f0; }
 .st-rule-preview-code { font-size: 13px; font-weight: 600; color: #1677ff; background: #e6f4ff; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; }
 

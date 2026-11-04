@@ -19,9 +19,50 @@ import java.util.List;
  */
 public class LifecycleStateOptionsVO {
 
-    /** 绑定的生命周期模板（没有绑定时为 null） */
+    /** 本次候选项依据的模板（= 业务配置里的模板；设置状态会先切到它） */
     private String templateCode;
     private String templateName;
+
+    /**
+     * 对象<b>自身绑定</b>的模板（迭代里存的 {@code lifecycle_template_iteration_oid} 反查）。
+     *
+     * <p>与 {@link #configuredTemplateCode} 可能不同：业务配置后来被改过，而对象"出生"时
+     * 固化的是旧模板 —— 两者的状态清单/迁移规则都可能不一样，执行侧（moveToState）认的是
+     * <b>对象绑定的那一版</b>，所以界面必须把这个差异摆到用户面前，而不是悄悄按配置模板给候选。
+     */
+    private String boundTemplateCode;
+    private String boundTemplateName;
+
+    /** 业务配置里该类型当前绑定的模板（迁移的目标） */
+    private String configuredTemplateCode;
+    private String configuredTemplateName;
+
+    /** 两者不是同一个模板：界面弹出「迁移到新模板 / 保留旧模板」的选择 */
+    private boolean templateChanged;
+
+    /**
+     * 对象<b>没有可用的模板绑定</b>（历史对象从未写入；或原模板 / 子版本已被删除），
+     * 需要在确定时先绑定到业务配置的模板。
+     *
+     * <p>与 {@link #templateChanged} 互斥：那是"有旧模板、但和配置不一致"，
+     * 这是"根本没有可用的旧模板"。两种情况执行侧都要求迭代上有模板 oid
+     * （{@code moveToState / moveToInitialState} 缺失时直接拒绝），
+     * 所以界面必须把这次绑定讲清楚，并在提交时带上 {@code migrateTemplate=true}。
+     */
+    private boolean templateBindRequired;
+
+    /**
+     * 迁移到新模板后当前状态是否保留。
+     *
+     * <p>{@code true} = 新模板里有同 code 的状态，迁移后当前状态不变；
+     * {@code false} = 没有，迁移后会落到新模板的初始状态（见 {@link #migrationStatusCode}）。
+     * 仅在 {@link #templateChanged} 为真时有意义。
+     */
+    private Boolean migrationKeepsStatus;
+
+    /** 迁移后的当前状态（{@link #migrationKeepsStatus} 为 false 时是初始状态） */
+    private String migrationStatusCode;
+    private String migrationStatusName;
 
     /** 对象当前状态（对象还没有状态时为 null） */
     private StateInfo current;
@@ -116,6 +157,78 @@ public class LifecycleStateOptionsVO {
 
     public void setTemplateName(String templateName) {
         this.templateName = templateName;
+    }
+
+    public String getBoundTemplateCode() {
+        return boundTemplateCode;
+    }
+
+    public void setBoundTemplateCode(String boundTemplateCode) {
+        this.boundTemplateCode = boundTemplateCode;
+    }
+
+    public String getBoundTemplateName() {
+        return boundTemplateName;
+    }
+
+    public void setBoundTemplateName(String boundTemplateName) {
+        this.boundTemplateName = boundTemplateName;
+    }
+
+    public String getConfiguredTemplateCode() {
+        return configuredTemplateCode;
+    }
+
+    public void setConfiguredTemplateCode(String configuredTemplateCode) {
+        this.configuredTemplateCode = configuredTemplateCode;
+    }
+
+    public String getConfiguredTemplateName() {
+        return configuredTemplateName;
+    }
+
+    public void setConfiguredTemplateName(String configuredTemplateName) {
+        this.configuredTemplateName = configuredTemplateName;
+    }
+
+    public boolean isTemplateChanged() {
+        return templateChanged;
+    }
+
+    public void setTemplateChanged(boolean templateChanged) {
+        this.templateChanged = templateChanged;
+    }
+
+    public boolean isTemplateBindRequired() {
+        return templateBindRequired;
+    }
+
+    public void setTemplateBindRequired(boolean templateBindRequired) {
+        this.templateBindRequired = templateBindRequired;
+    }
+
+    public Boolean getMigrationKeepsStatus() {
+        return migrationKeepsStatus;
+    }
+
+    public void setMigrationKeepsStatus(Boolean migrationKeepsStatus) {
+        this.migrationKeepsStatus = migrationKeepsStatus;
+    }
+
+    public String getMigrationStatusCode() {
+        return migrationStatusCode;
+    }
+
+    public void setMigrationStatusCode(String migrationStatusCode) {
+        this.migrationStatusCode = migrationStatusCode;
+    }
+
+    public String getMigrationStatusName() {
+        return migrationStatusName;
+    }
+
+    public void setMigrationStatusName(String migrationStatusName) {
+        this.migrationStatusName = migrationStatusName;
     }
 
     public StateInfo getCurrent() {

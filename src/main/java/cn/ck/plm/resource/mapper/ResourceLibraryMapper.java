@@ -19,7 +19,7 @@ import java.util.Map;
  * <p>各资源库管理的对象是 Part 主数据的软类型（ck_part），本 Mapper 负责：
  * <ul>
  *   <li>资源库分类绑定配置（ck_library_cls_config，按 租户 + 资源库节点）</li>
- *   <li>资源库节点归属阶段（ck_stage，平台级共享）</li>
+ *   <li>资源库节点归属阶段（ck_stage，按租户隔离 —— 2026-10-11 起不再写/读平台租户）</li>
  *   <li>按分类集合查询各资源库对应软类型的 Part 清单</li>
  * </ul>
  */
@@ -56,16 +56,17 @@ public interface ResourceLibraryMapper {
                       @Param("rootClassificationOid") String rootClassificationOid,
                       @Param("now") LocalDateTime now);
 
-    // ==================== 资源库节点归属阶段（ck_stage，平台级共享） ====================
+    // ==================== 资源库节点归属阶段（ck_stage，按租户隔离） ====================
 
-    /** 查询资源子库节点下的默认阶段 oid（ck_stage，按 sort_order 取第一个） */
-    String selectResourceStageOid(@Param("ownerOid") String ownerOid);
+    /** 查询资源子库节点下的默认阶段 oid（ck_stage，按 sort_order 取第一个；**限本租户**） */
+    String selectResourceStageOid(@Param("ownerOid") String ownerOid, @Param("tenantOid") String tenantOid);
 
-    /** 创建资源子库归属阶段行（tenant_oid 由 SQL 显式写平台租户） */
+    /** 创建资源子库归属阶段行（{@code tenant_oid} 显式写目标租户，不再写平台） */
     int insertResourceStage(@Param("oid") String oid,
                             @Param("code") String code,
                             @Param("name") String name,
                             @Param("ownerOid") String ownerOid,
+                            @Param("tenantOid") String tenantOid,
                             @Param("now") LocalDateTime now);
 
     // ==================== 元器件清单（ELECTRONIC 软类型的 Part） ====================

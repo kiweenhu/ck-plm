@@ -34,6 +34,8 @@ public class PartVO {
 
     private String statusCode;
     private String statusName;
+    /** 当前状态是否允许修订（来自模板状态配置；未知时按允许处理） */
+    private Boolean revisable = true;
     private String unit;
 
     public String getOid() { return oid; }
@@ -120,6 +122,9 @@ public class PartVO {
 
     public String getStatusName() { return statusName; }
     public void setStatusName(String statusName) { this.statusName = statusName; }
+
+    public Boolean getRevisable() { return revisable; }
+    public void setRevisable(Boolean revisable) { this.revisable = revisable; }
 
     public String getUnit() { return unit; }
     public void setUnit(String unit) { this.unit = unit; }

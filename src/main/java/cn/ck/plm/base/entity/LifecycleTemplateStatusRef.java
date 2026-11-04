@@ -29,6 +29,15 @@ public class LifecycleTemplateStatusRef {
     /** 排序序号 */
     private Integer sortOrder;
 
+    /**
+     * 该状态下是否允许修订（生成新的大版本）。
+     *
+     * <p>同时是「能否发起变更」的判据：只有对象当前所处的状态可修订，才具备修订权限。
+     * 按状态配置而不是按类型配置——同一个模板会被多个类型复用，而"已发布能不能改"
+     * 是该状态的业务语义，不该由调用方各自解释。
+     */
+    private boolean revisable = true;
+
     public LifecycleTemplateStatusRef() {
     }
 
@@ -48,4 +57,7 @@ public class LifecycleTemplateStatusRef {
     public void setStatusDisplayName(String statusDisplayName) { this.statusDisplayName = statusDisplayName; }
     public Integer getSortOrder() { return sortOrder; }
     public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+
+    public boolean isRevisable() { return revisable; }
+    public void setRevisable(boolean revisable) { this.revisable = revisable; }
 }

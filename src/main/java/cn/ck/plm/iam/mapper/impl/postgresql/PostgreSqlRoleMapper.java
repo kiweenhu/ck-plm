@@ -72,10 +72,12 @@ public interface PostgreSqlRoleMapper extends RoleMapper {
     @Override
     List<Role> selectByUserOid(@Param("userOid") String userOid);
 
+    // 括号必须包住 OR 组：拦截器把本租户条件拼在 WHERE 之后（如 "AND tenant_oid IN (...)"），
+    // 少了括号会变成 A OR (B AND 租户) —— 隔离后 search 会漏出别家的行。
     @Select("SELECT oid, code, name, description, role_type, creator, created_at, updater, updated_at " +
             "FROM ck_role " +
-            "WHERE LOWER(code) LIKE LOWER('%' || #{keyword} || '%') " +
-            "OR LOWER(name) LIKE LOWER('%' || #{keyword} || '%') " +
+            "WHERE (LOWER(code) LIKE LOWER('%' || #{keyword} || '%') " +
+            "OR LOWER(name) LIKE LOWER('%' || #{keyword} || '%')) " +
             "ORDER BY code ASC")
     @ResultMap("roleResult")
     @Override

@@ -1,0 +1,345 @@
+{
+  "key": "change-notice-derived",
+  "name": "变更通告流程（ECR → ECN）",
+  "displayName": "变更通告（ECN）流程 · 派生自变更请求",
+  "category": "变更管理",
+  "description": "启用变更请求（ECR）的企业走这张：审签骨架与变更请求保持一致 —— 按来源变更分级分流（快速 / 标准 / 重大）、参与人由发起人在「设置参与者」里指定、标准与重大先过跨职能会签、重大再由 CCB 决策；在此之上只多一道「实施方案审批」，即「怎么做」的审批：ECR 定的是改什么 / 多严重 / 为什么，ECN 定的是怎么改（切换与回退、认证重测、执行窗口、任务清单）。审批通过后按清单派发变更任务（1:M 子流程），任一环节驳回即结束。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "change-notice-derived",
+      "name": "变更通告流程（ECR → ECN）",
+      "displayName": "变更通告（ECN）流程 · 派生自变更请求",
+      "category": "变更管理",
+      "description": "沿用变更请求的审签骨架（分级分流 → 会签 → CCB），只多一道「实施方案审批」：怎么改由本流程定，改什么已由来源 ECR 定。",
+      "notifications": {
+        "channel": "CK_PLM"
+      }
+    },
+    "variables": [],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：发起变更通告",
+        "type": "START",
+        "description": "由变更通告（ECN）的「提交审批」拉起（businessKey = 通告 oid）；单据带来源请求时 process 变量 fromRequest = true、requestCode = 来源 ECR 编号，changeLevel 继承来源 ECR 的分级 —— 与变更请求流程同口径，分级决定审签路径",
+        "initiator": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "set_approving",
+        "name": "进入审批：审批中",
+        "type": "SERVICE",
+        "description": "单据状态置为「审批中」（APPROVING）：流程一拉起就落到这个状态，审批人在单据上看到的是「审批中」而不是还停在草稿",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "APPROVING"
+        }
+      },
+      {
+        "id": "gw_level",
+        "name": "按来源变更分级分流",
+        "type": "EXCLUSIVE_GATEWAY",
+        "description": "与变更请求同一条判据：快速变更只需单人批实施方案，标准与重大都要先过跨职能会签（重大再加 CCB 决策）。分级在 ECR 上一锤定音，派生单只继承不改"
+      },
+      {
+        "id": "setup_quick",
+        "name": "设置快速通道审批人",
+        "type": "SET_ASSIGNEE",
+        "description": "快速变更只有这一个审批环节，发起人在此指定批实施方案的人",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "approve_quick",
+        "name": "快速审批：实施方案",
+        "type": "APPROVAL",
+        "description": "「怎么做」的单人把关：改法是否可行、切换与回退是否能兜住风险、是否需要在制库存同步处置。影响面已由 ECR 审过，这里不再重复论证「为什么改」。意见必填",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true,
+        "formRef": "change-notice-review"
+      },
+      {
+        "id": "setup_multi",
+        "name": "设置会签参与人",
+        "type": "SET_ASSIGNEE",
+        "description": "标准 / 重大变更需要跨职能确认「各自那一段怎么做」：在此指定会签成员（重大时再指定 CCB 成员）",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "cs_plan",
+        "name": "实施方案会签",
+        "type": "COUNTERSIGN_APPROVAL",
+        "description": "硬件 / 工艺 / 质量 / 采购按各自视角确认怎么改：受影响对象与目标版本、切换与回退方案、（电子）器件与替代料/AVL 准入、是否触发认证重测与 PCN 客户通知、（智能硬件）跨域接口一致性与试产验证。全票通过才进入决策，任一反对即驳回",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100
+        },
+        "commentRequired": true,
+        "formRef": "change-notice-countersign"
+      },
+      {
+        "id": "gw_ccb",
+        "name": "是否需要 CCB 决策",
+        "type": "EXCLUSIVE_GATEWAY",
+        "description": "重大变更（影响已发布产品 / 认证 / 客户合同）的实施方案必须由 CCB 集体决策；标准变更由产品经理收口"
+      },
+      {
+        "id": "cs_ccb",
+        "name": "CCB 决策会签",
+        "type": "COUNTERSIGN_APPROVAL",
+        "description": "变更控制委员会对实施方案集体决策：批准、有条件批准、驳回；条件与生效方式（是否分批、是否限机型）随决策留痕，全票通过方为批准",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100
+        },
+        "commentRequired": true,
+        "formRef": "change-notice-countersign"
+      },
+      {
+        "id": "approve_plan",
+        "name": "实施方案审批",
+        "type": "APPROVAL",
+        "description": "本流程相对变更请求多出来的那一关 —— ECR 只批「改什么」，这里批「怎么做」：执行计划与实施窗口、切换与回退步骤、认证与试验安排、受影响对象的升级顺序、任务清单与责任人是否齐备。意见必填",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true,
+        "formRef": "change-notice-review"
+      },
+      {
+        "id": "set_approved",
+        "name": "审批通过：已批准",
+        "type": "SERVICE",
+        "description": "单据状态置为「已批准」（APPROVED）：三条审签路径（快速 / 标准 / 重大）都汇到这里，更改事项由待生效转为可执行，随后派发变更任务",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "APPROVED"
+        }
+      },
+      {
+        "id": "set_rejected",
+        "name": "审批驳回：已驳回",
+        "type": "SERVICE",
+        "description": "单据状态置为「已驳回」（REJECTED）—— 任一审批环节驳回都汇到这里，结论只写一次",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "REJECTED"
+        }
+      },
+      {
+        "id": "sub_task",
+        "name": "派发变更任务（子流程）",
+        "type": "SUB_PROCESS",
+        "description": "按 changeTaskList 逐个拉起变更任务流程，每个任务一个独立实例（businessKey = 任务 oid）；全部任务完成后本通告才继续",
+        "processKey": "change-task",
+        "variableMap": {
+          "initiator": "${initiator}",
+          "taskAssignee": "${task.assignee}"
+        },
+        "multiInstance": {
+          "collection": "changeTaskList",
+          "elementVariable": "task",
+          "sequential": false,
+          "businessKey": "oid"
+        }
+      },
+      {
+        "id": "end_done",
+        "name": "结束：变更已实施",
+        "type": "END"
+      },
+      {
+        "id": "end_rejected",
+        "name": "结束：审批驳回",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "source": "start_1",
+        "target": "set_approving",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e1",
+        "source": "set_approving",
+        "target": "gw_level",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "gw_level",
+        "target": "setup_quick",
+        "kind": "CONDITION",
+        "name": "快速",
+        "condition": {
+          "mode": "FIELD",
+          "fieldKey": "changeLevel",
+          "operator": "EQ",
+          "value": "QUICK",
+          "valueType": "STRING"
+        }
+      },
+      {
+        "id": "e3",
+        "source": "gw_level",
+        "target": "setup_multi",
+        "kind": "DEFAULT",
+        "name": "标准 / 重大"
+      },
+      {
+        "id": "e4",
+        "source": "setup_quick",
+        "target": "approve_quick",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e5",
+        "source": "setup_multi",
+        "target": "cs_plan",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e6",
+        "source": "approve_quick",
+        "target": "set_approved",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e7",
+        "source": "approve_quick",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e8",
+        "source": "cs_plan",
+        "target": "gw_ccb",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e9",
+        "source": "cs_plan",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e10",
+        "source": "gw_ccb",
+        "target": "cs_ccb",
+        "kind": "CONDITION",
+        "name": "重大",
+        "condition": {
+          "mode": "FIELD",
+          "fieldKey": "changeLevel",
+          "operator": "EQ",
+          "value": "MAJOR",
+          "valueType": "STRING"
+        }
+      },
+      {
+        "id": "e11",
+        "source": "gw_ccb",
+        "target": "approve_plan",
+        "kind": "DEFAULT",
+        "name": "标准"
+      },
+      {
+        "id": "e12",
+        "source": "cs_ccb",
+        "target": "set_approved",
+        "kind": "NORMAL",
+        "name": "批准",
+        "route": "PASS"
+      },
+      {
+        "id": "e13",
+        "source": "cs_ccb",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e14",
+        "source": "approve_plan",
+        "target": "set_approved",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e15",
+        "source": "approve_plan",
+        "target": "set_rejected",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e16",
+        "source": "set_approved",
+        "target": "sub_task",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e17",
+        "source": "set_rejected",
+        "target": "end_rejected",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e18",
+        "source": "sub_task",
+        "target": "end_done",
+        "kind": "NORMAL"
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": { "x": 445, "y": 40 },
+        "set_approving": { "x": 399, "y": 150 },
+        "gw_level": { "x": 441, "y": 260 },
+        "setup_quick": { "x": 179, "y": 370 },
+        "setup_multi": { "x": 569, "y": 370 },
+        "approve_quick": { "x": 179, "y": 480 },
+        "cs_plan": { "x": 569, "y": 480 },
+        "gw_ccb": { "x": 621, "y": 590 },
+        "approve_plan": { "x": 179, "y": 590 },
+        "cs_ccb": { "x": 569, "y": 700 },
+        "set_approved": { "x": 399, "y": 800 },
+        "sub_task": { "x": 399, "y": 910 },
+        "end_done": { "x": 455, "y": 1020 },
+        "set_rejected": { "x": 780, "y": 800 },
+        "end_rejected": { "x": 836, "y": 910 }
+      }
+    }
+  }
+}

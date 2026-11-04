@@ -17,14 +17,18 @@ import java.util.List;
 /**
  * {@link ResourceContainerMapper} 的 PostgreSQL 实现。
  *
- * <p>资源库属于平台级共享数据：所有 SQL 显式带平台租户条件，
- * 使 TenantStatementInterceptor 跳过自动注入，保证任意租户均可读取。
+ * <p>资源库**按租户隔离**（2026-10-11 由"硬编码平台条件"的半共享改为隔离）：
+ * 容器随 {@code platform-base} 包按租户各装一份，读写一律**显式**带 {@code tenant_oid} ——
+ * 与 {@code PostgreSqlClassificationMapper} / {@code PostgreSqlUnitMapper} 同款口径，
+ * 不依赖 {@code TenantStatementInterceptor} 注入（SQL 显式含 tenant_oid 时它会跳过注入，正是本意）。
+ *
+ * <p>改前的写法（所有 SQL 硬编码平台 oid）让"租户装包"写不进本租户、"租户读取"也全靠这几个
+ * 显式 SQL 撑着；一旦有别的路径按业务表过滤（拦截器注入 {@code tenant_oid = 本租户}），
+ * 同一张表就是两套口径（谁查谁说了算）。详见 CHANGELOG「企业资源库改为按租户隔离」。
  */
 @Mapper
 @ConditionalOnProperty(name = "plm.database.type", havingValue = "postgresql", matchIfMissing = true)
 public interface PostgreSqlResourceContainerMapper extends ResourceContainerMapper {
-
-    String PLATFORM_OID = "'00000000-0000-0000-0000-000000000000'";
 
     String SELECT_COLUMNS = "SELECT oid, code, name, description, container_type, thumbnail, " +
             "parent_oid, team_oid, sort_order, tenant_oid, delete_mark, " +
@@ -34,11 +38,11 @@ public interface PostgreSqlResourceContainerMapper extends ResourceContainerMapp
     @Insert("INSERT INTO ck_resource_container (oid, code, name, description, container_type, parent_oid, sort_order, " +
             "tenant_oid, delete_mark, creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{code}, #{name}, #{description}, #{containerType}, #{parentOid}, #{sortOrder}, " +
-            PLATFORM_OID + ", #{deleteMark}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
+            "#{tenantOid}, #{deleteMark}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(ResourceContainer node);
 
     @Override
-    @Select(SELECT_COLUMNS + "WHERE code = #{code} AND tenant_oid = " + PLATFORM_OID +
+    @Select(SELECT_COLUMNS + "WHERE code = #{code} AND tenant_oid = #{tenantOid} " +
             " AND COALESCE(delete_mark, false) = false LIMIT 1")
     @Results(id = "resourceContainerResult", value = {
             @Result(property = "oid",            column = "oid"),
@@ -57,17 +61,17 @@ public interface PostgreSqlResourceContainerMapper extends ResourceContainerMapp
             @Result(property = "updater",        column = "updater"),
             @Result(property = "updatedAt",      column = "updated_at")
     })
-    ResourceContainer selectByCode(@Param("code") String code);
+    ResourceContainer selectByCode(@Param("code") String code, @Param("tenantOid") String tenantOid);
 
     @Override
-    @Select(SELECT_COLUMNS + "WHERE parent_oid = #{parentOid} AND tenant_oid = " + PLATFORM_OID +
+    @Select(SELECT_COLUMNS + "WHERE parent_oid = #{parentOid} AND tenant_oid = #{tenantOid} " +
             " AND COALESCE(delete_mark, false) = false ORDER BY sort_order ASC, code ASC")
     @ResultMap("resourceContainerResult")
-    List<ResourceContainer> selectChildren(@Param("parentOid") String parentOid);
+    List<ResourceContainer> selectChildren(@Param("parentOid") String parentOid, @Param("tenantOid") String tenantOid);
 
     @Override
-    @Select(SELECT_COLUMNS + "WHERE code = 'CORP_RESOURCE' AND tenant_oid = " + PLATFORM_OID +
+    @Select(SELECT_COLUMNS + "WHERE code = 'CORP_RESOURCE' AND tenant_oid = #{tenantOid} " +
             " AND COALESCE(delete_mark, false) = false LIMIT 1")
     @ResultMap("resourceContainerResult")
-    ResourceContainer selectRoot();
+    ResourceContainer selectRoot(@Param("tenantOid") String tenantOid);
 }

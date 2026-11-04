@@ -87,17 +87,28 @@ public interface SoftTypeInstanceService {
      * <p>供流程「设置状态」自动服务节点调用：它面对的是"这批对象该到哪个状态"，
      * 而不是某个宿主的表结构 —— 因此按类型编码路由到宿主能力，与其它统一入口一致。
      *
-     * @param entityVersion   大版本（如 A）；为空表示当前最新大版本
-     * @param targetStateCode 目标状态 code
+     * @param entityVersion                 大版本（如 A）；为空表示当前最新大版本
+     * @param targetStateCode               目标状态 code
+     * @param migrateToTemplateIterationOid 目标模板子版本 oid（先把对象迁到该模板再设状态）；null 表示不迁移
      */
-    void setLifecycleState(String typeDefinitionCode, String oid, String entityVersion, String targetStateCode);
+    void setLifecycleState(String typeDefinitionCode, String oid, String entityVersion,
+                           String targetStateCode, String migrateToTemplateIterationOid);
 
     /**
      * 把实例退回生命周期模板的<b>初始状态</b>（沿模板的回退规则逐跳走）。
      *
-     * @param entityVersion 大版本（如 A）；为空表示当前最新大版本
+     * @param entityVersion                 大版本（如 A）；为空表示当前最新大版本
+     * @param migrateToTemplateIterationOid 目标模板子版本 oid（先迁移再退回）；null 表示不迁移
      */
-    void resetLifecycleState(String typeDefinitionCode, String oid, String entityVersion);
+    void resetLifecycleState(String typeDefinitionCode, String oid, String entityVersion,
+                             String migrateToTemplateIterationOid);
+
+    /**
+     * 对象当前<b>绑定</b>的生命周期模板子版本 oid —— 与业务配置里的模板做一致性判断用。
+     *
+     * <p>宿主不支持 / 对象未绑定 / 读取失败时返回 null（调用方按"无绑定信息"处理，不阻断设置）。
+     */
+    String lifecycleTemplateIteration(String typeDefinitionCode, String oid, String entityVersion);
 
     // ==================== 实体原生端点（按宿主，无类型信息）====================
 

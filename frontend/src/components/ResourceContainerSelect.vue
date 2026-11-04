@@ -25,7 +25,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { getResourceChildren, getProductModel, getProductLine } from '@/api'
+import { getResourceChildren, getProductLine } from '@/api'
 
 /** 容器类型 → 可读文案：解析不出名称时的兜底（与 BOM 替代弹窗同一口径） */
 const CONTAINER_TYPE_LABEL = {
@@ -129,12 +129,23 @@ async function loadLibraries() {
 /**
  * 解析非资源库容器的显示名：容器可能是产品型号或产品系列（零件在产品下创建时）。
  * 探测失败不影响取值，只是退回可读兜底文案。
+ *
+ * <p>2026-10-11 修（用户反馈："在研发资料中点击创建 Part 对象，提示产品型号不存在"）：
+ * 原实现按「型号 → 系列」顺序**盲探**，容器实为产品系列时会先打
+ * {@code GET /product-models/{系列oid}} 拿 404 —— 全局响应拦截器会把它弹成
+ * 「产品型号不存在」（随后虽能 fallback 到系列接口，但错误提示已经弹出去了）。
+ * 改为**按父组件已知的 containerType 精确请求**，且只走产品系列端点 ——
+ * 后端读取编排是"系列优先、型号回退"（ProductLineInstanceCreator#get），
+ * 对型号 oid 也能返回，一次请求覆盖两类容器、零 404。
  */
 async function resolveExternalLabel() {
   const oid = props.value
   externalLabel.value = null
   if (!oid || libraries.value.some(l => l.oid === oid)) return
-  for (const probe of [() => getProductModel(oid), () => getProductLine(oid)]) {
+  const type = (props.containerType || '').toUpperCase()
+  // 文件夹容器不是产品对象，不发请求；其余（系列/型号/类型未知）都只走系列端点
+  const probes = type === 'FOLDER' ? [] : [() => getProductLine(oid)]
+  for (const probe of probes) {
     try {
       const res = await probe()
       const data = res?.data ?? res
@@ -144,7 +155,7 @@ async function resolveExternalLabel() {
         return
       }
     } catch {
-      /* 该 oid 不是这一类容器，继续探测下一种 */
+      /* 该 oid 不是产品系列/型号容器，退回可读兜底文案 */
     }
   }
 }

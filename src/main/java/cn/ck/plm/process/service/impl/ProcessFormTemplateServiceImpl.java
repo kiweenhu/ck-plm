@@ -23,9 +23,10 @@ import java.util.List;
  * <ol>
  *   <li><b>内置模板</b>：不能删，且 code / nodeTypes / component 三个契约字段不能被改 ——
  *       运行期就是按这三个字段派发渲染，改了会让在途实例取不到表单；</li>
- *   <li><b>平台级数据</b>：内置模板属平台租户，普通租户不可改（
- *       {@link TenantContext#requireEditPermission}）—— 表是 PLATFORM_SHARED，
- *       查询宽、写入必须由服务层把关。</li>
+ *   <li><b>编辑权限</b>：{@link TenantContext#requireEditPermission} 仍然把关 ——
+ *       本表自 2026-10-10 起按租户隔离（内置三张随 platform-base 包装入本租户，另有自定义模板），
+ *       所以租户**可以停用自己那张内置表单**（不影响别家），但删不掉（上面第 1 条）、
+ *       契约字段也改不了；平台租户那行同样受保护。</li>
  * </ol>
  *
  * <p>校验失败一律抛 {@link IllegalArgumentException}（可读中文原因），由控制器折成

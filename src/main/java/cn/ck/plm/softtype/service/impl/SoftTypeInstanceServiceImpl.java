@@ -100,14 +100,29 @@ public class SoftTypeInstanceServiceImpl implements SoftTypeInstanceService {
 
     @Override
     public void setLifecycleState(String typeDefinitionCode, String oid, String entityVersion,
-                                  String targetStateCode) {
+                                  String targetStateCode, String migrateToTemplateIterationOid) {
         capabilityOfType(typeDefinitionCode)
-                .setLifecycleStateInstance(requireOid(oid), entityVersion, targetStateCode);
+                .setLifecycleStateInstance(requireOid(oid), entityVersion, targetStateCode,
+                        migrateToTemplateIterationOid);
     }
 
     @Override
-    public void resetLifecycleState(String typeDefinitionCode, String oid, String entityVersion) {
-        capabilityOfType(typeDefinitionCode).resetLifecycleStateInstance(requireOid(oid), entityVersion);
+    public void resetLifecycleState(String typeDefinitionCode, String oid, String entityVersion,
+                                    String migrateToTemplateIterationOid) {
+        capabilityOfType(typeDefinitionCode)
+                .resetLifecycleStateInstance(requireOid(oid), entityVersion, migrateToTemplateIterationOid);
+    }
+
+    @Override
+    public String lifecycleTemplateIteration(String typeDefinitionCode, String oid, String entityVersion) {
+        SoftTypeInstanceCapability capability = capabilityOfType(typeDefinitionCode);
+        try {
+            return capability.lifecycleTemplateIterationOfInstance(requireOid(oid), entityVersion);
+        } catch (UnsupportedOperationException ex) {
+            // 宿主不提供该能力（不是生命周期对象）：当作"没有绑定信息"，不阻断设置状态
+            log.debug("宿主不支持读取生命周期模板绑定: type={}, oid={}", typeDefinitionCode, oid);
+            return null;
+        }
     }
 
     // ==================== 实体原生端点 ====================

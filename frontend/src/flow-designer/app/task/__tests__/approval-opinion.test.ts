@@ -157,14 +157,25 @@ describe('审批意见 · 驳回位置', () => {
     ).allowReject).toBe(true)
   })
 
-  it('非审批节点（办理节点）没有这个开关，保持允许驳回', () => {
-    expect(buildApprovalOpinionModel(flow({ enabled: false }), 'task_1').allowReject).toBe(true)
+  it('办理节点不再无条件可驳回：没画「驳回」出边就只能同意', () => {
+    // 2026-10-13 修正：以前"节点上没有开关就默认允许"，于是办理节点也能点驳回，
+    // 而它的驳回会照走默认出边继续往前 —— 界面写着"驳回"、流程实际往前走，最难发现
+    expect(buildApprovalOpinionModel(flow({ enabled: false }), 'task_1').allowReject).toBe(false)
+    // 画了驳回出边就允许（统一为画线之后的正规做法）
+    const withEdge = flow({ enabled: false })
+    const routed: FlowDsl = {
+      ...withEdge,
+      edges: withEdge.edges.map((edge) =>
+        (edge.source === 'task_1' ? { ...edge, route: EdgeRoute.REJECT } : edge)),
+    }
+    expect(buildApprovalOpinionModel(routed, 'task_1').allowReject).toBe(true)
   })
 
-  it('取不到 DSL（老实例）时按默认口径：可驳回、退上一步', () => {
+  it('取不到 DSL（老实例）时保持可驳回，文案只说"按图上路径"（不再假称退回上一步）', () => {
     const model = buildApprovalOpinionModel(null, 'appr_1')
     expect(model.allowReject).toBe(true)
-    expect(model.rejectTargetText).toBe('上一步（实际走过的那一步）')
+    // 「退回哪」现在由驳回出边决定；没有出边信息时不能编一个"上一步"出来
+    expect(model.rejectTargetText).toBe('按流程图上的「驳回」路径')
   })
 
   it('活动 id 在 DSL 里对不上（模板换过版本）时也按默认口径，不挡住办事', () => {

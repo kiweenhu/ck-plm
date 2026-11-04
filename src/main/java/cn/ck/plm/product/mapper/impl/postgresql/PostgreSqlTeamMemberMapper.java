@@ -55,4 +55,9 @@ public interface PostgreSqlTeamMemberMapper extends TeamMemberMapper {
     @Select("SELECT COUNT(*) FROM ck_team_member WHERE team_oid = #{teamOid} AND user_id = #{userId}")
     @Override
     boolean existsByTeamAndUser(@Param("teamOid") String teamOid, @Param("userId") String userId);
+
+    /** 该用户（username）加入的全部团队 oid —— 产品系列/型号的团队可见性过滤用（2026-10-12） */
+    @Override
+    @Select("SELECT team_oid FROM ck_team_member WHERE user_id = #{userId}")
+    List<String> selectTeamOidsByUserId(@Param("userId") String userId);
 }

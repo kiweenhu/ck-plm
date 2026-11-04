@@ -2,7 +2,7 @@
   <div class="fu-root">
     <!-- 已选文件展示 -->
     <div v-if="currentFile" class="fu-file-bar">
-      <span class="fu-file-icon">{{ fileTypeIcon }}</span>
+      <span class="fu-file-icon"><component :is="fileTypeIcon" /></span>
       <div class="fu-file-meta">
         <a-tooltip :title="currentFile.name || currentFile.path">
           <span class="fu-file-name">{{ currentFile.name || currentFile.path }}</span>

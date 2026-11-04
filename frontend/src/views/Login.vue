@@ -248,6 +248,9 @@ import { message } from 'ant-design-vue'
 import { login, registerTenant } from '@/api'
 import { useUserStore } from '@/stores/user'
 import { recordLogin } from '@/composables/useActivity'
+// 路由层缓存的「行业初始化状态」在登录成功时必须清掉（见该函数注释）——
+// 否则租户管理员在"审批通过前登录过"之后再登录，会拿旧状态直接进 home，要按 F5 才去引导页
+import { resetOnboardingState } from '@/router'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -294,6 +297,9 @@ const handleLogin = async () => {
     const res = await login(formState.username.trim(), formState.password)
     if (res.code === 200 && res.data) {
       userStore.setLogin(res.data)
+      // 换身份进入系统：清掉路由层缓存的「行业初始化状态」—— 否则会拿上一个账号
+      // 或"租户还没被审批通过时"的旧状态做判断，表现为「首次登录进了 home、按 F5 才去引导页」
+      resetOnboardingState()
       message.success(`欢迎回来，${res.data.displayName || res.data.username}`)
       recordLogin(res.data.username)
       setTimeout(() => router.replace('/home'), 600)

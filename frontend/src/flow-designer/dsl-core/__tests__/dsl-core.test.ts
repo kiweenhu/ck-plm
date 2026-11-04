@@ -178,11 +178,61 @@ describe('审批业务规则', () => {
     expect(hasAssignee(undefined)).toBe(false)
   })
 
-  it('驳回目标节点不存在 → 拦截', () => {
-    const report = validateDsl(
-      withApproval({ reject: { enabled: true, target: 'NODE', targetNodeId: 'ghost' } }),
+  it('两个"由组织解析"的策略都不拦（发起人上级 / 部门主管）', () => {
+    // 运行期在任务创建那一步解析（发起人 → 所属组织 → 主管 / 业务对象部门字段 → 组织 → 主管），
+    // 编译产物只留 ckplm:assignee 声明，不会写出会炸的表达式
+    const initiatorLeader = validateDsl(
+      withApproval({ assignee: { strategy: AssigneeStrategy.INITIATOR_LEADER } }),
     )
-    expect(report.byNode.approval_1?.map((i) => i.code)).toContain(IssueCode.REJECT_NODE_NOT_FOUND)
+    expect(initiatorLeader.byNode.approval_1?.map((i) => i.code) ?? []).not.toContain(
+      IssueCode.ASSIGNEE_STRATEGY_UNSUPPORTED,
+    )
+
+    const deptLeader = validateDsl(
+      withApproval({ assignee: { strategy: AssigneeStrategy.DEPT_LEADER, deptFieldKey: 'dept' } }),
+    )
+    expect(deptLeader.byNode.approval_1?.map((i) => i.code) ?? []).not.toContain(
+      IssueCode.ASSIGNEE_STRATEGY_UNSUPPORTED,
+    )
+    expect(deptLeader.errorCount).toBe(0)
+  })
+
+  it('部门主管没配部门字段 → 仍然拦（运行期读不到部门）', () => {
+    const report = validateDsl(withApproval({ assignee: { strategy: AssigneeStrategy.DEPT_LEADER } }))
+    expect(report.byNode.approval_1?.map((i) => i.code)).toContain(IssueCode.MISSING_ASSIGNEE)
+  })
+
+  it('被「设置审批人」覆盖的活动不拦部门主管 —— 那里的人由发起人指定', () => {
+    let dsl = detachDefaultEdge(createEmptyDsl(meta))
+    dsl = addNode(
+      dsl,
+      {
+        id: 'set_1',
+        type: NodeType.SET_ASSIGNEE,
+        name: '设置审批人',
+        assignee: { strategy: AssigneeStrategy.INITIATOR },
+      },
+      { x: 200, y: 40 },
+    )
+    dsl = addNode(
+      dsl,
+      {
+        id: 'approval_1',
+        type: NodeType.APPROVAL,
+        name: '主管审批',
+        assignee: { strategy: AssigneeStrategy.DEPT_LEADER, deptFieldKey: 'dept' },
+        approvalMode: ApprovalMode.SINGLE,
+      },
+      { x: 200, y: 200 },
+    )
+    dsl = addEdge(dsl, START_ID, 'set_1')
+    dsl = addEdge(dsl, 'set_1', 'approval_1')
+    dsl = addEdge(dsl, 'approval_1', END_ID)
+
+    // 覆盖后编译层不输出那个表达式（人员来自 ckplmSetupAssignees_*），拦它会把跑得通的流程判死
+    expect(validateDsl(dsl).byNode.approval_1?.map((i) => i.code) ?? []).not.toContain(
+      IssueCode.ASSIGNEE_STRATEGY_UNSUPPORTED,
+    )
   })
 
   it('删除节点会清理指向它的驳回引用', () => {
@@ -587,6 +637,95 @@ describe('网关角色：分叉 vs 汇聚', () => {
 
     const codes = validateDsl(dsl).issues.map((i) => i.code)
     expect(codes).toContain(IssueCode.GATEWAY_TOO_FEW_BRANCHES)
+  })
+})
+
+describe('终止同层分支：只对并行 / 包容分支有意义', () => {
+  /** 给某条出边打开「终止同层分支」 */
+  function markTerminate(dsl: FlowDsl, edgeId: string): FlowDsl {
+    return {
+      ...dsl,
+      edges: dsl.edges.map((edge) => (edge.id === edgeId ? { ...edge, terminateSiblings: true } : edge)),
+    }
+  }
+
+  it('并行分支出边：不报「无同层分支可终止」', () => {
+    let dsl = detachDefaultEdge(createEmptyDsl(meta))
+    dsl = addNode(dsl, { id: 'gw_fork', type: NodeType.PARALLEL_GATEWAY, name: '并行分支' }, { x: 200, y: 120 })
+    dsl = addNode(dsl, taskNode('task_a', '审批'), { x: 100, y: 200 })
+    dsl = addNode(dsl, taskNode('task_b', '审核'), { x: 300, y: 200 })
+    dsl = addNode(dsl, { id: 'gw_join', type: NodeType.PARALLEL_GATEWAY, name: '汇聚' }, { x: 200, y: 280 })
+    dsl = addEdge(dsl, START_ID, 'gw_fork')
+    dsl = addEdge(dsl, 'gw_fork', 'task_a')
+    dsl = addEdge(dsl, 'gw_fork', 'task_b')
+    dsl = addEdge(dsl, 'task_a', 'gw_join')
+    dsl = addEdge(dsl, 'task_b', 'gw_join')
+    dsl = addEdge(dsl, 'gw_join', END_ID)
+
+    const forkEdge = dsl.edges.find((edge) => edge.source === 'gw_fork' && edge.target === 'task_a')!
+    const report = validateDsl(markTerminate(dsl, forkEdge.id))
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain(IssueCode.TERMINATE_OUTSIDE_BRANCH)
+  })
+
+  it('非分支出边：报 WARNING（配了没效果，但不拦保存）', () => {
+    const dsl = withApproval()
+    const edge = dsl.edges.find((item) => item.source === 'approval_1')!
+    const report = validateDsl(markTerminate(dsl, edge.id))
+
+    expect(report.byEdge[edge.id]?.map((issue) => issue.code)).toContain(
+      IssueCode.TERMINATE_OUTSIDE_BRANCH,
+    )
+    expect(report.errorCount).toBe(0)
+  })
+
+  /** start → 并行两支（可选汇聚）→ 收尾 → 结束 */
+  function parallelBlock(withJoin: boolean): FlowDsl {
+    let dsl = detachDefaultEdge(createEmptyDsl(meta))
+    dsl = addNode(dsl, { id: 'gw_fork', type: NodeType.PARALLEL_GATEWAY, name: '并行' }, { x: 200, y: 100 })
+    dsl = addNode(dsl, taskNode('task_a', '分支A'), { x: 100, y: 180 })
+    dsl = addNode(dsl, taskNode('task_b', '分支B'), { x: 300, y: 180 })
+    dsl = addEdge(dsl, START_ID, 'gw_fork')
+    dsl = addEdge(dsl, 'gw_fork', 'task_a')
+    dsl = addEdge(dsl, 'gw_fork', 'task_b')
+    if (withJoin) {
+      dsl = addNode(dsl, { id: 'gw_join', type: NodeType.PARALLEL_GATEWAY, name: '汇聚' }, { x: 200, y: 260 })
+      dsl = addNode(dsl, taskNode('task_tail', '收尾'), { x: 200, y: 340 })
+      dsl = addEdge(dsl, 'task_a', 'gw_join')
+      dsl = addEdge(dsl, 'task_b', 'gw_join')
+      dsl = addEdge(dsl, 'gw_join', 'task_tail')
+      dsl = addEdge(dsl, 'task_tail', END_ID)
+    } else {
+      dsl = addEdge(dsl, 'task_a', END_ID)
+      dsl = addEdge(dsl, 'task_b', END_ID)
+    }
+    return dsl
+  }
+
+  it('并行块内部的审批节点出边：也放行（不只是网关出边）', () => {
+    const dsl = parallelBlock(true)
+    const edge = dsl.edges.find((item) => item.source === 'task_a' && item.target === 'gw_join')!
+    const report = validateDsl(markTerminate(dsl, edge.id))
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain(IssueCode.TERMINATE_OUTSIDE_BRANCH)
+  })
+
+  it('并行分支没有汇聚网关（各自走到结束）：仍算块内', () => {
+    const dsl = parallelBlock(false)
+    const edge = dsl.edges.find((item) => item.source === 'task_a')!
+    const report = validateDsl(markTerminate(dsl, edge.id))
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain(IssueCode.TERMINATE_OUTSIDE_BRANCH)
+  })
+
+  it('汇聚网关之后的边：不再算块内（作用域不能蔓延到整条主干）', () => {
+    const dsl = parallelBlock(true)
+    const edge = dsl.edges.find((item) => item.source === 'task_tail')!
+    const report = validateDsl(markTerminate(dsl, edge.id))
+
+    expect(report.byEdge[edge.id]?.map((issue) => issue.code)).toContain(
+      IssueCode.TERMINATE_OUTSIDE_BRANCH,
+    )
   })
 })
 

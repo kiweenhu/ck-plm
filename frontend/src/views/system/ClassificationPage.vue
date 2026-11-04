@@ -7,10 +7,6 @@
         <span class="cls-subtitle">管理系统分类树，支持多级分类结构</span>
       </div>
       <div class="cls-header-right">
-        <a-button @click="openCloneModal">
-          <template #icon><CloudDownloadOutlined /></template>
-          克隆平台分类
-        </a-button>
         <a-button type="primary" ghost @click="openIBAExtension">
           <template #icon><PlusOutlined /></template>
           IBA扩展
@@ -343,60 +339,13 @@
         @back="onLayoutDesignerClose"
       />
     </a-drawer>
-
-    <!-- 克隆平台分类弹窗 -->
-    <a-modal
-      v-model:open="cloneModalVisible"
-      title="克隆平台分类"
-      :width="640"
-      centered
-      wrap-class-name="part-create-modal"
-      :body-style="{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto', padding: '12px 16px 16px' }"
-      @cancel="resetCloneModal"
-    >
-      <a-spin :spinning="platformTreeLoading">
-        <div v-if="platformTree.length === 0" style="padding: 24px; text-align: center; color: #999;">
-          暂无平台分类
-        </div>
-        <div v-else>
-          <div style="margin-bottom: 8px; color: #595959; font-size: 13px;">
-            <BlockOutlined style="color:#1677ff;margin-right:4px" />
-            勾选要克隆到当前租户的根分类（可多选）：
-          </div>
-          <a-tree
-            v-if="platformTreeData.length"
-            v-model:expandedKeys="cloneExpandedKeys"
-            :tree-data="platformTreeData"
-            :field-names="{ title: 'name', key: 'oid', children: 'children' }"
-            checkable
-            v-model:checkedKeys="selectedPlatformRoots"
-            block-node
-            style="background: #fafafa; border: 1px solid #f0f0f0; border-radius: 6px; padding: 8px 12px;"
-          >
-            <template #title="{ name }">
-              <span>{{ name }}</span>
-            </template>
-          </a-tree>
-        </div>
-      </a-spin>
-      <div v-if="cloning" style="margin-top: 16px;">
-        <div style="margin-bottom: 6px; color: #595959; font-size: 13px;">{{ cloneStage }}</div>
-        <a-progress :percent="cloneProgress" :status="cloneProgress === 100 ? 'success' : 'active'" />
-      </div>
-      <div style="margin-top: 16px; text-align: right;">
-        <a-button @click="resetCloneModal">取消</a-button>
-        <a-button type="primary" :loading="cloning" :disabled="!selectedPlatformRoots.length" @click="handleClone" style="margin-left: 8px;">
-          克隆
-        </a-button>
-      </div>
-    </a-modal>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, DeleteOutlined, ApartmentOutlined, FolderOutlined, CloudDownloadOutlined, BlockOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DeleteOutlined, ApartmentOutlined, FolderOutlined } from '@ant-design/icons-vue'
 import ImageUploader from '@/components/ImageUploader.vue'
 import IBAExtension from '@/components/IBAExtension.vue'
 import ClsIbaLayoutDesigner from '@/views/system/ClsIbaLayoutDesigner.vue'
@@ -404,8 +353,7 @@ import {
   getClassificationTree, getClassification,
   createClassification, updateClassification, deleteClassification,
   getClassificationIBAs, getUnassignedClsIBAs, batchAssignClsIBAs, removeClsIBAMapping,
-  getClsIbaLayoutOperations, deleteClsIbaLayout,
-  getPlatformTree, clonePlatform
+  getClsIbaLayoutOperations, deleteClsIbaLayout
 } from '@/api'
 
 // ===== 状态 =====
@@ -765,89 +713,6 @@ function onLayoutDesignerClose() {
   layoutDesignerVisible.value = false
   pendingLayoutOpCode.value = ''
   if (detail.oid) loadLayoutList(detail.oid)
-}
-
-// ===== 克隆平台分类 =====
-const cloneModalVisible = ref(false)
-const platformTree = ref([])
-const platformTreeData = ref([])
-const platformTreeLoading = ref(false)
-const selectedPlatformRoots = ref([])
-const cloneExpandedKeys = ref([])
-const cloning = ref(false)
-const cloneProgress = ref(0)
-const cloneStage = ref('')
-let progressTimer = null
-
-async function openCloneModal() {
-  cloneModalVisible.value = true
-  selectedPlatformRoots.value = []
-  platformTreeLoading.value = true
-  try {
-    const res = await getPlatformTree()
-    platformTree.value = res?.data || res || []
-    platformTreeData.value = platformTree.value.map(toPlatformNode)
-    if (platformTreeData.value.length) {
-      cloneExpandedKeys.value = platformTreeData.value.map(n => n.oid)
-    }
-  } catch {
-    platformTree.value = []
-    platformTreeData.value = []
-  } finally {
-    platformTreeLoading.value = false
-  }
-}
-
-function toPlatformNode(node) {
-  return {
-    oid: node.oid,
-    name: node.name,
-    children: node.children?.length ? node.children.map(toPlatformNode) : undefined,
-  }
-}
-
-function resetCloneModal() {
-  cloneModalVisible.value = false
-  selectedPlatformRoots.value = []
-  platformTree.value = []
-  platformTreeData.value = []
-  cloneExpandedKeys.value = []
-}
-
-async function handleClone() {
-  // 只克隆被勾选的根节点
-  const rootOids = platformTreeData.value
-    .filter(n => selectedPlatformRoots.value.includes(n.oid))
-    .map(n => n.oid)
-  if (!rootOids.length) {
-    message.warning('请勾选要克隆的根分类')
-    return
-  }
-  cloning.value = true
-  cloneProgress.value = 0
-  cloneStage.value = '正在克隆分类树...'
-  progressTimer = setInterval(() => {
-    if (cloneProgress.value < 90) {
-      cloneProgress.value += Math.floor(Math.random() * 8) + 2
-      if (cloneProgress.value > 90) cloneProgress.value = 90
-      if (cloneProgress.value > 70) cloneStage.value = '正在克隆 IBA 定义与关联...'
-    }
-  }, 200)
-  try {
-    const res = await clonePlatform(rootOids)
-    const stat = res?.data || res || {}
-    cloneProgress.value = 100
-    cloneStage.value = '克隆完成'
-    message.success(`克隆成功：${stat.classificationCount ?? 0} 个分类、${stat.ibaDefinitionCount ?? 0} 个 IBA 定义、${stat.ibaLinkCount ?? 0} 条关联`)
-    resetCloneModal()
-    await loadTree()
-  } catch (e) {
-    message.error(e?.response?.data?.message || e?.message || '克隆失败')
-  } finally {
-    if (progressTimer) clearInterval(progressTimer)
-    progressTimer = null
-    cloning.value = false
-  }
 }
 
 // ===== 初始化 =====

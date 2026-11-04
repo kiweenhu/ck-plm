@@ -16,9 +16,11 @@ import cn.ck.plm.softtype.service.api.SoftTypeInstanceCapability;
 import cn.ck.plm.softtype.service.impl.IbaDataSupport;
 import cn.ck.plm.base.entity.MasterEntity;
 import cn.ck.plm.base.entity.IterationEntity;
+import cn.ck.plm.base.entity.LifecycleStatus;
 import cn.ck.plm.base.entity.View;
 import cn.ck.plm.base.service.api.NumberService;
 import cn.ck.plm.base.service.api.VersionRuleService;
+import cn.ck.plm.base.service.impl.RevisionRuleGuard;
 import cn.ck.plm.base.service.api.LifecycleStatusService;
 import cn.ck.plm.base.service.api.LifecycleTemplateService;
 import cn.ck.plm.base.service.api.ViewService;
@@ -32,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,6 +58,7 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
     private final TypeDefinitionMapper typeDefinitionMapper;
     private final NumberService numberService;
     private final VersionRuleService versionRuleService;
+    private final RevisionRuleGuard revisionRuleGuard;
     private final LifecycleTemplateService lifecycleTemplateService;
     /** 状态 code → 显示名（列表/详情都要给"人看得懂"的那个字，见 LifecycleStatusService#displayName） */
     private final LifecycleStatusService lifecycleStatusService;
@@ -69,6 +73,7 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
                             TypeDefinitionMapper typeDefinitionMapper,
                             NumberService numberService,
                             VersionRuleService versionRuleService,
+                            RevisionRuleGuard revisionRuleGuard,
                             LifecycleTemplateService lifecycleTemplateService,
                             LifecycleStatusService lifecycleStatusService,
                             ViewService viewService,
@@ -81,6 +86,7 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
         this.typeDefinitionMapper = typeDefinitionMapper;
         this.numberService = numberService;
         this.versionRuleService = versionRuleService;
+        this.revisionRuleGuard = revisionRuleGuard;
         this.lifecycleTemplateService = lifecycleTemplateService;
         this.lifecycleStatusService = lifecycleStatusService;
         this.viewService = viewService;
@@ -260,7 +266,7 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
         if ("ELECTRONIC".equalsIgnoreCase(part.getTypeDefinitionCode())
                 && !RESOURCE_CONTAINER_TYPE.equalsIgnoreCase(part.getContainerType())) {
             throw new IllegalArgumentException(
-                    "电子元器件必须归档在企业资源库的元器件库中，请通过「企业资源 → 元器件库 → 元器件申请」创建");
+                    "电子元器件必须归档在企业资源库的元器件库中，请通过「企业资源 → 元器件库 → IPN申请」创建");
         }
 
         // 外键字段空字符串转 null，避免违反外键约束
@@ -464,12 +470,17 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
 
     @Override
     @Transactional
-    public void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode) {
+    public void setLifecycleStateInstance(String oid, String entityVersion, String targetStateCode,
+                                          String migrateToTemplateIterationOid) {
         Part part = partMapper.selectByOid(oid);
         if (part == null) {
             throw new IllegalArgumentException("部件不存在: " + oid);
         }
         PartIteration iter = resolveVersion(oid, entityVersion);
+        // 同一个事务里先迁模板再设状态：中间失败一起回滚，不会出现"迁了模板、状态没设上"
+        if (migrateToTemplateIterationOid != null && !migrateToTemplateIterationOid.trim().isEmpty()) {
+            lifecycleTemplateService.rebindLifecycle(iter, migrateToTemplateIterationOid);
+        }
         // 迁移规则由模板决定（当前状态能不能到目标状态），不在这里自己判断
         lifecycleTemplateService.moveToState(iter, targetStateCode);
         iter.setUpdatedAt(LocalDateTime.now());
@@ -481,12 +492,16 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
 
     @Override
     @Transactional
-    public void resetLifecycleStateInstance(String oid, String entityVersion) {
+    public void resetLifecycleStateInstance(String oid, String entityVersion,
+                                            String migrateToTemplateIterationOid) {
         Part part = partMapper.selectByOid(oid);
         if (part == null) {
             throw new IllegalArgumentException("部件不存在: " + oid);
         }
         PartIteration iter = resolveVersion(oid, entityVersion);
+        if (migrateToTemplateIterationOid != null && !migrateToTemplateIterationOid.trim().isEmpty()) {
+            lifecycleTemplateService.rebindLifecycle(iter, migrateToTemplateIterationOid);
+        }
         // 沿模板的回退规则逐跳退回初始状态（多跳在模板里没有直接规则，不允许一步跳过去）
         lifecycleTemplateService.moveToInitialState(iter);
         iter.setUpdatedAt(LocalDateTime.now());
@@ -494,6 +509,11 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
         log.info("退回初始状态: partOid={}, version={}.{}, status={}", oid,
                 iter.getRevision(), iter.getIteration(),
                 iter.getStatus() != null ? iter.getStatus().getCode() : null);
+    }
+
+    @Override
+    public String lifecycleTemplateIterationOfInstance(String oid, String entityVersion) {
+        return resolveVersion(oid, entityVersion).getLifecycleTemplateIterationOid();
     }
 
     /**
@@ -544,6 +564,17 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
         if (currentIter == null) {
             throw new IllegalArgumentException("部件没有可用版本: " + oid);
         }
+        // 检出中的工作副本不能作为修订基线：否则新大版本复制的是"未定稿"的内容，
+        // 而那个被检出的迭代会变成 checkedOut=true 却不是 latest 的孤版本。
+        if (currentIter.isCheckedOut()) {
+            throw new IllegalStateException(
+                    "部件已被 " + currentIter.getCheckedOutBy() + " 检出，请先检入或取消检出后再修订");
+        }
+        // 版本规则用尽时不再回退字符顺延：通知租户管理员改规则，并阻止修订
+        revisionRuleGuard.ensureRevisionAllowed(part.getTypeDefinitionCode(), currentIter.getRevision(),
+                part.getNumber(), part.getName());
+        // 当前生命周期状态是否允许修订（模板状态上的 revisable，配置缺失不阻断）
+        lifecycleTemplateService.ensureRevisable(currentIter);
 
         // 1. 原最新版本 latest → false
         currentIter.setLatest(false);
@@ -561,8 +592,16 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
         copy.setUpdatedAt(LocalDateTime.now());
         copy.setCreator(currentIter.getCreator());
         copy.setView(currentIter.getView() != null ? currentIter.getView() : defaultView());
-        copy.setStatus(currentIter.getStatus());
         copy.setLifecycleTemplateIterationOid(currentIter.getLifecycleTemplateIterationOid());
+        // 修订出的新大版本要重新初始化生命周期：回到该对象固化模板的初始状态，不继承旧版本的状态。
+        // 未绑定模板（历史数据）时保持原状态
+        LifecycleStatus initialStatus = lifecycleTemplateService.initialStatus(
+                currentIter.getLifecycleTemplateIterationOid());
+        copy.setStatus(initialStatus != null ? initialStatus : currentIter.getStatus());
+        if (initialStatus == null && currentIter.getLifecycleTemplateIterationOid() != null) {
+            log.warn("修订未能解析模板初始状态，沿用原状态: partOid={}, templateIteration={}",
+                    oid, currentIter.getLifecycleTemplateIterationOid());
+        }
         copy.setUnit(currentIter.getUnit());
         copy.setSource(currentIter.getSource());
 
@@ -621,6 +660,8 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
     public List<PartVO> findVOsByFolder(String folderOid) {
         List<Part> parts = partMapper.selectByFolderOid(folderOid);
         List<PartVO> vos = new ArrayList<>();
+        // 同一文件夹的零件通常共用模板：按模板子版本缓存"状态 → 可修订"，避免逐行查状态表
+        Map<String, Map<String, Boolean>> revisableCache = new HashMap<>();
         for (Part part : parts) {
             PartVO vo = new PartVO();
             vo.setOid(part.getOid());
@@ -657,9 +698,14 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
                 if (latestIter.getStatus() != null) {
                     vo.setStatusCode(latestIter.getStatus().getCode());
                     // 旁边那个 code 只是标识，界面显示用显示名（草稿/工作中）——
-                    // 这里曾经只填 code，阶段/分类清单于是直接显示 IN_WORK
+                    // 这里曾经只填 code，阶段/分类清单于是直接显示 WORKING
                     vo.setStatusName(lifecycleStatusService.displayName(
                             latestIter.getLifecycleTemplateIterationOid(), latestIter.getStatus().getCode()));
+                    // 行内「修订」是否出现，由该状态在模板里的 revisable 决定（未知按允许）
+                    Map<String, Boolean> flags = revisableCache.computeIfAbsent(
+                            latestIter.getLifecycleTemplateIterationOid(),
+                            lifecycleTemplateService::revisableFlags);
+                    vo.setRevisable(flags.getOrDefault(latestIter.getStatus().getCode(), true));
                 }
                 vo.setUnit(latestIter.getUnit());
             }
@@ -672,6 +718,8 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
     public List<PartVO> findVOsByClassification(String classificationOid) {
         List<Part> parts = partMapper.selectByClassificationOid(classificationOid);
         List<PartVO> vos = new ArrayList<>();
+        // 同上：分类清单同样按模板子版本缓存
+        Map<String, Map<String, Boolean>> revisableCache = new HashMap<>();
         for (Part part : parts) {
             PartVO vo = new PartVO();
             vo.setOid(part.getOid());
@@ -708,9 +756,14 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
                 if (latestIter.getStatus() != null) {
                     vo.setStatusCode(latestIter.getStatus().getCode());
                     // 旁边那个 code 只是标识，界面显示用显示名（草稿/工作中）——
-                    // 这里曾经只填 code，阶段/分类清单于是直接显示 IN_WORK
+                    // 这里曾经只填 code，阶段/分类清单于是直接显示 WORKING
                     vo.setStatusName(lifecycleStatusService.displayName(
                             latestIter.getLifecycleTemplateIterationOid(), latestIter.getStatus().getCode()));
+                    // 行内「修订」是否出现，由该状态在模板里的 revisable 决定（未知按允许）
+                    Map<String, Boolean> flags = revisableCache.computeIfAbsent(
+                            latestIter.getLifecycleTemplateIterationOid(),
+                            lifecycleTemplateService::revisableFlags);
+                    vo.setRevisable(flags.getOrDefault(latestIter.getStatus().getCode(), true));
                 }
                 vo.setUnit(latestIter.getUnit());
             }
