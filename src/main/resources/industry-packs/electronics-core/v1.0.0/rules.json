@@ -1,0 +1,51 @@
+{
+  "note": "电子行业共用的检查规则（BOM / 器件域，7 条）。声明式 JSON，不是脚本 —— 每条 = 时机（trigger）+ 对象（scope）+ 条件（condition）+ 严重度（severity）+ 提示（message）。枚举只用文档证据支持的取值：trigger ∈ STAGE_ENTRY / PART_SAVE / BOM_SAVE / GATE_CHECK / RELEASE，scope ∈ PRODUCT_MODEL / PART / BOM，condition.type ∈ FIELD_CHECK / FIELD_EMPTY / ISSUE_OPEN / OBJECT_MISSING，severity ∈ BLOCK / WARN。来源标注：R-SH-02 与 R-SH-06 逐字取自《CK-PLM智能硬件与电子高科数据模板清单》第 15 节；R-SH-07 至 R-SH-11 按同一结构补写，内容取自该文档第二节列出的、依赖器件属性的规则（码为新起，请复核）。文档口径是『共用 8 条 + 变体 A 增量 6 条』，但该文档只落了 6 条示例；本节第二节提到的『成本数据缺口率』属聚合类条件（现有 4 种判定类型覆盖不到），未纳入 —— 故共用侧为 7 条、加变体侧 4 条共 11 条，与文档的 14 条口径存在缺口，缺的 3 条内容文档未给出。落地通道：平台无规则表、无规则引擎（现有 ck_version_rule 是编码/版本规则，是另一个概念），PlatformCapabilities 未登记规则能力（无虚报）——故本文件在 pack.json 已声明，安装动作会如实记为『尚无安装器（待后续版本补齐）』。判定依赖的器件属性现在**已有定义**：本包 attributes.json（24 个，逐条取自文档第 4 节）定义了 qualificationStatus / preferredLevel / rohsCompliant / partLifeCycle / supplierCount / needAlternate / ulCertNo —— 即本文件 7 条规则里 6 条的字段全部对得上（字段名以 attributes.json 为准，文档第二节的 eolStatus / alternateRefs 是旧写法，已在本文件的 industryNote 里留痕）。例外一处：变体包的 R-SH-01 用 certStatus（product 级认证状态），属 PRODUCT_MODEL 维度，attributes.json 是器件级（ELECTRONIC / STRUCTURAL）故未定义 —— 列为待补。属性定义本身有落点（IBA 机制现成、AttributeDefinition 可用），但**尚无 ATTRIBUTE 安装器** —— 故这些规则在属性真正可填之前仍跑不起来。",
+  "items": [
+    { "code": "R-SH-02", "name": "电池类器件必须具备安全认证",
+      "trigger": "PART_SAVE", "scope": "PART", "category": "battery",
+      "condition": { "type": "FIELD_EMPTY", "field": "UL_CERT_NO" },
+      "severity": "BLOCK",
+      "message": "电池类器件 {part.code} 未填写安全认证号" },
+
+    { "code": "R-SH-06", "name": "出口产品器件须 RoHS/REACH 合规",
+      "trigger": "BOM_SAVE", "scope": "BOM",
+      "condition": { "type": "FIELD_CHECK", "field": "ROHS_COMPLIANT", "operator": "EQ", "value": false },
+      "severity": "WARN", "defaultOverride": { "severity": "BLOCK", "when": "exportMarket = true" },
+      "message": "BOM 含 {count} 个未声明 RoHS 合规的器件" },
+
+    { "code": "R-SH-07", "name": "BOM 不得引用未准入器件",
+      "trigger": "BOM_SAVE", "scope": "BOM",
+      "condition": { "type": "FIELD_CHECK", "field": "QUALIFICATION_STATUS", "operator": "NOT_IN", "value": ["QUALIFIED", "SAMPLING"] },
+      "severity": "BLOCK",
+      "message": "BOM 含 {count} 个未准入（非 QUALIFIED / SAMPLING）的器件",
+      "industryNote": "文档第二节列为『BOM 不得引用未准入器件』，现状：qualificationStatus 属性不存在。Tier-1 客户审厂与 RoHS 抽检都会查这条" },
+
+    { "code": "R-SH-08", "name": "禁用优选等级 P3 器件进入新设计",
+      "trigger": "BOM_SAVE", "scope": "BOM",
+      "condition": { "type": "FIELD_CHECK", "field": "PREFERRED_LEVEL", "operator": "EQ", "value": "P3" },
+      "severity": "BLOCK",
+      "message": "BOM 含 {count} 个 P3 优选等级器件（新设计禁止使用）",
+      "industryNote": "P3 = 仅历史在用、不推荐新选型。与 R-SH-09（关键器件必须有替代料）配套：先控入口，再控替代" },
+
+    { "code": "R-SH-09", "name": "关键器件必须维护替代料",
+      "trigger": "PART_SAVE", "scope": "PART",
+      "condition": { "type": "FIELD_EMPTY", "field": "NEED_ALTERNATE" },
+      "severity": "WARN",
+      "message": "{part.code} 未标记是否必需替代料（关键器件需维护替代）",
+      "industryNote": "字段名以 attributes.json 为准：needAlternate（是否必需替代料，ALTERNATE 组）—— 文档第二节曾写作 alternateRefs，那是对 PartAlternate 表的泛指，不是属性名。完整判定应为『needAlternate = true 且 alternateCount = 0』，属组合条件，现有 4 类判定（FIELD_CHECK / FIELD_EMPTY / ISSUE_OPEN / OBJECT_MISSING）覆盖不到，故本条先校验标记本身；PartAlternate 表已存在，指标 ALT_COVERAGE（替代料覆盖率）可直接用" },
+
+    { "code": "R-SH-10", "name": "停产或临近停产器件进入新设计需审批",
+      "trigger": "BOM_SAVE", "scope": "BOM",
+      "condition": { "type": "FIELD_CHECK", "field": "PART_LIFE_CYCLE", "operator": "NOT_IN", "value": ["ACTIVE"] },
+      "severity": "WARN",
+      "message": "BOM 含 {count} 个非在产（不推荐 / 停产预告 / 已停产）的器件，需供应与审批确认",
+      "industryNote": "字段名以 attributes.json 为准：partLifeCycle（器件生命周期，枚举 ACTIVE / NRND / EOL / OBSOLETE）—— 文档第二节曾写作 eolStatus，属性模板里的真名是它；配套的 eolDate（预计停产日期）与派生字段 ltsYears（剩余供货年限）也已在同一组定义。缺货周期里最常见的量产风险：器件停产后无替代 → 被迫改板。指标 EOL_RISK_COUNT（停产风险器件数）由此计算" },
+
+    { "code": "R-SH-11", "name": "单一来源器件风险提示",
+      "trigger": "BOM_SAVE", "scope": "BOM",
+      "condition": { "type": "FIELD_CHECK", "field": "SUPPLIER_COUNT", "operator": "EQ", "value": 1 },
+      "severity": "WARN",
+      "message": "BOM 含 {count} 个单一来源器件，建议补充第二供应源",
+      "industryNote": "与 gates.json 的 SUPPLY_CONFIRMED 自动检查同源：门上看『关键物料是否双源或有替代方案』，这里逐个 BOM 行提示" }
+  ]
+}

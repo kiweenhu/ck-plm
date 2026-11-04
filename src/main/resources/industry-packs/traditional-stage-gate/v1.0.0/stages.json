@@ -1,0 +1,29 @@
+{
+  "industries": [
+    {
+      "industry": "TRADITIONAL",
+      "name": "通用制造",
+      "stages": [
+        { "code": "MARKET_VALIDATION", "name": "市场验证", "icon": "ShoppingCartOutlined", "color": "#eb2f96", "sortOrder": 1,
+          "defaultFolders": ["市场调研分析", "目标用户验证", "竞品对标", "市场可行性评估"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "REQUIREMENTS", "name": "需求论证", "icon": "AuditOutlined", "color": "#1677ff", "sortOrder": 2,
+          "defaultFolders": ["需求分析", "需求评审", "技术可行性论证"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "SOLUTION", "name": "方案设计", "icon": "BulbOutlined", "color": "#722ed1", "sortOrder": 3,
+          "defaultFolders": ["系统架构设计", "方案评审", "关键技术选型验证"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "DETAILED", "name": "详细设计", "icon": "FundProjectionScreenOutlined", "color": "#13c2c2", "sortOrder": 4,
+          "defaultFolders": ["软件详细设计", "硬件原理图", "结构设计", "DFMEA分析"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "PROCESS", "name": "工艺规划", "icon": "ToolOutlined", "color": "#fa8c16", "sortOrder": 5,
+          "defaultFolders": ["生产工艺设计", "工装夹具设计", "BOM编制", "试产计划"],
+          "managedObjectTypes": ["DOCUMENT"] },
+        { "code": "TRIAL", "name": "试产", "icon": "RocketOutlined", "color": "#52c41a", "sortOrder": 6,
+          "defaultFolders": ["小批量试产验证", "问题追踪", "试产评审", "转量产决策"],
+          "managedObjectTypes": ["DOCUMENT"] }
+      ]
+    }
+  ],
+  "note": "通用制造业六阶段（市场验证 → 需求论证 → 方案设计 → 详细设计 → 工艺规划 → 试产），即经典 Stage-Gate 阶段门节奏。"
+}

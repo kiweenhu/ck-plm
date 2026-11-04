@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:ckplm="http://www.ck.com/plm/workflow/dsl"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.ck.com/plm/workflow">
+  <process id="component-introduction" name="元器件引入流程" isExecutable="true">
+    <documentation>电子行业通用的元器件引入与认定流程：需求与选型初审 → 寻源与样品 → 来料检验 → 样品验证（电气+可靠性会签） → 小批量试产验证 → 认定评审（会签，一票否决） → 入库与 AVL 发布。任一审批可驳回至发起人重走。</documentation>
+    <startEvent id="start_1" name="开始：元器件引入申请" ckplm:nodeType="START" flowable:initiator="initiator" ckplm:initiator="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="component-qualification-apply" ckplm:formRef="component-qualification-apply"/>
+    <userTask id="n_demand" name="需求与选型初审" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_n_demand}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;HARDWARE_LEAD&quot;,&quot;COMPONENT_ENGINEER&quot;]}" ckplm:approvalMode="&quot;SINGLE&quot;" ckplm:commentRequired="true" flowable:formKey="component-qualification-review" ckplm:formRef="component-qualification-review"/>
+    <userTask id="n_sourcing" name="寻源与样品申请" ckplm:nodeType="TASK" flowable:candidateUsers="${ckplmSetupAssignees_n_sourcing}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;SOURCING_ENGINEER&quot;]}" flowable:formKey="component-qualification-review" ckplm:formRef="component-qualification-review"/>
+    <userTask id="n_iqc" name="样品来料检验（IQC）" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_n_iqc}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;IQC_ENGINEER&quot;]}" ckplm:approvalMode="&quot;SINGLE&quot;" ckplm:commentRequired="true" flowable:formKey="component-qualification-review" ckplm:formRef="component-qualification-review"/>
+    <userTask id="n_verify" name="样品验证（电气 + 可靠性）" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;HARDWARE_ENGINEER&quot;,&quot;RELIABILITY_ENGINEER&quot;]}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;PERCENT&quot;,&quot;percent&quot;:100}" ckplm:commentRequired="true" flowable:formKey="component-qualification-countersign" ckplm:formRef="component-qualification-countersign">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_n_verify}" flowable:elementVariable="ckplmApprover"><completionCondition>${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 100}</completionCondition></multiInstanceLoopCharacteristics></userTask>
+    <userTask id="n_pilot" name="小批量试产验证" ckplm:nodeType="TASK" flowable:candidateUsers="${ckplmSetupAssignees_n_pilot}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;NPI_ENGINEER&quot;]}" flowable:formKey="component-qualification-review" ckplm:formRef="component-qualification-review"/>
+    <userTask id="n_ce_review" name="元器件认定评审（会签）" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;COMPONENT_ENGINEER&quot;,&quot;IQC_ENGINEER&quot;,&quot;RELIABILITY_ENGINEER&quot;,&quot;NPI_ENGINEER&quot;,&quot;HARDWARE_LEAD&quot;]}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;VETO&quot;,&quot;veto&quot;:true}" ckplm:commentRequired="true" flowable:formKey="component-qualification-countersign" ckplm:formRef="component-qualification-countersign">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_n_ce_review}" flowable:elementVariable="ckplmApprover"/></userTask>
+    <userTask id="n_publish" name="入库与 AVL 发布" ckplm:nodeType="TASK" flowable:candidateUsers="${ckplmSetupAssignees_n_publish}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;COMPONENT_LIBRARIAN&quot;]}" flowable:formKey="component-qualification-review" ckplm:formRef="component-qualification-review"/>
+    <endEvent id="n_end" name="结束：引入完成" ckplm:nodeType="END"/>
+    <userTask id="set_assignee_emt11t" name="设置审批人" ckplm:nodeType="SET_ASSIGNEE" flowable:assignee="${initiator}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="CKPLM_SETUP_ASSIGNEE" ckplm:formRef="CKPLM_SETUP_ASSIGNEE"/>
+    <serviceTask id="service_p7h86n" name="审核中" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="object.setLifecycleState" ckplm:serviceParams="{&quot;state&quot;:&quot;APPROVING&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>object.setLifecycleState</flowable:string></flowable:field><flowable:field name="state"><flowable:string>APPROVING</flowable:string></flowable:field></extensionElements></serviceTask>
+    <serviceTask id="service_jlyzi8" name="设置对象状态" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="object.setLifecycleState" ckplm:serviceParams="{&quot;state&quot;:&quot;PUBLISHED&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>object.setLifecycleState</flowable:string></flowable:field><flowable:field name="state"><flowable:string>PUBLISHED</flowable:string></flowable:field></extensionElements></serviceTask>
+    <serviceTask id="service_nia4v7" name="设置对象状态" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="object.setLifecycleState" ckplm:serviceParams="{&quot;state&quot;:&quot;DRAFT&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>object.setLifecycleState</flowable:string></flowable:field><flowable:field name="state"><flowable:string>DRAFT</flowable:string></flowable:field></extensionElements></serviceTask>
+    <userTask id="task_qhmpz1" name="重新提交申请" ckplm:nodeType="TASK" flowable:assignee="${initiator}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="component-qualification-apply" ckplm:formRef="component-qualification-apply"/>
+    <sequenceFlow id="e2" sourceRef="n_demand" targetRef="n_sourcing" name="通过" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e3" sourceRef="n_sourcing" targetRef="n_iqc"/>
+    <sequenceFlow id="e4" sourceRef="n_iqc" targetRef="n_verify" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e5" sourceRef="n_verify" targetRef="n_pilot" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e6" sourceRef="n_pilot" targetRef="n_ce_review"/>
+    <sequenceFlow id="e7" sourceRef="n_ce_review" targetRef="n_publish" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="flow_9" sourceRef="n_publish" targetRef="service_jlyzi8"/>
+    <sequenceFlow id="flow_10" sourceRef="service_jlyzi8" targetRef="n_end"/>
+    <sequenceFlow id="flow_5" sourceRef="n_verify" targetRef="service_nia4v7" ckplm:route="REJECT"><conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="flow_11" sourceRef="n_demand" targetRef="service_nia4v7" ckplm:route="REJECT"><conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="flow_3" sourceRef="n_ce_review" targetRef="service_nia4v7" ckplm:route="REJECT"><conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="flow_4" sourceRef="start_1" targetRef="set_assignee_emt11t"/>
+    <sequenceFlow id="flow_2" sourceRef="set_assignee_emt11t" targetRef="service_p7h86n"/>
+    <sequenceFlow id="flow_6" sourceRef="service_p7h86n" targetRef="n_demand"/>
+    <sequenceFlow id="flow_1" sourceRef="service_nia4v7" targetRef="task_qhmpz1"/>
+    <sequenceFlow id="flow_7" sourceRef="task_qhmpz1" targetRef="service_p7h86n"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="component-introduction">
+    <bpmndi:BPMNShape id="Shape_start_1" bpmnElement="start_1">
+      <omgdc:Bounds x="296" y="-8" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_demand" bpmnElement="n_demand">
+      <omgdc:Bounds x="240" y="252" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_sourcing" bpmnElement="n_sourcing">
+      <omgdc:Bounds x="240" y="358" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_iqc" bpmnElement="n_iqc">
+      <omgdc:Bounds x="240" y="440" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_verify" bpmnElement="n_verify">
+      <omgdc:Bounds x="240" y="522" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_pilot" bpmnElement="n_pilot">
+      <omgdc:Bounds x="240" y="624" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_ce_review" bpmnElement="n_ce_review">
+      <omgdc:Bounds x="240" y="720" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_publish" bpmnElement="n_publish">
+      <omgdc:Bounds x="240" y="804" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_end" bpmnElement="n_end">
+      <omgdc:Bounds x="296" y="898" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_set_assignee_emt11t" bpmnElement="set_assignee_emt11t">
+      <omgdc:Bounds x="240" y="66" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_service_p7h86n" bpmnElement="service_p7h86n">
+      <omgdc:Bounds x="240" y="156" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_service_jlyzi8" bpmnElement="service_jlyzi8">
+      <omgdc:Bounds x="456" y="804" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_service_nia4v7" bpmnElement="service_nia4v7">
+      <omgdc:Bounds x="576" y="284" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_task_qhmpz1" bpmnElement="task_qhmpz1">
+      <omgdc:Bounds x="540" y="66" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNEdge id="Edge_e2" bpmnElement="e2">
+      <omgdi:waypoint x="311" y="296"/>
+      <omgdi:waypoint x="311" y="358"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e3" bpmnElement="e3">
+      <omgdi:waypoint x="311" y="402"/>
+      <omgdi:waypoint x="311" y="440"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e4" bpmnElement="e4">
+      <omgdi:waypoint x="311" y="484"/>
+      <omgdi:waypoint x="311" y="522"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e5" bpmnElement="e5">
+      <omgdi:waypoint x="311" y="566"/>
+      <omgdi:waypoint x="311" y="624"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e6" bpmnElement="e6">
+      <omgdi:waypoint x="311" y="668"/>
+      <omgdi:waypoint x="311" y="720"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e7" bpmnElement="e7">
+      <omgdi:waypoint x="311" y="764"/>
+      <omgdi:waypoint x="311" y="804"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_9" bpmnElement="flow_9">
+      <omgdi:waypoint x="311" y="848"/>
+      <omgdi:waypoint x="527" y="804"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_10" bpmnElement="flow_10">
+      <omgdi:waypoint x="527" y="848"/>
+      <omgdi:waypoint x="311" y="898"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_5" bpmnElement="flow_5">
+      <omgdi:waypoint x="311" y="566"/>
+      <omgdi:waypoint x="647" y="284"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_11" bpmnElement="flow_11">
+      <omgdi:waypoint x="311" y="296"/>
+      <omgdi:waypoint x="647" y="284"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_3" bpmnElement="flow_3">
+      <omgdi:waypoint x="311" y="764"/>
+      <omgdi:waypoint x="647" y="284"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_4" bpmnElement="flow_4">
+      <omgdi:waypoint x="311" y="22"/>
+      <omgdi:waypoint x="311" y="66"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_2" bpmnElement="flow_2">
+      <omgdi:waypoint x="311" y="110"/>
+      <omgdi:waypoint x="311" y="156"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_6" bpmnElement="flow_6">
+      <omgdi:waypoint x="311" y="200"/>
+      <omgdi:waypoint x="311" y="252"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_1" bpmnElement="flow_1">
+      <omgdi:waypoint x="647" y="328"/>
+      <omgdi:waypoint x="611" y="66"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_7" bpmnElement="flow_7">
+      <omgdi:waypoint x="611" y="110"/>
+      <omgdi:waypoint x="311" y="156"/>
+    </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

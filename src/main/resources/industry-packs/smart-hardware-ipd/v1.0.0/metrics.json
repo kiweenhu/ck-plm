@@ -1,0 +1,18 @@
+{
+  "inherit": "electronics-core@1.0.0",
+  "note": "变体 A（整机 / 智能硬件）的指标增量：businessLayer 2 项 + executiveLayer 3 项 = 5 项，与基础包 6 项合计 11 项（与文档第 16 节示例的总数一致）。文档第三节说变体增量为 6 项、第 16 节示例共 11 项，实际落纸 5 项 —— 差的 1 项文档未给出内容。level 沿用文档的 A/B/C 三级 **数据就绪度** 与同一条硬规则：C 级指标第一版显示『暂未评估』，禁止编造数值。分层口径照文档：businessLayer 给研发总监看（成本 / 器件 / 问题），executiveLayer 给老板看（上市 / 复用 / 质量成本）。落地通道：平台无指标实体、无驾驶舱 —— 故本文件在 pack.json 已声明，安装动作会如实记为『尚无安装器（待后续版本补齐）』；驾驶舱布局另见同目录 dashboards.json（3 个视角，MODEL_RANKING / MODEL_COMPARE_TABLE 为必选件）。",
+  "businessLayer": [
+    { "code": "BOM_TOTAL_COST", "name": "BOM 卷积成本", "source": "BomCostCalculator", "level": "A",
+      "note": "平台已有实现（含缺料行统计）；整机的成本大头在结构件与 PCBA，卷积结果直接给经营层看" },
+    { "code": "ISSUE_CLOSE_RATE", "name": "试产问题闭环率", "source": "ReviewIssue", "level": "C",
+      "note": "文档原注：评审引擎完成后可用，第一版显示『暂未评估』—— 问题结构化（issueTypes.json）与门/评审能否留痕是它的前置" }
+  ],
+  "executiveLayer": [
+    { "code": "TIME_TO_MARKET_DEV", "name": "上市时间偏差", "source": "TARGET_LAUNCH_DATE / LDCP", "level": "B",
+      "note": "= LDCP（上市决策评审）通过日 − 目标上市日期（IBA TARGET_LAUNCH_DATE，electronics-core 的 LAUNCH_TARGET 组），单位天，正数延期、负数提前。原注说需 Project 实体 —— 现在用「门 + 目标日期」替代：平台没有项目基线，但上市这道门本身就是时点。任一侧缺即显示「暂未评估」，不估算" },
+    { "code": "REUSE_GAIN", "name": "复用收益", "level": "B",
+      "note": "与通用件认定（genPartThreshold / GEN_PART 库）配套：跨型号复用被认定为通用件后省下的重复开发与采购量" },
+    { "code": "QUALITY_LOSS_COST", "name": "质量损失成本", "level": "C",
+      "note": "返修 / 退货 / 客诉的金额化；前置是现场质量数据（交付物 DLV-FIELD-QUALITY）与问题结构化" }
+  ]
+}

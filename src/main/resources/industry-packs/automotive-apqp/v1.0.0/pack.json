@@ -1,0 +1,42 @@
+{
+  "code": "automotive-apqp",
+  "name": "汽车 · APQP 研发体系包",
+  "version": "1.0.0",
+  "enabled": false,
+  "basePack": "platform-base@1.0.0",
+  "engineRange": ">=0.2.0 <1.0.0",
+  "industry": "AUTOMOTIVE",
+  "devMethod": "APQP",
+  "controlLevel": "STANDARD",
+  "license": "BUSINESS",
+  "targetScale": "200-2000人",
+  "primaryScopeType": "PRODUCT_MODEL",
+  "author": { "org": "乘恺科技", "updatedAt": "2026-10-03" },
+  "segments": [
+    { "code": "AUTO_ELECTRONICS", "name": "汽车电子" },
+    { "code": "VEHICLE",          "name": "整车" },
+    { "code": "AUTO_PARTS",       "name": "零部件" },
+    { "code": "NEV_POWERTRAIN",   "name": "新能源三电" },
+    { "code": "CHARGING",         "name": "充电设施" }
+  ],
+  "productForms": [
+    { "code": "VEHICLE",        "name": "整车" },
+    { "code": "ASSEMBLY",       "name": "总成·系统" },
+    { "code": "ECU",            "name": "控制器（ECU）" },
+    { "code": "SENSOR_ACTUATOR","name": "传感器·执行器" },
+    { "code": "SOFTWARE_CAL",   "name": "软件与标定" }
+  ],
+  "resources": [
+    { "type": "SOFT_TYPE", "file": "softtypes.json", "count": 5, "scope": "PLATFORM", "display": "业务对象定义", "reusable": false },
+    { "type": "STAGE",     "file": "stages.json",    "count": 5, "scope": "PLATFORM", "display": "研发阶段模板", "reusable": false }
+  ],
+  "installCheck": ["CODE_CONFLICT", "TYPE_EXISTS", "DEP_SATISFIED"],
+  "previewHints": [
+    { "resource": "STAGE", "highlight": "汽车五阶段（概念设计 → 开发验证 → 生产准备 → 量产 → 上市），对应 APQP 的策划—设计—过程—量产节奏" }
+  ],
+  "nextSteps": [
+    { "text": "把五阶段映射到你们实际的 APQP 里程碑与评审点", "route": "/system/basic" },
+    { "text": "确认是否需要 PPAP 交付物与特殊特性（KPC/KCC）清单", "route": "/system/basic" }
+  ],
+  "note": "汽车行业变体包（P1 拆包）：只含行业阶段模板。PPAP 交付物、特殊特性、IATF 条款映射等内容待 P2–P5 补入。"
+}

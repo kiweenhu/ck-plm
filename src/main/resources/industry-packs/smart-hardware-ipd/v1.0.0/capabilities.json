@@ -1,0 +1,19 @@
+{
+  "capabilities": [
+    { "code": "DELIVERABLE_MANAGEMENT",  "name": "交付物管理",     "default": true },
+    { "code": "GATE_REVIEW",             "name": "阶段门与评审",   "default": true },
+    { "code": "CERTIFICATION_MANAGEMENT","name": "认证管理",       "default": true },
+    { "code": "SOFTWARE_VERSION",        "name": "嵌入式软件版本", "default": true,
+      "note": "软件版本走语义化版本（SEMVER），不沿用物料版本规则" },
+    { "code": "ISSUE_MANAGEMENT",        "name": "问题闭环管理",   "default": true,
+      "note": "问题闭环率 / 超期问题数是指标来源" },
+    { "code": "RULE_ENGINE",             "name": "检查规则",       "default": true,
+      "note": "R-SH-01 出口认证等规则清单随包落企业，创建系列/型号时快照成实例，阶段内可查看" },
+    { "code": "METRIC_MANAGEMENT",       "name": "指标管理",       "default": true,
+      "note": "11 项指标的计算口径随包落企业并在系列/型号上快照；数值待数据就绪后评估，未就绪显示「暂未评估」" },
+    { "code": "DASHBOARD",               "name": "驾驶舱",         "default": true,
+      "note": "3 个视角（经营战报 / 系列战况 / 型号作战地图）的布局随包落企业并在系列/型号上快照" },
+    { "code": "CHANGE_MANAGEMENT",       "name": "变更管理(ECR/ECN)", "default": false,
+      "note": "依赖 change 模块，当前未实现 —— 安装引擎应跳过并提示，而不是失败（包与平台版本解耦的关键）" }
+  ]
+}

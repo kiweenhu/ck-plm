@@ -1,0 +1,41 @@
+{
+  "code": "traditional-stage-gate",
+  "name": "通用制造 · 阶段门研发体系包",
+  "version": "1.0.0",
+  "enabled": false,
+  "basePack": "platform-base@1.0.0",
+  "engineRange": ">=0.2.0 <1.0.0",
+  "industry": "TRADITIONAL",
+  "devMethod": "STAGE_GATE",
+  "controlLevel": "LIGHT",
+  "license": "BUSINESS",
+  "targetScale": "50-500人",
+  "primaryScopeType": "PRODUCT_MODEL",
+  "author": { "org": "乘恺科技", "updatedAt": "2026-10-03" },
+  "segments": [
+    { "code": "MACHINERY",       "name": "通用机械" },
+    { "code": "HOME_ELECTRIC",   "name": "家用电器" },
+    { "code": "HARDWARE_TOOL",   "name": "五金工具" },
+    { "code": "INDUSTRIAL_EQUIP","name": "工业设备" },
+    { "code": "INSTRUMENT",      "name": "仪器仪表" }
+  ],
+  "productForms": [
+    { "code": "FINISHED_PRODUCT", "name": "整机产品" },
+    { "code": "PART_ASSEMBLY",    "name": "部件·总成" },
+    { "code": "SINGLE_PART",      "name": "零件" },
+    { "code": "JIG_FIXTURE",      "name": "工装夹具" },
+    { "code": "CUSTOM_PROJECT",   "name": "非标定制" }
+  ],
+  "resources": [
+    { "type": "STAGE", "file": "stages.json", "count": 6, "scope": "PLATFORM", "display": "研发阶段模板", "reusable": false }
+  ],
+  "installCheck": ["CODE_CONFLICT", "TYPE_EXISTS", "DEP_SATISFIED"],
+  "previewHints": [
+    { "resource": "STAGE", "highlight": "通用制造六阶段（市场验证 → 需求论证 → 方案设计 → 详细设计 → 工艺规划 → 试产），经典 Stage-Gate 阶段门" }
+  ],
+  "nextSteps": [
+    { "text": "把六阶段映射到你们的立项/评审节点", "route": "/system/basic" },
+    { "text": "按需要精简阶段（小团队可合并方案设计与详细设计）", "route": "/system/basic" }
+  ],
+  "note": "通用制造业变体包（P1 拆包）：只含行业阶段模板。适合还没上特定行业体系、先要一套通用阶段门的企业。"
+}

@@ -1,0 +1,112 @@
+{
+  "note": "器件管理属性模板（6 组 / 26 个属性 —— 第 6 组 BOM_USAGE「BOM 行信息（电子）」绑 BOM_LINK，装的是位号与贴装面；原先第 7 组 COST_TARGET「目标成本」与第 8 组 LAUNCH_TARGET「目标上市日期」已于 2026-11-03 移到 platform-base 的 ibaGroups —— 产品级属性与行业无关，且安装器按 bindTo 的第一个类型绑定时会漏掉 PRODUCT_MODEL，拆成 PRODUCT_LINE / PRODUCT_MODEL 两组才绑得全；其余 5 组 24 个属性的原始说明见下）—— 文档第 4 节称其为『全包技术含量最隐蔽、业务价值最高的一个文件』：没有它，规则引擎跑不了、健康度报告算不出来、工作台显示不了关键字段。内容逐条取自该节正文 JSON；文档正文又说『这 30 个属性』，但正文 JSON 只给出 24 个（7+4+4+6+3），差的 6 个文档未落纸 —— 很可能是分类叶子上的参数属性（RESISTANCE / CAPACITANCE / PACKAGE / PITCH 等，属 classifications.json 的 IBA），故本文件为 24 个。字段名归一化：文档在别处提到的 eolStatus / alternateRefs 并未定义，属性模板里的真名是 partLifeCycle / needAlternate（检查规则 rules.json 已按本文件对齐）。规则依赖标注原为 R-001..R-005（旧码），已改成本包规则的真码：R-001/R-002 → R-SH-07、R-003 → R-SH-08、R-004 → R-SH-10、R-005 → R-SH-09。合并写法：conflictMinerals 的 options 在文档里是纯字符串数组，这里统一成 {value,label} 对象，与其余枚举一致。落地通道：平台已有 IBA 机制（AttributeDefinition + IBA 值存储，文档第 1 节标注『已可用、无需开发』），也有按实体字段派生的 AttributeInitializer，但**没有包级 ATTRIBUTE 安装器** —— 故本文件在 pack.json 已声明，安装动作会如实记为『尚无安装器（待后续版本补齐）』；与交付件/门/评审不同，这一份的落点（属性定义表 + 类型绑定）是**现成的**，装一个安装器即可真正生效。预览口径提醒：包详情页会把 5 个属性组行也一并计入（组带 code + name），故界面显示 29 行而声明是 24 条 —— 与生命周期模板的 8/13 同一现象（嵌套行一并计入，前端该列的工具提示已说明），不是数据缺失。第 7 组 COST_TARGET 于 2026-10-30 补入（1 个属性 TARGET_COST）：产品系列 / 型号的目标成本，口径见该属性 note；装包幂等，已装环境重装只补这一条，不动既有属性与绑定。",
+  "ibaGroups": [
+    {
+      "code": "SUPPLIER_INFO", "name": "厂商与供应信息", "bindTo": ["ELECTRONIC"],
+      "attributes": [
+        { "code": "manufacturer", "name": "制造商", "dataType": "STRING", "required": true,
+          "uiComponent": "select", "searchable": true, "listable": true,
+          "note": "与 mpn 组成唯一键（制造商 + 制造商型号），是相似件/重复件查重的基础" },
+        { "code": "mpn", "name": "制造商型号", "dataType": "STRING", "required": true,
+          "uiComponent": "input", "searchable": true, "listable": true,
+          "note": "与 manufacturer 组成唯一键，用于相似件查重" },
+        { "code": "supplier", "name": "主供供应商", "dataType": "STRING", "uiComponent": "select" },
+        { "code": "SUPPLIER_COUNT", "name": "供应商数量", "dataType": "INTEGER", "derived": true,
+          "derivedBy": "count(distinct supplierRefs)",
+          "note": "★ 规则 R-SH-11（单一来源器件风险提示）依赖此字段" },
+        { "code": "LEAD_TIME", "name": "标准交期(周)", "dataType": "INTEGER" },
+        { "code": "moq", "name": "最小起订量", "dataType": "INTEGER" },
+        { "code": "spq", "name": "最小包装量", "dataType": "INTEGER" }
+      ]
+    },
+    {
+      "code": "QUALIFICATION", "name": "准入与优选", "bindTo": ["ELECTRONIC"],
+      "attributes": [
+        { "code": "QUALIFICATION_STATUS", "name": "准入状态", "dataType": "ENUM", "required": true,
+          "options": [
+            { "value": "PENDING", "label": "待引入", "color": "grey" },
+            { "value": "SAMPLING", "label": "样品验证", "color": "blue" },
+            { "value": "QUALIFIED", "label": "已准入", "color": "green" },
+            { "value": "RESTRICTED", "label": "限用", "color": "orange" },
+            { "value": "OBSOLETE", "label": "已淘汰", "color": "red" }
+          ],
+          "default": "PENDING",
+          "note": "★ 规则 R-SH-07（BOM 不得引用未准入器件）依赖此字段；准入流程见 electronics-core 的 component-introduction 流程" },
+        { "code": "PREFERRED_LEVEL", "name": "优选等级", "dataType": "ENUM",
+          "options": [
+            { "value": "P0", "label": "P0 优选", "desc": "首选，新设计默认使用" },
+            { "value": "P1", "label": "P1 可用", "desc": "可用，需说明理由" },
+            { "value": "P2", "label": "P2 受限", "desc": "限用，需评审批准" },
+            { "value": "P3", "label": "P3 禁选", "desc": "新设计禁止使用" }
+          ],
+          "note": "★ 规则 R-SH-08（禁用 P3 器件进入新设计）依赖；健康度指标『器件优选率』（PREFERRED_RATE）由此计算" },
+        { "code": "QUALIFIED_AT", "name": "准入日期", "dataType": "DATE" },
+        { "code": "qualifier", "name": "准入责任人", "dataType": "REFERENCE", "refType": "USER" }
+      ]
+    },
+    {
+      "code": "LIFECYCLE_RISK", "name": "生命周期与停产风险", "bindTo": ["ELECTRONIC"],
+      "attributes": [
+        { "code": "PART_LIFE_CYCLE", "name": "器件生命周期", "dataType": "ENUM",
+          "options": [
+            { "value": "ACTIVE", "label": "量产中" },
+            { "value": "NRND", "label": "不推荐用于新设计" },
+            { "value": "EOL", "label": "停产预告" },
+            { "value": "OBSOLETE", "label": "已停产" }
+          ],
+          "note": "★ 规则 R-SH-10（停产或临近停产器件进入新设计需审批）依赖；指标 EOL_RISK_COUNT（停产风险器件数）由此计算" },
+        { "code": "EOL_DATE", "name": "预计停产日期", "dataType": "DATE" },
+        { "code": "LTS_YEARS", "name": "剩余供货年限", "dataType": "FLOAT", "derived": true,
+          "derivedBy": "(eolDate - today) / 365",
+          "note": "停产风险管理的标准字段：一眼看出这颗料还能供几年" },
+        { "code": "SINGLE_SOURCE", "name": "单一来源", "dataType": "BOOLEAN",
+          "note": "★ 供应链风险指标依赖（与 supplierCount 同源，一个是布尔视图，一个是计数）" }
+      ]
+    },
+    {
+      "code": "COMPLIANCE", "name": "合规与认证", "bindTo": ["ELECTRONIC", "STRUCTURAL"],
+      "attributes": [
+        { "code": "ROHS_COMPLIANT", "name": "RoHS 符合", "dataType": "BOOLEAN", "default": false,
+          "note": "★ 规则 R-SH-06（出口产品器件须 RoHS/REACH 合规）依赖；出口机型由企业画像把它升为 BLOCK" },
+        { "code": "REACH_COMPLIANT", "name": "REACH 符合", "dataType": "BOOLEAN", "default": false },
+        { "code": "HALOGEN_FREE", "name": "无卤", "dataType": "BOOLEAN" },
+        { "code": "CONFLICT_MINERALS", "name": "冲突矿产声明", "dataType": "ENUM",
+          "options": [
+            { "value": "DECLARED", "label": "已声明" },
+            { "value": "UNDER_REVIEW", "label": "审核中" },
+            { "value": "NOT_DECLARED", "label": "未声明" }
+          ] },
+        { "code": "UL_CERT_NO", "name": "UL 认证号", "dataType": "STRING",
+          "note": "★ 规则 R-SH-02（电池类器件必须具备安全认证）依赖此字段" },
+        { "code": "MSDS_REF", "name": "MSDS 文档", "dataType": "REFERENCE", "refType": "DOCUMENT" }
+      ]
+    },
+    {
+      "code": "ALTERNATE", "name": "替代与复用", "bindTo": ["ELECTRONIC"],
+      "attributes": [
+        { "code": "NEED_ALTERNATE", "name": "是否必需替代料", "dataType": "BOOLEAN",
+          "note": "★ 规则 R-SH-09 依赖：关键器件必须有替代。完整判定为『needAlternate = true 且 alternateCount = 0』—— 属组合条件，现有 4 类判定（FIELD_CHECK/FIELD_EMPTY/ISSUE_OPEN/OBJECT_MISSING）覆盖不到，故规则侧先只校验标记本身" },
+        { "code": "ALTERNATE_COUNT", "name": "替代料数量", "dataType": "INTEGER", "derived": true,
+          "derivedBy": "count(PartAlternate where partOid = :oid and status = 'ACTIVE')",
+          "note": "PartAlternate 表已存在，本属性是它的计数视图" },
+        { "code": "PIN_COMPATIBLE", "name": "Pin 兼容替代", "dataType": "BOOLEAN",
+          "note": "电子行业特有：替代料是否可原位替换，决定改板成本——外行写不出这个字段" }
+      ]
+    },
+    {
+      "code": "BOM_USAGE", "name": "BOM 行信息（电子）", "bindTo": ["BOM_LINK"],
+      "attributes": [
+        { "code": "REF_DES", "name": "位号", "dataType": "STRING",
+          "searchable": true, "listable": true,
+          "note": "器件在 PCBA 上的位置标识（Reference Designator），如 R1,R2,C15,U3；多个位号用逗号分隔。属**电子行业**，故声明在 electronics-core 而不是 platform-base：BOM_LINK（BOM 行对象）是通用关系对象留在平台包，而位号是电子域特有的行属性。为什么绑「行」不绑「件」：同一器件在 A 板是 R1/R2、在 B 板是 R15，挂到器件上会让不同父件的位号互相污染。Windchill 同口径 —— Reference Designator 挂在 WTPartUsageLink 上" },
+        { "code": "PLACEMENT_SIDE", "name": "贴装面", "dataType": "ENUM",
+          "options": [
+            { "value": "TOP", "label": "TOP 正面" },
+            { "value": "BOTTOM", "label": "BOTTOM 反面" },
+            { "value": "BOTH", "label": "BOTH 双面" }
+          ],
+          "note": "器件贴装在 PCBA 的哪一面（SMT 双面贴装的必备信息）；与位号同属「器件在板上的位置」这一组，同为电子行业特征，故与位号放在一起" }
+      ]
+    }
+  ]
+}

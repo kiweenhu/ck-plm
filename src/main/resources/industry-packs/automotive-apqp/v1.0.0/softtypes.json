@@ -1,0 +1,30 @@
+{
+  "types": [
+    { "code": "FUNCTIONAL", "name": "功能架构(构型)", "displayName": "功能架构(构型)", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "ClusterOutlined", "sortOrder": 14, "parentCode": null, "hostCode": "FUNCTIONAL",
+      "description": "车型功能域：整车功能的顶层分解对象（动力域 / 底盘域 / 车身域 / 智能座舱域…），其下再分系统 → 子系统 → 配置项。原先注册在 platform-base —— 但它是行业概念（军工是装备级功能系统、汽车是车型功能域，各有一套分解），现归回本行业包；平台包不再提供它",
+      "numberRule": "FUNCTIONAL-NUM", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ARCHITECTURE_DOMAIN" },
+    { "code": "SYSTEM", "name": "系统", "displayName": "系统", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "ApartmentOutlined", "sortOrder": 15, "parentCode": "FUNCTIONAL", "hostCode": "FUNCTIONAL",
+      "description": "车型功能域：动力域 / 底盘域 / 车身域 / 智能座舱域等总体级对象",
+      "numberRule": "FUNCTIONAL-NUM", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ARCHITECTURE_DOMAIN" },
+    { "code": "SUBSYSTEM", "name": "子系统", "displayName": "子系统", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "BlockOutlined", "sortOrder": 16, "parentCode": "FUNCTIONAL", "hostCode": "FUNCTIONAL",
+      "description": "功能域下的子系统：如热管理子系统、制动子系统、座舱域控制器",
+      "numberRule": "FUNCTIONAL-NUM", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ARCHITECTURE_DOMAIN" },
+    { "code": "CI", "name": "CI", "displayName": "配置/构型项目", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "ControlOutlined", "sortOrder": 17, "parentCode": "FUNCTIONAL", "hostCode": "FUNCTIONAL",
+      "description": "配置项(Configuration Item)：可独立管理、版本控制与变更管理的构型单元",
+      "numberRule": "FUNCTIONAL-NUM", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ARCHITECTURE_DOMAIN" },
+    { "code": "ELECTRICAL", "name": "电气件", "displayName": "电气件", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "BulbOutlined", "sortOrder": 21, "parentCode": "PART", "hostCode": "PART",
+      "description": "汽车电气件：整车 E/E 架构下的电气专业对象（线束、连接器、继电器、保险丝、电机等）。原先注册在 platform-base —— 但电气件的专业口径因行业而异（汽车看整车 E/E、军工看型号配套），现归回本行业包；平台包不再提供它",
+      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ELECTRICAL_DOMAIN" }
+  ],
+  "note": "汽车的功能架构四层：功能架构（FUNCTIONAL）→ 功能域（SYSTEM）→ 子系统（SUBSYSTEM）→ 配置项（CI），对应整车功能分解与配置管理。原先这些类型混在 platform-base 里，现整体回到本行业包 —— 含顶层的 FUNCTIONAL（它本身就是行业概念：军工是装备级功能系统、汽车是车型功能域，各有一套分解，platform-base 不再提供它）。编码规则 FUNCTIONAL-NUM 保留在 platform-base：它被本包三个子类型（以及军工包的对应类型）共同引用，放共用层比在两处复制一份稳。★ military-gjb 声明了同码的 FUNCTIONAL/SYSTEM/SUBSYSTEM/CI —— 两个包都装时后装的一方按 code 判重跳过（SoftTypeInstaller 幂等），因此两份定义必须保持一致，改一处记得同步另一处。★ 同理，电气件（ELECTRICAL）本次从 platform-base 归回本包与 military-gjb：两份同码定义必须保持一致，改一处同步另一处；它沿用平台层的 PART_NUMBER / LETTER_26 / STANDARD 与平台建的 ELECTRICAL_DOMAIN，依赖都在平台层。"
+}

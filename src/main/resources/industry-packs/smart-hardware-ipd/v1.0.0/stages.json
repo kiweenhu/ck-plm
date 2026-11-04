@@ -1,0 +1,41 @@
+{
+  "industries": [
+    {
+      "industry": "IPD",
+      "name": "集成产品开发（电子高科 / 智能硬件）",
+      "stages": [
+        { "code": "IPD_CONCEPT", "name": "概念阶段", "icon": "BulbOutlined", "color": "#722ed1", "sortOrder": 1,
+          "defaultFolders": ["市场评估", "需求调研", "概念方案"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"],
+          "subMilestones": [],
+          "gate": "TR1", "decisionGates": ["CHARTER"] },
+        { "code": "IPD_PLAN", "name": "计划阶段", "icon": "CalendarOutlined", "color": "#1677ff", "sortOrder": 2,
+          "defaultFolders": ["项目计划", "资源分配", "风险评估"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"],
+          "subMilestones": [],
+          "gate": "TR2", "decisionGates": ["PDCP"] },
+        { "code": "IPD_DEVELOP", "name": "开发阶段", "icon": "ToolOutlined", "color": "#13c2c2", "sortOrder": 3,
+          "defaultFolders": ["详细设计", "编码实现", "单元测试"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"],
+          "subMilestones": ["EVT 工程验证", "DVT 设计验证"],
+          "gate": "TR3", "decisionGates": [] },
+        { "code": "IPD_VERIFY", "name": "验证阶段", "icon": "SafetyCertificateOutlined", "color": "#52c41a", "sortOrder": 4,
+          "defaultFolders": ["集成测试", "系统测试", "验收评审"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"],
+          "subMilestones": ["PVT 生产验证"],
+          "gate": "TR4", "decisionGates": ["ADCP"] },
+        { "code": "IPD_RELEASE", "name": "发布阶段", "icon": "RocketOutlined", "color": "#eb2f96", "sortOrder": 5,
+          "defaultFolders": ["Beta测试", "正式发布", "市场投放"],
+          "managedObjectTypes": ["DOCUMENT"],
+          "subMilestones": [],
+          "gate": "TR5", "decisionGates": ["LDCP"] },
+        { "code": "IPD_LIFECYCLE", "name": "生命周期管理", "icon": "ReloadOutlined", "color": "#fa541c", "sortOrder": 6,
+          "defaultFolders": ["运营监控", "版本迭代", "退市管理"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"],
+          "subMilestones": ["EOL 退市评审"],
+          "gate": "TR6", "decisionGates": [] }
+      ]
+    }
+  ],
+  "note": "IPD 六阶段（电子高科 / 智能硬件行业方法论）。subMilestones 与 gate 是行业增量：P3 起用于「当前阶段还差几项」与阶段门，平台侧 StageTemplate 现无这几列，安装器暂时只落地平台已有字段（folders / managedObjectTypes），增量字段留待 P3 建列后启用。本阶段的门现分两个字段引用：gate = 该阶段的技术评审门（TR1–TR6，与阶段一一对应，非空且唯一）；decisionGates = 该阶段的决策评审门（Charter / PDCP / ADCP / LDCP，可空）。两者都必须在 gates.json 里存在同名条目，且该条目的 stage 必须等于本阶段 —— 即「阶段↔门」双向可校验（阶段数 6 × 门数 10 全量对得上）。原先决策评审只在 subMilestones 里以文案提及，措辞与 gates.json 的正名会各自漂移（例：这里曾写「Charter 评审（立项决策）」，门的正名是「项目任务书评审（立项决策）」；「ADCP 评审（可获得性决策）」对「可获得性决策评审（量产门）」），现以 gates.json 为准，subMilestones 只保留阶段内里程碑（EVT/DVT/PVT 试产节奏、EOL 退市评审）—— 四道 DCP 的文案已从 subMilestones 撤出（Charter 评审（立项决策）、PDCP 评审（计划决策）、ADCP 评审（可获得性决策）、LDCP 评审（上市决策）），改由 decisionGates 引用。注：EOL 退市评审仍是阶段内里程碑、尚未升级为独立门（见 gates.json 的 note）。"
+}

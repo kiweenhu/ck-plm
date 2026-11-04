@@ -1,0 +1,26 @@
+{
+  "note": "SC-2000 的 EBOM（工程 BOM）示例，配合 sample/product.json 使用。自然键：目标对象 code + 行位号；两条 BOM 都不含位号重复。演示要点：整机 BOM 引用两块 PCBA 与两件结构件；主控板 BOM 里刻意留了一颗 P3 + NRND 的旧稳压器 —— 打开主控板 BOM 时，检查规则 R-SH-08（P3 禁入新设计，BLOCK）与 R-SH-10（非在产器件，WARN）应当命中，这是给人看『规则不是纸面的』的最短路径。落地通道：平台没有示例数据安装器（BOM 卷积 BomCostCalculator 已可用，但示例落库通道未建），故本文件属内容就绪、通道未建。",
+  "boms": [
+    {
+      "target": "SC-2000",
+      "type": "EBOM",
+      "lines": [
+        { "part": "SC-2000-MAIN-PCBA", "qty": 1, "REF_DES": "A1", "note": "主控板" },
+        { "part": "SC-2000-PWR-PCBA",  "qty": 1, "REF_DES": "A2", "note": "电源板" },
+        { "part": "SC-2000-HOUSING",   "qty": 1, "REF_DES": "M1" },
+        { "part": "SC-2000-BASE",      "qty": 1, "REF_DES": "M2" }
+      ]
+    },
+    {
+      "target": "SC-2000-MAIN-PCBA",
+      "type": "EBOM",
+      "lines": [
+        { "part": "SC-2000-MCU",        "qty": 1, "REF_DES": "U1" },
+        { "part": "SC-2000-PMIC",       "qty": 1, "REF_DES": "U2" },
+        { "part": "SC-2000-WIFI",       "qty": 1, "REF_DES": "U3" },
+        { "part": "SC-2000-CAP-100U",   "qty": 6, "REF_DES": "C1-C6" },
+        { "part": "SC-2000-LEGACY-REG", "qty": 1, "REF_DES": "U4", "note": "负例 B：P3 + NRND —— 规则 R-SH-08 / R-SH-10 的命中点" }
+      ]
+    }
+  ]
+}

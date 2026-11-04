@@ -1,0 +1,152 @@
+{
+  "key": "gate-decision",
+  "name": "阶段决策流程",
+  "displayName": "阶段门决策（DCP）流程",
+  "category": "研发过程",
+  "description": "通用阶段决策流程：决策申请与自检结果填写 → 材料齐备性核对 → 决策会 → 结论留痕。门码与检查类型（DELIVERABLE_RATE / CERT_COMPLETE / ISSUE_OPEN / SUPPLY_CONFIRMED 等）来自行业包的 gates.json；结论 Go / Hold / Terminate 与决策依据一并留痕，供审厂与追溯。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "gate-decision",
+      "name": "阶段决策流程",
+      "displayName": "阶段门决策（DCP）流程",
+      "category": "研发过程",
+      "description": "通用阶段决策流程：决策申请与自检结果填写 → 材料齐备性核对 → 决策会 → 结论留痕。门码与检查类型来自行业包的 gates.json。"
+    },
+    "variables": [],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：决策申请",
+        "type": "START",
+        "initiator": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "gate-decision-apply"
+      },
+      {
+        "id": "n_apply",
+        "name": "决策申请与自检结果",
+        "description": "填写门码（gates.json 的 code，如 TR3 / ADCP）与自动检查结果（交付物完成率、未关闭阻断问题数、认证齐套、供应确认），并附决策材料",
+        "formRef": "gate-decision-apply",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "set_assignee",
+        "name": "设置审批人",
+        "description": "决策申请提交后一次性指定决策参与者：材料齐备性核对（单人）、决策会（会签，至少两人）、结论留痕。候选范围是各活动指定的角色",
+        "type": "SET_ASSIGNEE",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "n_material",
+        "name": "材料齐备性核对",
+        "description": "核对本门要求的交付物与证据是否齐备（缺失项退回补齐后再排决策会）",
+        "formRef": "gate-decision-material",
+        "type": "APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "QUALITY_ENGINEER"
+          ]
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true
+      },
+      {
+        "id": "n_meeting",
+        "name": "决策会",
+        "description": "项目经理组织、系统与质量共同决策：逐项确认风险与条件，形成决策意见",
+        "type": "COUNTERSIGN_APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "PROJECT_MANAGER",
+            "SYSTEM_ENGINEER",
+            "QUALITY_ENGINEER"
+          ]
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100
+        },
+        "formRef": "gate-decision-meeting",
+        "commentRequired": true
+      },
+      {
+        "id": "n_record",
+        "name": "结论留痕",
+        "description": "登记决策（GO / HOLD / TERMINATE）与决策依据、业务风险、技术风险、供应风险、附加条件",
+        "formRef": "gate-decision-record",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "PROJECT_MANAGER"
+          ]
+        }
+      },
+      {
+        "id": "n_end",
+        "name": "结束：决策完成",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "source": "start_1",
+        "target": "n_apply",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e1",
+        "source": "n_apply",
+        "target": "set_assignee",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e5",
+        "source": "set_assignee",
+        "target": "n_material",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "n_material",
+        "target": "n_meeting",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e3",
+        "source": "n_meeting",
+        "target": "n_record",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e4",
+        "source": "n_record",
+        "target": "n_end",
+        "kind": "NORMAL"
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": { "x": 296, "y": 52, "width": 30, "height": 30 },
+        "n_apply": { "x": 240, "y": 150, "width": 180, "height": 70 },
+        "set_assignee": { "x": 240, "y": 270, "width": 180, "height": 70 },
+        "n_material": { "x": 240, "y": 390, "width": 180, "height": 70 },
+        "n_meeting": { "x": 240, "y": 510, "width": 180, "height": 70 },
+        "n_record": { "x": 240, "y": 630, "width": 180, "height": 70 },
+        "n_end": { "x": 296, "y": 750, "width": 30, "height": 30 }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "children": [
+    { "code": "COMPONENT",      "name": "元器件库" },
+    { "code": "PACKAGE_SYMBOL", "name": "封装·图符库" }
+  ],
+  "stages": [
+    { "code": "COMPONENT",      "name": "元器件",   "containerCode": "COMPONENT" },
+    { "code": "PACKAGE_SYMBOL", "name": "封装图符", "containerCode": "PACKAGE_SYMBOL" }
+  ],
+  "note": "电子行业的两个资源子库（元器件库 / 封装·图符库）及它们的归属阶段 —— 原先放在 platform-base 的资源库里，2026-10 拆到这里：这两类是电子行业的内容，跟着 electronics-core 走；其余五个子库（标准件库 / 通用件库 / 技术文档知识库 / 产品图册 / 其他）与整棵资源库树是通用的，留在 platform-base。注意：本文件【不声明根节点】—— 根（CORP_RESOURCE）由 platform-base 建；引擎按「基 → 变体」先装 platform-base 再装本包，故根必先就位。若单独装本包且根不存在，安装器会【明确报失败】，不会把'一条都没写'报成'将新增'。容器与归属阶段行都落平台租户（ResourceContainerMapper 的 SQL 显式写平台租户），全租户共享、租户不重复装。"
+}

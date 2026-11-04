@@ -1,0 +1,28 @@
+{
+  "code": "electronics-core",
+  "name": "电子行业共用基础包",
+  "version": "1.0.0",
+  "enabled": true,
+  "basePack": "platform-base@1.0.0",
+  "engineRange": ">=0.2.0 <1.0.0",
+  "industry": "ELECTRONICS",
+  "controlLevel": "STANDARD",
+  "license": "BUSINESS",
+  "targetScale": "50-1000人",
+  "primaryScopeType": "PRODUCT_MODEL",
+  "author": { "org": "乘恺科技", "updatedAt": "2026-10-03" },
+  "resources": [
+    { "type": "LIFECYCLE",      "file": "lifecycles.json",      "count": 3, "scope": "PLATFORM", "display": "生命周期状态字典", "reusable": false },
+    { "type": "CLASSIFICATION", "file": "classifications.json", "count": 144, "scope": "PLATFORM", "display": "分类树",       "reusable": false },
+    { "type": "SOFT_TYPE",      "file": "softtypes.json",       "count": 7, "scope": "PLATFORM", "display": "业务对象定义", "reusable": false },
+    { "type": "ATTRIBUTE",      "file": "attributes.json",      "count": 28, "scope": "PLATFORM", "display": "属性定义",     "reusable": false },
+    { "type": "RESOURCE_LIBRARY","file": "resourceLibraries.json","count": 4, "scope": "PLATFORM", "display": "企业资源库",   "reusable": false },
+    { "type": "ROLE",           "file": "roles.json",           "count": 12, "scope": "PLATFORM", "display": "业务角色",     "reusable": false },
+    { "type": "PROCESS",        "file": "processes",            "count": 3, "scope": "TENANT",   "display": "流程模板",     "reusable": false },
+    { "type": "RULE",           "file": "rules.json",           "count": 7, "scope": "PLATFORM", "display": "检查规则",     "reusable": false },
+    { "type": "FORM",           "file": "processes/forms/forms.json", "count": 11, "scope": "PLATFORM", "display": "流程表单", "reusable": false },
+    { "type": "METRIC",         "file": "metrics.json",         "count": 6, "scope": "PLATFORM", "display": "指标",         "reusable": false }
+  ],
+  "installCheck": ["CODE_CONFLICT", "TYPE_EXISTS", "DEP_SATISFIED"],
+  "note": "一基两变的“基”：软类型（部件域 / ECAD 域）、分类树与分类参数属性、编码与版本规则、资源库认定阈值。被 smart-hardware-ipd 与 electronics-hitech 共同依赖，不单独销售。P0 先建骨架，资源在 P1 从现有初始化器抽取后填入 resources。"
+}

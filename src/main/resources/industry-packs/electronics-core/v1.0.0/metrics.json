@@ -1,0 +1,17 @@
+{
+  "note": "器件与成本类指标（6 项，businessLayer）—— 逐条取自文档第 16 节，按该文档第三节的分包归属（electronics-core 为『器件类指标 6 项』，变体 A 为增量）。level 为 A/B/C 三级 **数据就绪度**，沿用文档硬规则：C 级指标第一版显示『暂未评估』，禁止编造数值 —— 文档原话：『一个编出来的数字被客户当场问穿，整个健康度报告的可信度就归零了。』source 标注的是取数依据：BomCostCalculator / missingCostLines / PartAlternate 为平台已有实现，QUALIFICATION_STATUS / PREFERRED_LEVEL / PART_LIFE_CYCLE 来自 attributes.json（本包），故这 6 项在属性落地后即可计算；文档未标 C 级的都不显示『暂未评估』。落地通道：平台无指标实体、无驾驶舱（无报表渲染），指标只在业务代码里零散存在（如 BomCostCalculator 的 missingCostLines 统计）—— 故本文件在 pack.json 已声明，安装动作会如实记为『尚无安装器（待后续版本补齐）』。",
+  "businessLayer": [
+    { "code": "COST_GAP_RATE", "name": "成本数据缺口率", "source": "missingCostLines", "level": "A",
+      "note": "BomCostCalculator 已实现且含缺料行的诚实统计（missingCostLines）—— 缺口率不藏，客户才知道该去补哪些料" },
+    { "code": "COST_ACHIEVE", "name": "成本达成率", "source": "BOM 卷积 / TARGET_COST", "level": "B",
+      "note": "达成率 = 目标 / 实际 × 100，≥100% 为达成。实际价来自 BOM 卷积（该容器顶层件的完全卷积成本，系列并入旗下型号）；目标价取本包 attributes.json 的 TARGET_COST —— 产品系列上填系列目标池，产品型号上填型号目标价，两层各算各的、运行期不互相继承。任一侧缺就显示「暂未评估」，不估算、不拿实际成本冒充" },
+    { "code": "QUALIFIED_RATE", "name": "器件准入率", "source": "AML approved_status", "level": "B",
+      "note": "= 有 AML（ck_part_aml.approved_status ∈ {PREFERRED,APPROVED}）的可认证件 / 可认证件（ELECTRONIC + PCBA）× 100。认证状态由「器件 → 厂商料号」面板与元器件认证申请流程写入，不靠人工填 IBA；没有 AML 的件就是未准入、记 0。与规则 R-SH-07（BOM 不得引用未准入器件）、交付物 DLV-COMPONENT-QUALIFIED 同源" },
+    { "code": "PREFERRED_RATE", "name": "器件优选率", "source": "AML approved_status = PREFERRED", "level": "B",
+      "note": "= 有 preferred 厂商料号的可认证件 / 可认证件 × 100（APPROVED 不算优选，DISALLOWED 既不算准入也不算优选）。与规则 R-SH-08（禁用 P3）配套：一个控入口，一个看存量" },
+    { "code": "ALT_COVERAGE", "name": "替代料覆盖率", "source": "PartAlternate", "level": "A",
+      "note": "PartAlternate 表已存在；与规则 R-SH-09 与属性 NEED_ALTERNATE / ALTERNATE_COUNT 配套" },
+    { "code": "EOL_RISK_COUNT", "name": "停产风险器件数", "source": "PART_LIFE_CYCLE", "level": "B",
+      "note": "与规则 R-SH-10、属性 PART_LIFE_CYCLE（NRND / EOL / OBSOLETE）配套 —— 缺货周期里最该盯的数" }
+  ]
+}

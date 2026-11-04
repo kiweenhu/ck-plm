@@ -1,0 +1,29 @@
+{
+  "industries": [
+    {
+      "industry": "MILITARY",
+      "name": "军工",
+      "stages": [
+        { "code": "MIL_ARGUMENT", "name": "论证阶段", "icon": "FileSearchOutlined", "color": "#1677ff", "sortOrder": 1,
+          "defaultFolders": ["需求论证", "战术技术指标", "可行性论证"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "MIL_INITIATION", "name": "立项阶段", "icon": "FileTextOutlined", "color": "#722ed1", "sortOrder": 2,
+          "defaultFolders": ["立项申请", "方案评审", "合同签订"],
+          "managedObjectTypes": ["DOCUMENT"] },
+        { "code": "MIL_SCHEME", "name": "方案设计", "icon": "BulbOutlined", "color": "#13c2c2", "sortOrder": 3,
+          "defaultFolders": ["总体方案", "分系统方案", "关键技术攻关"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "MIL_ENGINEERING", "name": "工程研制", "icon": "ToolOutlined", "color": "#fa8c16", "sortOrder": 4,
+          "defaultFolders": ["详细设计", "样机研制", "试验验证"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "MIL_DESIGN_FIX", "name": "设计定型", "icon": "SafetyCertificateOutlined", "color": "#52c41a", "sortOrder": 5,
+          "defaultFolders": ["设计定型试验", "技术鉴定", "定型审查"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "MIL_PROD_FIX", "name": "生产定型", "icon": "RocketOutlined", "color": "#eb2f96", "sortOrder": 6,
+          "defaultFolders": ["生产工艺定型", "批量生产", "交付验收"],
+          "managedObjectTypes": ["DOCUMENT"] }
+      ]
+    }
+  ],
+  "note": "军工型号研制六阶段（论证 → 立项 → 方案 → 工程研制 → 设计定型 → 生产定型），对应 GJB 型号研制程序。"
+}

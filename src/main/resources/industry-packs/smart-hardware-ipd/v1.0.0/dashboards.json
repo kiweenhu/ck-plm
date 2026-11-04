@@ -1,0 +1,17 @@
+{
+  "note": "驾驶舱布局（3 个视角）—— 逐条取自文档第 17 节。三个视角按『看的层级』分：经营战报（给 GM，1 页）、系列战况简报（GM + 研发总监）、型号作战地图（研发 / PM 的工作面）。MODEL_RANKING / MODEL_COMPARE_TABLE 是必选件 —— 文档原话：『系列层分数必然是平均数，而平均数是管理的大敌。把平均数拆开的唯一手段是排名。老板 5 秒知道该问哪个型号，这才是指向性。』generatePolicy 决定各视角的战报生成节奏（企业级每月必出、系列级仅在有活跃型号时出、型号级按需或按阈值触发）。落地通道：平台无驾驶舱（无报表实体、无渲染页），指标本身（metrics.json）也还没有落地 —— 故本文件在 pack.json 已声明，安装动作会如实记为『尚无安装器（待后续版本补齐）』。widgets 取值为文档原文，其中健康度分数趋势 / 成本达成 / 风险 Top5 / 型号排名 / 阶段就绪度 / 交付件矩阵 / 评审状态 / 风险清单 / 行动入口等分组件，均依赖指标与阶段门的数据。",
+  "scopes": [
+    { "type": "ENTERPRISE", "name": "经营战报", "audience": "GM", "pageCount": 1,
+      "widgets": ["HEALTH_SCORE_TREND", "COST_ACHIEVE", "RISK_TOP5", "MODEL_RANKING"] },
+    { "type": "PRODUCT_LINE", "name": "系列战况简报", "audience": "GM+RDD",
+      "widgets": ["MODEL_COMPARE_TABLE", "STAGE_DISTRIBUTION", "COST_TREND"] },
+    { "type": "PRODUCT_MODEL", "name": "型号作战地图", "audience": "RD/PM",
+      "widgets": ["STAGE_READINESS", "DELIVERABLE_MATRIX", "REVIEW_STATUS", "RISK_LIST", "ACTION_ENTRY"] }
+  ],
+  "primaryScopeType": "PRODUCT_MODEL",
+  "generatePolicy": {
+    "ENTERPRISE": "MONTHLY_ALWAYS",
+    "PRODUCT_LINE": "MONTHLY_IF_ACTIVE",
+    "PRODUCT_MODEL": "ON_DEMAND_OR_THRESHOLD"
+  }
+}

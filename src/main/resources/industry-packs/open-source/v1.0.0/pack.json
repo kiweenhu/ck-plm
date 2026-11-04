@@ -1,0 +1,24 @@
+{
+  "code": "open-source",
+  "name": "开源版（仅平台基础能力）",
+  "version": "1.0.0",
+  "enabled": true,
+  "basePack": "platform-base@1.0.0",
+  "engineRange": ">=0.2.0 <1.0.0",
+  "industry": "OPEN_SOURCE",
+  "devMethod": "OPEN_SOURCE",
+  "controlLevel": "STANDARD",
+  "license": "OPEN_SOURCE",
+  "targetScale": "任意规模",
+  "primaryScopeType": "PRODUCT_MODEL",
+  "author": { "org": "乘恺科技", "updatedAt": "2026-10-11" },
+  "segments": [
+    { "code": "GENERIC", "name": "通用（不限定细分领域）" }
+  ],
+  "productForms": [
+    { "code": "GENERIC", "name": "通用" }
+  ],
+  "resources": [],
+  "installCheck": ["DEP_SATISFIED"],
+  "note": "开源版：只继承平台基础包（platform-base@1.0.0），不带任何行业资源（无行业阶段模板、无交付件/门/评审/规则/指标/驾驶舱模板、无行业分类树、无业务角色）。\n\n存在的意义是「干净基线」：注册新租户时选它，装出来的租户只有平台级基础设施（生命周期状态字典、编码/版本规则、单位、视图、资源库树、通用类型），并且能力账本为空 —— 因为本包 capabilities.json 把全部已实现能力登记为 default:false（安装引擎对 default:false 只记「跳过」，不写 ck_tenant_capability）。于是界面上所有受能力门控的菜单与页签（交付件 / 阶段门 / 评审 / 检查规则 / 指标 / 驾驶舱 / 元器件库 / MPN / 成本报告 / 功能架构 …）都不会出现，可用来验证「能力缺失时入口是否如实隐藏」。\n\n要验证「开启后是否出现」，按需往 ck_tenant_capability 插一行即可（能力码见本包 capabilities.json；INSERT 模板见 CHANGELOG 同名条目）。注意能力码必须在 PlatformCapabilities 白名单里才有效：CERTIFICATION_MANAGEMENT / SOFTWARE_VERSION / ISSUE_MANAGEMENT / CHANGE_MANAGEMENT 当前平台未实现，插了也不会让入口出现（前端只认读侧返回的已启用能力）。\n\n方法论 devMethod 取 OPEN_SOURCE：本包不带任何方法论模板，故 ck_stage_template 里没有 industry=OPEN_SOURCE 的行 —— 新建系列/型号时不会自动建阶段（这正是「只有平台基础」的表现，不是缺陷）。"
+}

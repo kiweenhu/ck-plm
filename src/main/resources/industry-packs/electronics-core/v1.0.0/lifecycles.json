@@ -1,0 +1,38 @@
+{
+  "statuses": [
+    { "code": "NRND",       "name": "不推荐新设计" },
+    { "code": "SUPERSEDED", "name": "已被替代" }
+  ],
+  "lifecycleTemplates": [
+    {
+      "code": "COMPONENT_CODE",
+      "name": "元器件内部编码生命周期",
+      "description": "元器件内部编码（物料编码）从申请到停用/替代的状态机：草稿 → 审核中 → 已发布 →（不推荐新设计 → 已下线 / 已被替代）→ 已归档。NRND 与 SUPERSEDED 是电子行业通用口径：前者用于「老产品可继续使用、新设计不得选用」，后者用于「已被新编码替代」。",
+      "initialStateCode": "DRAFT",
+      "states": [
+        { "code": "DRAFT",      "name": "草稿",         "sortOrder": 1 },
+        { "code": "APPROVING",  "name": "审核中",       "sortOrder": 2 },
+        { "code": "PUBLISHED",  "name": "已发布",       "sortOrder": 3 },
+        { "code": "NRND",       "name": "不推荐新设计", "sortOrder": 4 },
+        { "code": "OFFLINE",    "name": "已下线",       "sortOrder": 5 },
+        { "code": "SUPERSEDED", "name": "已被替代",     "sortOrder": 6 },
+        { "code": "ARCHIVED",   "name": "已归档",       "sortOrder": 7 }
+      ],
+      "transitions": [
+        { "from": "DRAFT",      "to": "APPROVING" },
+        { "from": "APPROVING",  "to": "PUBLISHED" },
+        { "from": "PUBLISHED",  "to": "NRND" },
+        { "from": "NRND",       "to": "OFFLINE" },
+        { "from": "PUBLISHED",  "to": "SUPERSEDED" },
+        { "from": "NRND",       "to": "SUPERSEDED" },
+        { "from": "OFFLINE",    "to": "ARCHIVED" },
+        { "from": "SUPERSEDED", "to": "ARCHIVED" }
+      ],
+      "rejections": [
+        { "from": "APPROVING", "to": "DRAFT" },
+        { "from": "NRND",      "to": "PUBLISHED" }
+      ]
+    }
+  ],
+  "note": "电子行业的状态字典补充 + 元器件内部编码生命周期。状态码能复用平台字典的就不另造：DRAFT / APPROVING / PUBLISHED / OFFLINE / ARCHIVED 都在 platform-base 的字典里；本包只新增两个电子行业口径 —— NRND（不推荐新设计：老产品可继续用、新设计不得选用）与 SUPERSEDED（已被替代：被新编码替代，替代关系由 PartAlternateLink 承载）。生命周期相关表是平台共享表（ck_lifecycle_* 在拦截器共享名单里），故本资源 reusable=true：平台级播一次、全租户可见，租户不重复装。\n\n★ 2026-10-12：本模板**已绑定 ELECTRONIC（电子元器件 = IPN）** —— 见 softtypes.json 的 lifecycleTemplate 字段；原先「未绑定任何对象类型」的悬空状态到此结束。存量迁移已核实：全部 IPN 实例状态均为 DRAFT（新模板初始态同为 DRAFT），无需状态映射；存量对象迭代的 lifecycleTemplateIterationOid 已同批改指本模板迭代。\n\n★ 另：DRAFT（草稿）状态默认挂「元器件引入流程」（key = component-introduction）—— 该「类型+模板子版本+状态 → 流程」绑定**已由 softtypes.json 的 lifecycleStateProcesses 声明**，装包时由 SoftTypeInstaller 落库（各租户的类型 oid 与流程模板 oid 各不相同，故逐租户各写一行）。注意 pack.json 里 PROCESS 资源声明在本资源之后：**首次装包**该条记 pending，重装本包（引擎口径：幂等、只补缺失项）即绑定成功；此后可在「模型定义 → 类型 → 状态-流程」面板按需调整。"
+}

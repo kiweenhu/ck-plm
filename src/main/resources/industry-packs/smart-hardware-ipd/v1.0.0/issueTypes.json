@@ -1,0 +1,19 @@
+{
+  "note": "问题类型（7 类）—— 逐条取自文档第 13 节。文档原话：『问题类型必须是独立数据，因为「问题闭环率」「超期问题数」是健康度报告里最有说服力的指标，而它们只有在问题被结构化之后才算得出来。塞进流程表单里就废了。』severity 取值 BLOCK / WARN，与检查规则、阶段门的严重度同一口径。落地通道：平台无问题类型表、无问题实体（评审/门/问题三件套都还没有存储），PlatformCapabilities 未登记 —— 故本文件在 pack.json 已声明，安装动作会如实记为『尚无安装器（待后续版本补齐）』。使用方：门与评审的问题登记（technical-review 流程的「问题登记与整改分派」节点）、指标 ISSUE_CLOSE_RATE（试产问题闭环率，C 级，第一版显示『暂未评估』）。",
+  "items": [
+    { "code": "DESIGN_DEFECT", "name": "设计缺陷", "defaultSeverity": "BLOCK", "requireRootCause": true,
+      "note": "设计本身的问题（电路/结构/软件），必须做根因分析——同一个根因不找出来，改完还会再犯" },
+    { "code": "COMPONENT_RISK", "name": "器件风险", "defaultSeverity": "WARN", "requireRootCause": false,
+      "note": "选型风险：单一来源、临近停产、限用等级、替代料缺失等（与检查规则 R-SH-09/10/11 同源）" },
+    { "code": "COST_EXCEED", "name": "成本超支", "defaultSeverity": "WARN",
+      "note": "与成本达成率（COST_ACHIEVE）、成本数据缺口率（COST_GAP_RATE）配套" },
+    { "code": "SUPPLY_RISK", "name": "供应风险", "defaultSeverity": "WARN",
+      "note": "交期、产能、供应商变更——门上的 SUPPLY_CONFIRMED 自动检查看的就是这一类问题是否清零" },
+    { "code": "TEST_FAIL", "name": "测试未通过", "defaultSeverity": "BLOCK", "requireRetest": true,
+      "note": "必须复测：规则 R-SH-03（试产问题未闭环不得通过发布门）只认这一类；门 TR5 的 ISSUE_OPEN 检查也按它判" },
+    { "code": "CERT_GAP", "name": "认证缺失", "defaultSeverity": "BLOCK",
+      "note": "与规则 R-SH-01（认证缺失不得进入发布阶段）配套，fixAction 直接跳 DLV-CERT-REPORT" },
+    { "code": "PROCESS_ISSUE", "name": "工艺问题", "defaultSeverity": "WARN",
+      "note": "试产/量产工艺：焊接、装配、夹具——与交付物 DLV-DFM-REPORT（可制造性评估）配套" }
+  ]
+}

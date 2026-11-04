@@ -1,0 +1,6 @@
+{
+  "capabilities": [
+    { "code": "FUNCTIONAL_ARCHITECTURE", "name": "功能架构", "default": true,
+      "note": "车型功能域分解：功能架构 → 系统 → 子系统 → 配置项（对应整车功能分解与配置管理）。类型由本包提供（platform-base 已不含 FUNCTIONAL），未装本包的企业看不到该入口。与 military-gjb 声明同一能力码 —— 两个包都装时落账幂等，只留一行" }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "code": "military-gjb",
+  "name": "军工 · GJB 型号研制体系包",
+  "version": "1.0.0",
+  "enabled": false,
+  "basePack": "platform-base@1.0.0",
+  "engineRange": ">=0.2.0 <1.0.0",
+  "industry": "MILITARY",
+  "devMethod": "GJB_MODEL",
+  "controlLevel": "STRICT",
+  "license": "BUSINESS",
+  "targetScale": "300-3000人",
+  "primaryScopeType": "PRODUCT_MODEL",
+  "author": { "org": "乘恺科技", "updatedAt": "2026-10-03" },
+  "segments": [
+    { "code": "RADAR_EW",       "name": "雷达与电子对抗" },
+    { "code": "COMM_NAV",       "name": "通信与导航" },
+    { "code": "OPTOELECTRONIC", "name": "光电载荷" },
+    { "code": "C2",             "name": "指挥控制" },
+    { "code": "MIL_ELECTRONICS","name": "军工电子" }
+  ],
+  "productForms": [
+    { "code": "EQUIPMENT",      "name": "整机装备" },
+    { "code": "SUBSYSTEM",      "name": "分系统" },
+    { "code": "UNIT_MODULE",    "name": "单机·模块" },
+    { "code": "EMBEDDED_SW",    "name": "嵌入式软件" },
+    { "code": "STRUCTURAL_TOOL","name": "结构件与工装" }
+  ],
+  "resources": [
+    { "type": "SOFT_TYPE", "file": "softtypes.json", "count": 5, "scope": "PLATFORM", "display": "业务对象定义", "reusable": false },
+    { "type": "STAGE",     "file": "stages.json",    "count": 6, "scope": "PLATFORM", "display": "研发阶段模板", "reusable": false }
+  ],
+  "installCheck": ["CODE_CONFLICT", "TYPE_EXISTS", "DEP_SATISFIED"],
+  "previewHints": [
+    { "resource": "STAGE", "highlight": "型号研制六阶段（论证 → 立项 → 方案设计 → 工程研制 → 设计定型 → 生产定型），含设计/生产双定型" }
+  ],
+  "nextSteps": [
+    { "text": "把六阶段映射到你们实际的型号研制程序与评审点", "route": "/system/basic" },
+    { "text": "确认技术状态管理（基线/更改单）与归档口径", "route": "/system/security" }
+  ],
+  "note": "军工行业变体包（P1 拆包）：只含行业阶段模板。GJB 条款、技术状态基线、密级管控等内容待 P2–P5 补入。"
+}

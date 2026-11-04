@@ -1,0 +1,31 @@
+{
+  "inherit": "electronics-core@1.0.0",
+  "note": "整机（智能硬件）变体的 12 个行业岗位 —— 逐条取自文档第 18 节，含 baseRole（通用角色基线）。文档原话：『每个角色必须 inherit 自通用角色基线。这一条不做，跨行业统计和 L4 行业基准数据就都做不了——汽车叫「交付物」、军工叫「文件清单」，报表没法做。』因此每个角色都给出 baseRole，baseRole 取值只用文档第 18 节出现的 8 个基线码（PRODUCT_MANAGER / PROJECT_MANAGER / SYSTEM_ENGINEER / ENGINEER / LIBRARIAN / QA / EXTERNAL_ROLE / DECISION_MAKER）。与基础包的角色码关系（重要）：本包的 12 个码是**交付物 ownerRole 用的码**（deliverables.json 46 条的 ownerRole 全部取自这 12 个）；基础包 electronics-core 另有一套工程岗位码（HARDWARE_ENGINEER / QUALITY_ENGINEER / PROJECT_MANAGER …），是**两条共用流程的 assignee 用码**（technical-review / gate-decision）—— 两套并存是文档的设计（本包角色通过 baseRole 桥接到基线，便于跨行业统计）。重叠与冲突：ck_role 的 code 是平台全局唯一，本包与基础包有两处同码 —— ① SYSTEM_ENGINEER（两处同名同义，装第二遍时按已存在的复用，无副作用）；② COMPONENT_ENGINEER（基础包叫「元器件工程师」、文档第 18 节叫「器件工程师」，同码不同名 —— 以先装者为准，若要统一措辞，改基础包那一处即可，因为角色是平台共享数据）。落地通道：角色安装器（RoleInstaller）**已可用**，且 electronics-core 的 8 个 + 新增 3 个已实际落库；本包这 12 个在下次装包时按同机制落（同名同码的自动跳过）。",
+  "roles": [
+    { "code": "PRODUCT_MANAGER", "name": "产品经理", "baseRole": "PRODUCT_MANAGER",
+      "description": "市场与需求定义、上市决策的发起者；对应交付物 DLV-MKT-ASSESS / DLV-VOC / DLV-MKT-PACKAGE / DLV-PRICE-APPROVAL / DLV-EOL-PLAN" },
+    { "code": "PM", "name": "项目经理", "baseRole": "PROJECT_MANAGER",
+      "description": "项目计划与节奏、评审与门决策的组织者；对应交付物 DLV-PROJ-PLAN / DLV-LESSONS" },
+    { "code": "SYSTEM_ENGINEER", "name": "系统工程师", "baseRole": "SYSTEM_ENGINEER",
+      "description": "跨专业方案把关（需求 / 架构 / 接口 / 追溯矩阵）；与基础包同码同义" },
+    { "code": "HW_ENGINEER", "name": "硬件工程师", "baseRole": "ENGINEER",
+      "description": "硬件设计与选型：原理图 / PCB / BOM；对应交付物 DLV-SCHEMATIC / DLV-PCB-LAYOUT / DLV-EBOM / DLV-KEY-COMPONENT-LIST（注：基础包同名岗位的码是 HARDWARE_ENGINEER，本条是交付物侧用码）" },
+    { "code": "ME_ENGINEER", "name": "结构工程师", "baseRole": "ENGINEER",
+      "description": "结构件与包装：图纸 / 开模 / 装配；对应交付物 DLV-STRUCT-DRAWING / DLV-PKG-DESIGN" },
+    { "code": "SW_ENGINEER", "name": "软件工程师", "baseRole": "ENGINEER",
+      "description": "固件与软件：基线 / 发布包 / 版本迭代；对应交付物 DLV-SW-BASELINE / DLV-SW-RELEASE / DLV-VERSION-ITER" },
+    { "code": "COMPONENT_ENGINEER", "name": "器件工程师", "baseRole": "LIBRARIAN",
+      "industrySpecific": true, "note": "元器件行业特有岗位，通用 PLM 无此角色（文档原注）；基础包同码岗位叫「元器件工程师」",
+      "description": "器件准入与优选库维护；对应交付物 DLV-COMPONENT-QUALIFIED" },
+    { "code": "PROCESS_ENGINEER", "name": "工艺工程师", "baseRole": "ENGINEER",
+      "description": "可制造性与工艺：DFM / 试产 / 工艺文件 / MBOM；对应交付物 DLV-DFM-REPORT / DLV-PVT-REPORT / DLV-MBOM / DLV-MFG-DOC / DLV-PILOT-REPORT" },
+    { "code": "TEST_ENGINEER", "name": "测试工程师", "baseRole": "ENGINEER",
+      "description": "验证与试验：测试计划 / EVT / DVT / 可靠性 / EMC / 产线工装；对应交付物 DLV-TEST-PLAN / DLV-EVT-REPORT / DLV-DVT-REPORT / DLV-RELIABILITY-REPORT / DLV-EMC-REPORT / DLV-TEST-EQUIP" },
+    { "code": "QA_ENGINEER", "name": "质量工程师", "baseRole": "QA",
+      "description": "质量与合规：质量计划 / 认证 / 现场质量 / 专利初筛；对应交付物 DLV-QUALITY-PLAN / DLV-CERT-REPORT / DLV-FIELD-QUALITY / DLV-IP-LANDSCAPE / DLV-SERVICE-DOC（注：基础包同名岗位的码是 QUALITY_ENGINEER）" },
+    { "code": "SUPPLY_CHAIN", "name": "供应链/采购", "baseRole": "EXTERNAL_ROLE",
+      "description": "供应与成本：AVL / 供应准备；对应交付物 DLV-AVL / DLV-SUPPLY-PLAN" },
+    { "code": "IPDT_LEADER", "name": "IPDT 组长", "baseRole": "DECISION_MAKER",
+      "description": "跨部门团队的决策者：Charter 立项与门决策留痕；对应交付物 DLV-CHTR" }
+  ]
+}

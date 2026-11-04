@@ -1,0 +1,26 @@
+{
+  "industries": [
+    {
+      "industry": "AUTOMOTIVE",
+      "name": "汽车",
+      "stages": [
+        { "code": "AUTO_CONCEPT", "name": "概念设计", "icon": "BulbOutlined", "color": "#722ed1", "sortOrder": 1,
+          "defaultFolders": ["市场定位", "造型概念", "工程概念"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "AUTO_DEV", "name": "开发验证", "icon": "ToolOutlined", "color": "#13c2c2", "sortOrder": 2,
+          "defaultFolders": ["详细设计", "样车制作", "性能验证"],
+          "managedObjectTypes": ["FUNCTIONAL", "DOCUMENT"] },
+        { "code": "AUTO_PP", "name": "生产准备", "icon": "SettingOutlined", "color": "#fa8c16", "sortOrder": 3,
+          "defaultFolders": ["工艺设计", "模具开发", "生产线建设", "试生产"],
+          "managedObjectTypes": ["DOCUMENT"] },
+        { "code": "AUTO_SOP", "name": "量产", "icon": "RocketOutlined", "color": "#52c41a", "sortOrder": 4,
+          "defaultFolders": ["批量生产", "质量控制", "供应链管理"],
+          "managedObjectTypes": ["DOCUMENT"] },
+        { "code": "AUTO_LAUNCH", "name": "上市", "icon": "ThunderboltOutlined", "color": "#eb2f96", "sortOrder": 5,
+          "defaultFolders": ["上市发布", "市场推广", "销售服务"],
+          "managedObjectTypes": ["DOCUMENT"] }
+      ]
+    }
+  ],
+  "note": "汽车行业五阶段（APQP 思路：概念 → 开发验证 → 生产准备 → 量产 → 上市）。原先这三套行业阶段混在 platform-base 的 stages.json 里，与 IPD 并列 —— 那样「选行业」是无意义的（各行业都一样）。现按行业拆包：行业=包，方法论=包的选择结果。"
+}

@@ -1,0 +1,30 @@
+{
+  "types": [
+    { "code": "FUNCTIONAL", "name": "功能架构(构型)", "displayName": "功能架构(构型)", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "ClusterOutlined", "sortOrder": 14, "parentCode": null, "hostCode": "FUNCTIONAL",
+      "description": "装备级功能系统：型号功能架构的顶层分解对象（武器系统 / 火控 / 导航 / 电子对抗…），其下再分系统 → 子系统 → 配置项。原先注册在 platform-base —— 但它是行业概念（军工是装备级功能系统、汽车是车型功能域，各有一套分解），现归回本行业包；平台包不再提供它",
+      "numberRule": "FUNCTIONAL-NUM", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ARCHITECTURE_DOMAIN" },
+    { "code": "SYSTEM", "name": "系统", "displayName": "系统", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "ApartmentOutlined", "sortOrder": 15, "parentCode": "FUNCTIONAL", "hostCode": "FUNCTIONAL",
+      "description": "装备级系统：武器系统 / 火控系统 / 导航系统等总体级对象",
+      "numberRule": "FUNCTIONAL-NUM", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ARCHITECTURE_DOMAIN" },
+    { "code": "SUBSYSTEM", "name": "子系统", "displayName": "子系统", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "BlockOutlined", "sortOrder": 16, "parentCode": "FUNCTIONAL", "hostCode": "FUNCTIONAL",
+      "description": "系统下的分系统：如发射子系统、制导子系统、供电分系统",
+      "numberRule": "FUNCTIONAL-NUM", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ARCHITECTURE_DOMAIN" },
+    { "code": "CI", "name": "CI", "displayName": "配置/构型项目", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "ControlOutlined", "sortOrder": 17, "parentCode": "FUNCTIONAL", "hostCode": "FUNCTIONAL",
+      "description": "配置项(Configuration Item)：可独立管理、版本控制与技术状态管理的构型单元",
+      "numberRule": "FUNCTIONAL-NUM", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ARCHITECTURE_DOMAIN" },
+    { "code": "ELECTRICAL", "name": "电气件", "displayName": "电气件", "kind": "SOFT_TYPE", "source": "OOTB",
+      "icon": "BulbOutlined", "sortOrder": 21, "parentCode": "PART", "hostCode": "PART",
+      "description": "型号电气件：军工型号配套的电气专业对象（线束、连接器、继电器、电机等）。原先注册在 platform-base —— 但电气件口径因行业而异（军工看型号配套、汽车看整车 E/E），现归回本行业包；平台包不再提供它",
+      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
+      "domain": "ELECTRICAL_DOMAIN" }
+  ],
+  "note": "军工的功能架构四层：功能架构（FUNCTIONAL）→ 系统（SYSTEM）→ 子系统（SUBSYSTEM）→ 配置项（CI），对应 GJB 的型号—分系统—配置项分级。原先这些类型混在 platform-base 里（措辞还写着\"或汽车领域的动力域/底盘域\"），与\"方法论属于行业\"的口径冲突 —— 现整体回到本行业包，含顶层的 FUNCTIONAL（它是行业概念：军工是装备级功能系统、汽车是车型功能域，platform-base 不再提供它）。编码规则 FUNCTIONAL-NUM 保留在 platform-base：它被本包三个子类型（以及汽车包的对应类型）共同引用。★ automotive-apqp 声明了同码的 FUNCTIONAL/SYSTEM/SUBSYSTEM/CI —— 两个包都装时后装的一方按 code 判重跳过（SoftTypeInstaller 幂等），因此两份定义必须保持一致，改一处记得同步另一处。★ 同理，电气件（ELECTRICAL）本次从 platform-base 归回本包与 automotive-apqp：两份同码定义必须保持一致，改一处同步另一处；它沿用平台层的 PART_NUMBER / LETTER_26 / STANDARD 与平台建的 ELECTRICAL_DOMAIN，依赖都在平台层。"
+}

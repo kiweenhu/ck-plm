@@ -1,0 +1,113 @@
+{
+  "code": "smart-hardware-ipd",
+  "name": "智能硬件 · IPD 研发体系包",
+  "version": "1.0.0",
+  "enabled": true,
+  "basePack": "electronics-core@1.0.0",
+  "engineRange": ">=0.2.0 <1.0.0",
+  "industry": "SMART_HARDWARE",
+  "devMethod": "IPD",
+  "controlLevel": "STANDARD",
+  "license": "BUSINESS",
+  "targetScale": "100-1000人",
+  "primaryScopeType": "PRODUCT_MODEL",
+  "author": { "org": "乘恺科技", "updatedAt": "2026-10-03" },
+  "segments": [
+    { "code": "WEARABLE",       "name": "智能穿戴" },
+    { "code": "SMART_HOME",     "name": "智能家居" },
+    { "code": "CONSUMER_ELEC",  "name": "消费电子" },
+    { "code": "INDUSTRIAL_CTRL","name": "工业控制" },
+    { "code": "IOT_TERMINAL",   "name": "物联网终端" }
+  ],
+  "productForms": [
+    { "code": "DEVICE",         "name": "整机" },
+    { "code": "BOARD_MODULE",   "name": "板卡·模组" },
+    { "code": "COMPONENT_PROC", "name": "元器件·工艺" },
+    { "code": "SOFTWARE_FW",    "name": "配套软件与固件" },
+    { "code": "STRUCTURAL_PKG", "name": "结构件与包装" }
+  ],
+  "resources": [
+    { "type": "STAGE",       "file": "stages.json",       "count": 6,  "scope": "PLATFORM", "display": "研发阶段模板", "reusable": false },
+    { "type": "DELIVERABLE", "file": "deliverables.json", "count": 46, "scope": "TENANT",   "display": "交付物清单",   "reusable": false },
+    { "type": "GATE",        "file": "decision-gates.json",  "count": 4, "scope": "PLATFORM", "display": "决策门（DCP）",         "reusable": false },
+    { "type": "REVIEW",      "file": "technical-reviews.json", "count": 8, "scope": "PLATFORM", "display": "技术评审（挂阶段）",   "reusable": false },
+    { "type": "RULE",        "file": "rules.json",        "count": 4,  "scope": "PLATFORM", "display": "检查规则",     "reusable": false },
+    { "type": "ISSUE_TYPE",  "file": "issueTypes.json",   "count": 7,  "scope": "PLATFORM", "display": "问题类型",     "reusable": false },
+    { "type": "METRIC",      "file": "metrics.json",      "count": 5,  "scope": "PLATFORM", "display": "指标",         "reusable": false },
+    { "type": "DASHBOARD",   "file": "dashboards.json",   "count": 3,  "scope": "PLATFORM", "display": "驾驶舱",       "reusable": false },
+    { "type": "ROLE",        "file": "roles.json",        "count": 12, "scope": "PLATFORM", "display": "业务角色",     "reusable": false }
+  ],
+  "installCheck": ["CODE_CONFLICT", "TYPE_EXISTS", "ROLE_MAPPED", "DEP_SATISFIED"],
+
+  "questionnaire": [
+    { "code": "SCALE", "text": "研发团队规模", "required": true,
+      "options": ["<50", "50-200", "200-1000", ">1000"],
+      "affects": [{ "parameter": "genPartThreshold.minModelCount" },
+                  { "parameter": "genPartThreshold.minUsageCount" },
+                  { "parameter": "genPartThreshold.statWindowMonths" },
+                  { "parameter": "stage.IPD_DEVELOP.defaultDays" }] },
+    { "code": "FORM", "text": "主要产品形态", "required": true,
+      "options": ["整机", "板卡/模组", "元器件/工艺", "混合"],
+      "affects": [{ "recommend": true }],
+      "note": "整机 → 本包（IPD 六阶段）；板卡/模组 → electronics-hitech（简化四阶段）" },
+    { "code": "EXPORT", "text": "产品是否出口", "required": false,
+      "options": ["是", "否"],
+      "affects": [{ "parameter": "rule.R-SH-06.severity", "when": "是", "set": "BLOCK" },
+                  { "parameter": "rule.R-SH-06.severity", "when": "否", "set": "WARN" }] },
+    { "code": "HAS_MECH", "text": "是否自研结构件与包装", "required": false,
+      "options": ["是", "否"],
+      "affects": [{ "parameter": "highlight.structural", "when": "是", "set": true }] },
+    { "code": "USE_EVT_DVT", "text": "是否走 EVT / DVT / PVT 试产节奏", "required": false,
+      "options": ["是", "否"],
+      "affects": [{ "parameter": "stages.subMilestones.enabled", "when": "是", "set": true }] },
+    { "code": "CERT", "text": "是否需第三方认证（CE / UL / FCC 等）", "required": false,
+      "options": ["是", "否"],
+      "affects": [{ "parameter": "rule.R-SH-01.severity", "when": "是", "set": "BLOCK" },
+                  { "parameter": "deliverable.DLV-CERT-REPORT.mandatory", "when": "是", "set": true }] }
+  ],
+
+  "parameters": [
+    { "code": "genPartThreshold.minModelCount", "label": "通用件认定 · 跨型号数",
+      "tunable": true, "default": 3,
+      "suggest": { "<50": 2, "50-200": 3, "200-1000": 4, ">1000": 5 },
+      "hint": "被多少个不同型号引用才算公司通用件（现状代码默认为 3）" },
+    { "code": "genPartThreshold.minUsageCount", "label": "通用件认定 · 引用次数",
+      "tunable": true, "default": 5,
+      "suggest": { "<50": 5, "50-200": 10, "200-1000": 20, ">1000": 30 },
+      "hint": "被多少条 BOM 行引用才算候选（现状代码默认为 5）" },
+    { "code": "genPartThreshold.statWindowMonths", "label": "通用件认定 · 统计窗口(月)",
+      "tunable": true, "default": 12,
+      "suggest": { "<50": 12, "50-200": 24, "200-1000": 24, ">1000": 36 },
+      "hint": "只看近 N 个月的引用（现状代码默认为 12）" },
+    { "code": "stage.IPD_DEVELOP.defaultDays", "label": "IPD 开发阶段默认工期(天)",
+      "tunable": true, "default": 90,
+      "suggest": { "<50": 60, "50-200": 90, "200-1000": 90, ">1000": 120 },
+      "hint": "概念 30 / 计划 45 / 验证 75 / 发布 30 天为配套默认值" }
+  ],
+
+  "previewHints": [
+    { "resource": "SOFTTYPE",    "highlight": "IPD 六阶段所需的专业对象类型（含软件域、包装件）" },
+    { "resource": "STAGE",       "highlight": "IPD 六阶段（概念→计划→开发→验证→发布→生命周期），含 EVT/DVT/PVT 试产节奏" },
+    { "resource": "ATTRIBUTE",   "highlight": "30 个器件管理属性：P0–P3 优选等级、停产风险、RoHS/REACH、Pin 兼容替代" },
+    { "resource": "ROLE",        "highlight": "12 个行业岗位，含「器件工程师」——通用 PLM 里没有这个角色" },
+    { "resource": "DELIVERABLE", "highlight": "46 项交付物，每项都写明“什么叫完成”，系统可自动判定" },
+    { "resource": "GATE",        "highlight": "Charter/PDCP/ADCP/LDCP 四道决策门，Go/Hold/Terminate 留痕可审厂" },
+    { "resource": "REVIEW",      "highlight": "8 份技术评审直接挂阶段（概念/计划/开发/验证/发布/生命周期），不设技术门这一层" }
+  ],
+
+  "nextSteps": [
+    { "text": "把 12 个角色映射到你们的实际岗位", "route": "/org/roles" },
+    { "text": "确认编码规则前缀（PART- / DOC-）与流水号位数", "route": "/system/basic" },
+    { "text": "可选：查看并清理示例数据（SC-2000 智能控制器）", "action": "REMOVE_SAMPLE" }
+  ],
+
+  "sample": {
+    "name": "SC-2000 智能控制器",
+    "autoInstall": true,
+    "removable": true,
+    "script": "sample/demo-script.md",
+    "note": "默认随包安装：产品系列 + 型号 SC-2000 + 典型部件（结构件/电子件/PCBA）+ EBOM + 原理图与 PCB 设计对象；全部按自然键幂等，可用“清理示例”精确回滚。"
+  },
+
+  "note": "P0 先建骨架：resources 为空（P1 从现有初始化器抽取 softtypes/classifications/numberRules/versionRules/lifecycles/resourceLibraries/stages 后填入），器件属性/交付物/门/评审/规则/指标等内容在 P2–P5 分期补入。资源文件位置说明：本包自己的模板在 v1.0.0/ 下（stages / deliverables / decision-gates / technical-reviews …）。自 2026-10-29 起「门」与「技术评审」是两件事，分两份文件：decision-gates.json（CHARTER/PDCP/ADCP/LDCP 四道**决策门**，产 Go/Hold/Terminate 与商业留痕，落 ck_gate_template）与 technical-reviews.json（8 份**技术评审**，带 stage 直接挂阶段，落 ck_review_template）；技术门（TR1–TR6）这一层已取消 —— 技术评审是「一场会」，不是「一道门」，为它单独造门等于凭空多一层壳。原先的 gates.json / reviews.json / technical-gates.json 均已删除；库里 `ck_review_template` / `ck_review` 新增可空 `stage_key`，老数据不动（评审仍带 gate，取阶段时按 stage_key → gate→门阶段 回落）。两份文件引用的两条流程**不在本包**，而在基础包 electronics-core@1.0.0 的 processes/ 目录（technical-review.bpmn20.xml 技术评审、gate-decision.bpmn20.xml 阶段决策）—— 它们是方法论无关的门/评审机制，放共用基础包以便其它行业包按 key 复用；引用规则见各 json 的 note 段（process = 流程 key，必须在包链里真实存在同名 .bpmn20.xml，不允许悬空引用）。"
+}

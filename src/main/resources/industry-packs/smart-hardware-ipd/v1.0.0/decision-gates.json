@@ -1,0 +1,55 @@
+{
+  "inherit": "electronics-core@1.0.0",
+  "items": [
+    { "code": "CHARTER", "name": "立项决策评审", "stage": "IPD_CONCEPT", "type": "DECISION_REVIEW", "process": "gate-decision", "sortOrder": 7,
+      "decisionOptions": ["GO", "HOLD", "TERMINATE"],
+      "autoChecks": [
+        { "type": "DELIVERABLE_RATE", "stage": "IPD_CONCEPT", "minPercent": 100, "severity": "BLOCK" },
+        { "type": "COST_ACHIEVE",     "maxDeviationPercent": 15, "severity": "WARN" },
+        { "type": "ISSUE_OPEN",       "severity": "BLOCK", "maxCount": 0 }
+      ],
+      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "PM", "QA_ENGINEER", "SUPPLY_CHAIN"],
+      "recordFields": ["decision", "businessRisk", "technicalRisk", "supplyRisk", "decisionBasis"],
+      "evidenceRequired": true,
+      "industryNote": "立项决策必须留痕（Go / Hold / Terminate 及其依据）——Tier-1 客户审厂时，拿不出立项依据的项目会被当作「没有研发体系」" },
+
+    { "code": "PDCP", "name": "计划决策评审", "stage": "IPD_PLAN", "type": "DECISION_REVIEW", "process": "gate-decision", "sortOrder": 8,
+      "decisionOptions": ["GO", "HOLD", "TERMINATE"],
+      "autoChecks": [
+        { "type": "DELIVERABLE_RATE", "stage": "IPD_PLAN", "minPercent": 100, "severity": "BLOCK" },
+        { "type": "COST_ACHIEVE",     "maxDeviationPercent": 15, "severity": "WARN" },
+        { "type": "ISSUE_OPEN",       "severity": "BLOCK", "maxCount": 0 }
+      ],
+      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "PM", "SUPPLY_CHAIN", "QA_ENGINEER"],
+      "recordFields": ["decision", "businessRisk", "technicalRisk", "supplyRisk", "decisionBasis"],
+      "evidenceRequired": true,
+      "industryNote": "计划阶段的决策要覆盖模具与试产预算、长交期物料锁期——试产窗口是要提前锁产能的，批不下来就得往后排一个季度" },
+
+    { "code": "ADCP", "name": "可获得性决策评审", "stage": "IPD_VERIFY", "type": "DECISION_REVIEW", "process": "gate-decision", "sortOrder": 9,
+      "decisionOptions": ["GO", "HOLD", "TERMINATE"],
+      "autoChecks": [
+        { "type": "DELIVERABLE_RATE", "stage": "IPD_VERIFY", "minPercent": 100, "severity": "BLOCK" },
+        { "type": "CERT_COMPLETE",    "severity": "BLOCK" },
+        { "type": "ISSUE_OPEN",       "severity": "BLOCK", "maxCount": 0 },
+        { "type": "SUPPLY_CONFIRMED", "severity": "WARN" }
+      ],
+      "requiredParticipants": ["PM", "PRODUCT_MANAGER", "QA_ENGINEER", "SUPPLY_CHAIN", "IPDT_LEADER"],
+      "recordFields": ["decision", "businessRisk", "technicalRisk", "supplyRisk", "decisionBasis"],
+      "evidenceRequired": true,
+      "industryNote": "量产门（可获得性）：过此门即对外承诺交期 —— 证书齐套、产线可跑、供应有量，三者缺一不可；承诺了交不出去，比晚发布更伤客户" },
+
+    { "code": "LDCP", "name": "上市决策评审", "stage": "IPD_RELEASE", "type": "DECISION_REVIEW", "process": "gate-decision", "sortOrder": 10,
+      "decisionOptions": ["GO", "HOLD", "TERMINATE"],
+      "autoChecks": [
+        { "type": "DELIVERABLE_RATE", "stage": "IPD_RELEASE", "minPercent": 100, "severity": "BLOCK" },
+        { "type": "CERT_COMPLETE",    "severity": "BLOCK" },
+        { "type": "ISSUE_OPEN",       "severity": "BLOCK", "maxCount": 0 }
+      ],
+      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "QA_ENGINEER", "SUPPLY_CHAIN", "PM"],
+      "recordFields": ["decision", "businessRisk", "technicalRisk", "supplyRisk", "decisionBasis"],
+      "evidenceRequired": true,
+      "industryNote": "上市资料必须与实测规格一致（虚标是合规风险）；定价与渠道政策一并留痕，这是上市决策的完整依据" }
+  ],
+
+  "note": "决策门（DCP）一份 —— 本文件只产出 Go/Hold/Terminate 与商业留痕（ck_gate_template，type=DECISION_REVIEW）；技术评审不在这里（见 technical-reviews.json，带 stage 直接挂阶段，2026-10-29 起已取消技术门这一层）。① 结构：inherit + items[]，与本包其它清单同形，安装器 GateTemplateInstaller 只按 items[] 读。② 共 4 道 = CHARTER / PDCP / ADCP / LDCP，是包里**唯一**的一类门 —— 门只回答「这个项目还做不做」，技术评审回答「这版设计能不能过」，两者不该混在一个列表里。③ stage 一律取已落地的 stages.json（Charter∈概念、PDCP∈计划、ADCP∈验证、LDCP∈发布）。④ 门名规范化（2026-10-29）：<b>决策门统一以「XX决策评审」结尾</b>，不再把「（立项决策）」「（量产门）」这类补注写进名字 —— 名字只回答「这是哪道门」，补充语义交给 industryNote；编号仍由 code 列承担（界面上「编码」「名称」是两列，名字里再带一遍编号就是重复）。⑤ autoChecks 只用证据支持的判定：DELIVERABLE_RATE / COST_ACHIEVE / ISSUE_OPEN / CERT_COMPLETE / SUPPLY_CONFIRMED；requiredParticipants 只用第 18 节的 12 个角色码。⑥ process 只允许空或包链里真实存在 <key>.bpmn20.xml 的 key（决策门全指向基础包 electronics-core@1.0.0 的 gate-decision），悬空引用记 FAILED、不装该条。⑦ sortOrder 显式写出（7–10）：与同阶段的技术评审（1–3）放在一起时仍是「先开会、后决策」，不会撞号；门与评审现在分表、互不依赖序号，这里保留大号纯粹是为了两者同屏时的排序稳定。⑧ 与交付件的关系：门按 DELIVERABLE_RATE + stage 判『本阶段交付物齐了没』，故 (code, stage) 与 deliverables.json 的 (gate, stage) 一一对应。"
+}

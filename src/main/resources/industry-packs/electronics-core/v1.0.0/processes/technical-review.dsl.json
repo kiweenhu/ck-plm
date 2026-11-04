@@ -1,0 +1,196 @@
+{
+  "key": "technical-review",
+  "name": "技术评审流程",
+  "displayName": "技术评审（TR）流程",
+  "category": "研发过程",
+  "description": "通用技术评审流程：发起与材料准备 → 检查项逐条核对 → 问题登记与整改分派 → 整改执行 → 复评 → 结论登记。评审模板（评审码 + 检查项 + 结论选项）来自行业包的 reviews.json；结论与问题清单留痕，供阶段门按「本阶段交付物完成率 + 未关闭问题数」自动检查。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "technical-review",
+      "name": "技术评审流程",
+      "displayName": "技术评审（TR）流程",
+      "category": "研发过程",
+      "description": "通用技术评审流程：发起与材料准备 → 检查项逐条核对 → 问题登记与整改分派 → 整改执行 → 复评 → 结论登记。评审模板来自行业包的 reviews.json。"
+    },
+    "variables": [],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：评审申请",
+        "type": "START",
+        "initiator": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "technical-review-apply"
+      },
+      {
+        "id": "n_apply",
+        "name": "材料准备与确认",
+        "description": "填写评审对象与评审模板码（reviews.json 的 code，如 TR4_HW_SCHEMATIC）、上传待评材料；被驳回后在此补齐并重新提交",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "technical-review-apply",
+        "needDeliverables": true,
+        "deliverableObjectTypes": [
+          "DOCUMENT"
+        ]
+      },
+      {
+        "id": "set_assignee",
+        "name": "设置审批人",
+        "description": "材料备齐后一次性指定后面各环节的人：检查项核对（单人）、问题登记与整改分派、整改执行、复评（会签，至少两人）、结论登记。候选范围是各活动指定的角色",
+        "type": "SET_ASSIGNEE",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "n_check",
+        "name": "检查项逐条核对",
+        "description": "按评审模板的 checkItems 逐条核对（BLOCK 项必须闭环），记录不符合项",
+        "type": "APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "QUALITY_ENGINEER"
+          ]
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true,
+        "formRef": "technical-review-checklist"
+      },
+      {
+        "id": "n_issue",
+        "name": "问题登记与整改分派",
+        "description": "把不符合项登记为问题（类型 / 严重级别 / 责任人 / 期限），分派整改",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "PROJECT_MANAGER"
+          ]
+        },
+        "formRef": "technical-review-issue"
+      },
+      {
+        "id": "n_fix",
+        "name": "等待整改结果，并提交复评",
+        "description": "责任人完成整改并提交证据；无问题可直接提交结论",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "PM"
+          ]
+        },
+        "formRef": "technical-review-fix"
+      },
+      {
+        "id": "n_reverify",
+        "name": "复评（评审组）",
+        "description": "评审组复核整改结果：质量 / 系统 / 专业负责人共同确认",
+        "type": "COUNTERSIGN_APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "QUALITY_ENGINEER",
+            "SYSTEM_ENGINEER",
+            "HARDWARE_LEAD"
+          ]
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100
+        },
+        "commentRequired": true,
+        "formRef": "technical-review-reverify"
+      },
+      {
+        "id": "n_verdict",
+        "name": "结论登记（留痕）",
+        "description": "登记评审结论（PASS / PASS_WITH_CONDITION / FAIL）与依据、遗留条件",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "PROJECT_MANAGER"
+          ]
+        },
+        "formRef": "technical-review-verdict"
+      },
+      {
+        "id": "n_end",
+        "name": "结束：评审完成",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "source": "start_1",
+        "target": "n_apply",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e1",
+        "source": "n_apply",
+        "target": "set_assignee",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e7",
+        "source": "set_assignee",
+        "target": "n_check",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "n_check",
+        "target": "n_issue",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e3",
+        "source": "n_issue",
+        "target": "n_fix",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e4",
+        "source": "n_fix",
+        "target": "n_reverify",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e5",
+        "source": "n_reverify",
+        "target": "n_verdict",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e6",
+        "source": "n_verdict",
+        "target": "n_end",
+        "kind": "NORMAL"
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": { "x": 296, "y": 40, "width": 30, "height": 30 },
+        "n_apply": { "x": 240, "y": 150, "width": 180, "height": 70 },
+        "set_assignee": { "x": 240, "y": 270, "width": 180, "height": 70 },
+        "n_check": { "x": 240, "y": 390, "width": 180, "height": 70 },
+        "n_issue": { "x": 240, "y": 510, "width": 180, "height": 70 },
+        "n_fix": { "x": 240, "y": 630, "width": 180, "height": 70 },
+        "n_reverify": { "x": 240, "y": 750, "width": 180, "height": 70 },
+        "n_verdict": { "x": 240, "y": 870, "width": 180, "height": 70 },
+        "n_end": { "x": 296, "y": 990, "width": 30, "height": 30 }
+      }
+    }
+  }
+}

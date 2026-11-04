@@ -1,0 +1,175 @@
+{
+  "classifications": [
+    {
+      "name": "电子元器件",
+      "identifier": "tpl-electronic",
+      "note": "参照嘉立创（立创）商城分类体系：大类 → 细分类，细分类绑定器件关键参数（IBA）。",
+      "children": [
+        { "name": "电阻器", "slug": "resistor", "children": [
+          { "name": "贴片电阻", "slug": "chip-resistor", "ibas": ["RESISTANCE", "TOLERANCE", "POWER_RATING", "TEMP_COEFFICIENT", "PACKAGE"] },
+          { "name": "插件电阻", "slug": "through-hole-resistor", "ibas": ["RESISTANCE", "TOLERANCE", "POWER_RATING", "PACKAGE"] },
+          { "name": "排阻/网络电阻", "slug": "resistor-network", "ibas": ["RESISTANCE", "TOLERANCE", "POWER_RATING", "PACKAGE"] },
+          { "name": "电流采样电阻", "slug": "current-sense-resistor", "ibas": ["RESISTANCE", "TOLERANCE", "POWER_RATING", "PACKAGE"] },
+          { "name": "精密电阻", "slug": "precision-resistor", "ibas": ["RESISTANCE", "TOLERANCE", "POWER_RATING", "TEMP_COEFFICIENT", "PACKAGE"] },
+          { "name": "热敏电阻", "slug": "thermistor", "ibas": ["RESISTANCE", "B_VALUE", "TOLERANCE", "PACKAGE"] },
+          { "name": "压敏电阻", "slug": "varistor", "ibas": ["VARISTOR_VOLTAGE", "CLAMP_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "电容器", "slug": "capacitor", "children": [
+          { "name": "贴片电容(MLCC)", "slug": "mlcc", "ibas": ["CAPACITANCE", "VOLTAGE_RATING", "TOLERANCE", "TEMP_CHARACTERISTIC", "PACKAGE"] },
+          { "name": "钽电容", "slug": "tantalum-capacitor", "ibas": ["CAPACITANCE", "VOLTAGE_RATING", "TOLERANCE", "PACKAGE"] },
+          { "name": "贴片铝电解电容", "slug": "smd-aluminum-capacitor", "ibas": ["CAPACITANCE", "VOLTAGE_RATING", "TOLERANCE", "PACKAGE"] },
+          { "name": "直插铝电解电容", "slug": "dip-aluminum-capacitor", "ibas": ["CAPACITANCE", "VOLTAGE_RATING", "TOLERANCE", "PACKAGE"] },
+          { "name": "薄膜电容", "slug": "film-capacitor", "ibas": ["CAPACITANCE", "VOLTAGE_RATING", "TOLERANCE", "PACKAGE"] },
+          { "name": "超级电容", "slug": "super-capacitor", "ibas": ["CAPACITANCE", "VOLTAGE_RATING", "PACKAGE"] }
+        ] },
+        { "name": "电感器", "slug": "inductor", "children": [
+          { "name": "贴片电感", "slug": "chip-inductor", "ibas": ["INDUCTANCE", "RATED_CURRENT", "DC_RESISTANCE", "PACKAGE"] },
+          { "name": "功率电感", "slug": "power-inductor", "ibas": ["INDUCTANCE", "RATED_CURRENT", "SATURATION_CURRENT", "DC_RESISTANCE"] },
+          { "name": "磁珠", "slug": "ferrite-bead", "ibas": ["IMPEDANCE", "RATED_CURRENT", "PACKAGE"] },
+          { "name": "共模滤波器", "slug": "common-mode-filter", "ibas": ["IMPEDANCE", "RATED_CURRENT", "VOLTAGE_RATING"] }
+        ] },
+        { "name": "二极管", "slug": "diode", "children": [
+          { "name": "肖特基二极管", "slug": "schottky-diode", "ibas": ["FORWARD_CURRENT", "REVERSE_VOLTAGE", "FORWARD_VOLTAGE", "PACKAGE"] },
+          { "name": "稳压二极管", "slug": "zener-diode", "ibas": ["ZENER_VOLTAGE", "POWER_RATING", "TOLERANCE", "PACKAGE"] },
+          { "name": "整流二极管", "slug": "rectifier-diode", "ibas": ["FORWARD_CURRENT", "REVERSE_VOLTAGE", "FORWARD_VOLTAGE", "PACKAGE"] },
+          { "name": "快恢复二极管", "slug": "fast-recovery-diode", "ibas": ["FORWARD_CURRENT", "REVERSE_VOLTAGE", "RECOVERY_TIME", "PACKAGE"] },
+          { "name": "TVS二极管", "slug": "tvs-diode", "ibas": ["BREAKDOWN_VOLTAGE", "CLAMP_VOLTAGE", "PEAK_PULSE_POWER", "PACKAGE"] },
+          { "name": "ESD保护二极管", "slug": "esd-diode", "ibas": ["BREAKDOWN_VOLTAGE", "CLAMP_VOLTAGE", "PACKAGE"] },
+          { "name": "整流桥", "slug": "bridge-rectifier", "ibas": ["FORWARD_CURRENT", "REVERSE_VOLTAGE", "FORWARD_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "三极管", "slug": "transistor", "children": [
+          { "name": "NPN三极管", "slug": "npn-transistor", "ibas": ["POLARITY", "COLLECTOR_CURRENT", "COLLECTOR_EMITTER_VOLTAGE", "DC_GAIN", "PACKAGE"] },
+          { "name": "PNP三极管", "slug": "pnp-transistor", "ibas": ["POLARITY", "COLLECTOR_CURRENT", "COLLECTOR_EMITTER_VOLTAGE", "DC_GAIN", "PACKAGE"] },
+          { "name": "数字晶体管", "slug": "digital-transistor", "ibas": ["POLARITY", "COLLECTOR_CURRENT", "COLLECTOR_EMITTER_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "MOSFET", "slug": "mosfet", "children": [
+          { "name": "N沟道MOSFET", "slug": "n-mosfet", "ibas": ["CHANNEL_TYPE", "DRAIN_SOURCE_VOLTAGE", "DRAIN_CURRENT", "ON_RESISTANCE", "PACKAGE"] },
+          { "name": "P沟道MOSFET", "slug": "p-mosfet", "ibas": ["CHANNEL_TYPE", "DRAIN_SOURCE_VOLTAGE", "DRAIN_CURRENT", "ON_RESISTANCE", "PACKAGE"] },
+          { "name": "IGBT", "slug": "igbt", "ibas": ["COLLECTOR_CURRENT", "COLLECTOR_EMITTER_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "电源管理IC", "slug": "power-ic", "children": [
+          { "name": "线性稳压器(LDO)", "slug": "ldo", "ibas": ["MODEL", "INPUT_VOLTAGE", "OUTPUT_VOLTAGE", "OUTPUT_CURRENT", "PACKAGE"] },
+          { "name": "DC-DC电源芯片", "slug": "dc-dc", "ibas": ["MODEL", "INPUT_VOLTAGE", "OUTPUT_VOLTAGE", "OUTPUT_CURRENT", "PACKAGE"] },
+          { "name": "LED驱动芯片", "slug": "led-driver", "ibas": ["MODEL", "INPUT_VOLTAGE", "OUTPUT_CURRENT", "PACKAGE"] },
+          { "name": "电池保护芯片", "slug": "battery-protection", "ibas": ["MODEL", "WORKING_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "单片机/微控制器", "slug": "mcu", "children": [
+          { "name": "单片机(MCU)", "slug": "mcu", "ibas": ["MODEL", "CORE", "MAIN_FREQUENCY", "FLASH_SIZE", "WORKING_VOLTAGE", "PACKAGE"] },
+          { "name": "FPGA/CPLD", "slug": "fpga-cpld", "ibas": ["MODEL", "LOGIC_CELLS", "WORKING_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "存储器", "slug": "memory", "children": [
+          { "name": "Flash存储器", "slug": "flash-memory", "ibas": ["MODEL", "CAPACITY", "INTERFACE", "WORKING_VOLTAGE", "PACKAGE"] },
+          { "name": "EEPROM存储器", "slug": "eeprom-memory", "ibas": ["MODEL", "CAPACITY", "INTERFACE", "WORKING_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "逻辑器件", "slug": "logic", "children": [
+          { "name": "逻辑门电路", "slug": "logic-gate", "ibas": ["MODEL", "SERIES", "WORKING_VOLTAGE", "PACKAGE"] },
+          { "name": "缓冲器/驱动器", "slug": "buffer-driver", "ibas": ["MODEL", "SERIES", "CHANNEL_COUNT", "PACKAGE"] }
+        ] },
+        { "name": "运算放大器/比较器", "slug": "amplifier", "children": [
+          { "name": "运算放大器", "slug": "op-amp", "ibas": ["MODEL", "CHANNEL_COUNT", "BANDWIDTH", "WORKING_VOLTAGE", "PACKAGE"] },
+          { "name": "比较器", "slug": "comparator", "ibas": ["MODEL", "CHANNEL_COUNT", "WORKING_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "连接器", "slug": "connector", "children": [
+          { "name": "线对板针座", "slug": "wire-to-board-header", "ibas": ["TYPE", "PIN_COUNT", "PITCH", "RATED_CURRENT", "PACKAGE"] },
+          { "name": "胶壳", "slug": "housing", "ibas": ["TYPE", "PIN_COUNT", "PITCH"] },
+          { "name": "FFC/FPC连接器", "slug": "ffc-fpc-connector", "ibas": ["TYPE", "PIN_COUNT", "PITCH", "VOLTAGE_RATING"] },
+          { "name": "USB连接器", "slug": "usb-connector", "ibas": ["TYPE", "PIN_COUNT", "PACKAGE"] },
+          { "name": "接线端子", "slug": "terminal-block", "ibas": ["TYPE", "PIN_COUNT", "PITCH", "RATED_CURRENT"] }
+        ] },
+        { "name": "开关", "slug": "switch", "children": [
+          { "name": "轻触开关", "slug": "tactile-switch", "ibas": ["TYPE", "RATED_CURRENT", "CONTACT_FORM"] },
+          { "name": "拨动开关", "slug": "toggle-switch", "ibas": ["TYPE", "RATED_CURRENT", "VOLTAGE_RATING"] },
+          { "name": "拨码开关", "slug": "dip-switch", "ibas": ["PIN_COUNT", "PITCH", "RATED_CURRENT"] }
+        ] },
+        { "name": "LED/光电器件", "slug": "optoelectronics", "children": [
+          { "name": "发光二极管(LED)", "slug": "led", "ibas": ["COLOR", "WAVELENGTH", "LUMINOUS_INTENSITY", "FORWARD_CURRENT", "PACKAGE"] },
+          { "name": "数码管", "slug": "digital-display", "ibas": ["TYPE", "DIGIT_COUNT", "COLOR"] },
+          { "name": "光电耦合器", "slug": "optocoupler", "ibas": ["TYPE", "FORWARD_CURRENT", "OUTPUT_CURRENT", "PACKAGE"] }
+        ] },
+        { "name": "晶振/定时", "slug": "crystal", "children": [
+          { "name": "无源晶振", "slug": "crystal-resonator", "ibas": ["FREQUENCY", "FREQUENCY_TOLERANCE", "LOAD_CAPACITANCE", "PACKAGE"] },
+          { "name": "有源晶振", "slug": "oscillator", "ibas": ["FREQUENCY", "WORKING_VOLTAGE", "PACKAGE"] }
+        ] },
+        { "name": "保险丝/保护器件", "slug": "protection", "children": [
+          { "name": "自恢复保险丝", "slug": "ptc-fuse", "ibas": ["HOLD_CURRENT", "RATED_CURRENT", "VOLTAGE_RATING", "PACKAGE"] },
+          { "name": "一次性保险丝", "slug": "fuse", "ibas": ["RATED_CURRENT", "VOLTAGE_RATING", "BREAKING_CAPACITY", "PACKAGE"] },
+          { "name": "气体放电管", "slug": "gdt", "ibas": ["BREAKDOWN_VOLTAGE", "CLAMP_VOLTAGE"] }
+        ] },
+        { "name": "继电器", "slug": "relay", "children": [
+          { "name": "电磁继电器", "slug": "electromagnetic-relay", "ibas": ["COIL_VOLTAGE", "CONTACT_FORM", "CONTACT_CURRENT"] },
+          { "name": "固态继电器", "slug": "solid-state-relay", "ibas": ["INPUT_VOLTAGE", "OUTPUT_CURRENT", "OUTPUT_VOLTAGE"] }
+        ] },
+        { "name": "传感器", "slug": "sensor", "children": [
+          { "name": "温度传感器", "slug": "temperature-sensor", "ibas": ["TYPE", "ACCURACY", "WORKING_VOLTAGE", "PACKAGE"] },
+          { "name": "霍尔传感器", "slug": "hall-sensor", "ibas": ["TYPE", "WORKING_VOLTAGE", "PACKAGE"] },
+          { "name": "电流传感器", "slug": "current-sensor", "ibas": ["TYPE", "RANGE", "WORKING_VOLTAGE", "PACKAGE"] }
+        ] }
+      ]
+    }
+  ],
+  "ibaDefinitions": [
+    { "code": "TYPE",        "name": "类型",       "dataType": "STRING",  "description": "器件类型" },
+    { "code": "PACKAGE",     "name": "封装",       "dataType": "STRING",  "description": "封装形式，如 0402、SOT-23、SMD" },
+    { "code": "RESISTANCE",  "name": "阻值",       "dataType": "STRING",  "description": "标称阻值，如 10kΩ、4.7Ω" },
+    { "code": "TOLERANCE",   "name": "精度",       "dataType": "STRING",  "description": "容差，如 ±1%、±5%" },
+    { "code": "POWER_RATING","name": "额定功率",   "dataType": "FLOAT",   "description": "额定功率，单位 W" },
+    { "code": "TEMP_COEFFICIENT", "name": "温度系数", "dataType": "STRING", "description": "温度系数，如 ±100ppm/℃" },
+    { "code": "B_VALUE",     "name": "B值",        "dataType": "FLOAT",   "description": "NTC 热敏电阻 B 值" },
+    { "code": "VARISTOR_VOLTAGE", "name": "压敏电压", "dataType": "FLOAT", "description": "压敏电阻标称压敏电压，单位 V" },
+    { "code": "CAPACITANCE", "name": "容值",       "dataType": "STRING",  "description": "标称容值，如 100nF、10uF" },
+    { "code": "VOLTAGE_RATING", "name": "额定电压", "dataType": "FLOAT",  "description": "额定耐压，单位 V" },
+    { "code": "TEMP_CHARACTERISTIC", "name": "温度特性", "dataType": "STRING", "description": "介质温度特性，如 X7R、C0G" },
+    { "code": "INDUCTANCE",  "name": "电感值",     "dataType": "STRING",  "description": "标称电感值，如 4.7uH、10mH" },
+    { "code": "RATED_CURRENT", "name": "额定电流", "dataType": "FLOAT",   "description": "额定电流，单位 A" },
+    { "code": "DC_RESISTANCE", "name": "直流电阻", "dataType": "FLOAT",   "description": "直流电阻 DCR，单位 Ω" },
+    { "code": "SATURATION_CURRENT", "name": "饱和电流", "dataType": "FLOAT", "description": "饱和电流，单位 A" },
+    { "code": "IMPEDANCE",   "name": "阻抗",       "dataType": "FLOAT",   "description": "阻抗值（磁珠/滤波器），单位 Ω" },
+    { "code": "FORWARD_CURRENT", "name": "正向电流", "dataType": "FLOAT", "description": "正向额定电流，单位 A" },
+    { "code": "REVERSE_VOLTAGE", "name": "反向电压", "dataType": "FLOAT", "description": "反向耐压，单位 V" },
+    { "code": "FORWARD_VOLTAGE", "name": "正向压降", "dataType": "FLOAT", "description": "正向压降 Vf，单位 V" },
+    { "code": "ZENER_VOLTAGE", "name": "稳压值",   "dataType": "FLOAT",   "description": "齐纳稳压值 Vz，单位 V" },
+    { "code": "RECOVERY_TIME", "name": "恢复时间", "dataType": "FLOAT",   "description": "反向恢复时间，单位 ns" },
+    { "code": "BREAKDOWN_VOLTAGE", "name": "击穿电压", "dataType": "FLOAT", "description": "击穿电压，单位 V" },
+    { "code": "PEAK_PULSE_POWER", "name": "峰值脉冲功率", "dataType": "FLOAT", "description": "峰值脉冲功率，单位 W" },
+    { "code": "CLAMP_VOLTAGE", "name": "钳位电压", "dataType": "FLOAT",   "description": "钳位电压，单位 V" },
+    { "code": "POLARITY",    "name": "极性",       "dataType": "STRING",  "description": "极性类型，如 NPN/PNP" },
+    { "code": "COLLECTOR_CURRENT", "name": "集电极电流", "dataType": "FLOAT", "description": "集电极额定电流 Ic，单位 A" },
+    { "code": "COLLECTOR_EMITTER_VOLTAGE", "name": "集电极-发射极电压", "dataType": "FLOAT", "description": "集电极-发射极耐压 Vceo，单位 V" },
+    { "code": "DC_GAIN",     "name": "直流增益",   "dataType": "FLOAT",   "description": "直流电流增益 hFE" },
+    { "code": "CHANNEL_TYPE", "name": "沟道类型",  "dataType": "STRING",  "description": "沟道类型，如 N沟道/P沟道" },
+    { "code": "DRAIN_SOURCE_VOLTAGE", "name": "漏源电压", "dataType": "FLOAT", "description": "漏源耐压 Vds，单位 V" },
+    { "code": "DRAIN_CURRENT", "name": "漏极电流", "dataType": "FLOAT",   "description": "连续漏极电流 Id，单位 A" },
+    { "code": "ON_RESISTANCE", "name": "导通电阻", "dataType": "FLOAT",   "description": "导通电阻 Rds(on)，单位 mΩ" },
+    { "code": "MODEL",       "name": "型号",       "dataType": "STRING",  "description": "器件型号/料号" },
+    { "code": "INPUT_VOLTAGE", "name": "输入电压", "dataType": "FLOAT",   "description": "输入电压范围，单位 V" },
+    { "code": "OUTPUT_VOLTAGE", "name": "输出电压", "dataType": "FLOAT",  "description": "输出电压，单位 V" },
+    { "code": "OUTPUT_CURRENT", "name": "输出电流", "dataType": "FLOAT",  "description": "输出电流，单位 A" },
+    { "code": "CORE",        "name": "内核",       "dataType": "STRING",  "description": "处理器内核，如 ARM Cortex-M0" },
+    { "code": "MAIN_FREQUENCY", "name": "主频",    "dataType": "FLOAT",   "description": "主频，单位 MHz" },
+    { "code": "FLASH_SIZE",  "name": "Flash容量",  "dataType": "FLOAT",   "description": "Flash 容量，单位 KB" },
+    { "code": "CAPACITY",    "name": "容量",       "dataType": "FLOAT",   "description": "存储容量，单位 Mbit" },
+    { "code": "INTERFACE",   "name": "接口",       "dataType": "STRING",  "description": "通信接口，如 SPI、I2C、UART" },
+    { "code": "SERIES",      "name": "系列",       "dataType": "STRING",  "description": "逻辑系列，如 74HC、4000" },
+    { "code": "CHANNEL_COUNT", "name": "通道数",   "dataType": "INTEGER", "description": "通道数量" },
+    { "code": "BANDWIDTH",   "name": "带宽",       "dataType": "FLOAT",   "description": "增益带宽积，单位 MHz" },
+    { "code": "LOGIC_CELLS", "name": "逻辑单元数", "dataType": "INTEGER", "description": "逻辑单元/门数量" },
+    { "code": "WORKING_VOLTAGE", "name": "工作电压", "dataType": "FLOAT", "description": "工作/供电电压，单位 V" },
+    { "code": "PIN_COUNT",   "name": "针数",       "dataType": "INTEGER", "description": "引脚/针数量" },
+    { "code": "PITCH",       "name": "间距",       "dataType": "FLOAT",   "description": "引脚间距，单位 mm" },
+    { "code": "CONTACT_FORM", "name": "触点形式",  "dataType": "STRING",  "description": "触点形式，如 SPST、SPDT" },
+    { "code": "CONTACT_CURRENT", "name": "触点电流", "dataType": "FLOAT", "description": "触点额定电流，单位 A" },
+    { "code": "COIL_VOLTAGE", "name": "线圈电压",  "dataType": "FLOAT",   "description": "继电器线圈电压，单位 V" },
+    { "code": "COLOR",       "name": "颜色",       "dataType": "STRING",  "description": "发光颜色" },
+    { "code": "WAVELENGTH",  "name": "波长",       "dataType": "FLOAT",   "description": "主波长，单位 nm" },
+    { "code": "LUMINOUS_INTENSITY", "name": "发光强度", "dataType": "FLOAT", "description": "发光强度，单位 mcd" },
+    { "code": "DIGIT_COUNT", "name": "位数",       "dataType": "INTEGER", "description": "数码管位数" },
+    { "code": "FREQUENCY",   "name": "频率",       "dataType": "FLOAT",   "description": "标称频率，单位 MHz" },
+    { "code": "FREQUENCY_TOLERANCE", "name": "频率容差", "dataType": "FLOAT", "description": "频率容差，单位 ppm" },
+    { "code": "LOAD_CAPACITANCE", "name": "负载电容", "dataType": "FLOAT", "description": "负载电容 CL，单位 pF" },
+    { "code": "HOLD_CURRENT", "name": "保持电流",  "dataType": "FLOAT",   "description": "保持电流 Ih，单位 A" },
+    { "code": "BREAKING_CAPACITY", "name": "分断能力", "dataType": "FLOAT", "description": "分断能力，单位 A" },
+    { "code": "ACCURACY",    "name": "测量精度",   "dataType": "STRING",  "description": "测量精度" },
+    { "code": "RANGE",       "name": "量程",       "dataType": "STRING",  "description": "测量量程" }
+  ],
+  "note": "电子元器件分类树（18 大类 / 65 个细分类，参照嘉立创商城体系）+ 细分类引用的器件参数（IBA）。参数定义随本包自带，保证「装了这个包，细分类的参数就能落位」；与 platform-base 若有同名 code，安装器按 code 幂等（先到先建，后到跳过）。"
+}

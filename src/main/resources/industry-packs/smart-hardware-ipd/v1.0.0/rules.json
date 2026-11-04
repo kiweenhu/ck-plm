@@ -1,0 +1,34 @@
+{
+  "inherit": "electronics-core@1.0.0",
+  "note": "变体 A（整机 / 智能硬件）的检查规则增量（4 条）—— 与基础包共用侧 7 条合计 11 条。声明式 JSON，不是脚本；枚举取值与共用侧同一口径（trigger ∈ STAGE_ENTRY / PART_SAVE / BOM_SAVE / GATE_CHECK / RELEASE，scope ∈ PRODUCT_MODEL / PART / BOM，condition.type ∈ FIELD_CHECK / FIELD_EMPTY / ISSUE_OPEN / OBJECT_MISSING，severity ∈ BLOCK / WARN）。来源标注：R-SH-01 / R-SH-03 / R-SH-04 / R-SH-05 取自文档第 15 节示例；其中 R-SH-01 / R-SH-04 / R-SH-05 逐字保留，R-SH-03 的门已按『已落地阶段模板』对齐（文档原写 TR6，而试产问题属发布门 —— 阶段模板里 TR5=发布、TR6=生命周期，故取 TR5，原名与原名里的 TR6 记在这里备查）。文档口径为『变体 A 增量 6 条』，实际落了 4 条 —— 缺的 2 条文档未给出内容。与 pack.json 企业画像的联动：R-SH-06（出口 → BLOCK）与 R-SH-01（需第三方认证 → BLOCK）由问卷题调整严重度，本文件给的是未作答时的默认值。落地通道：平台无规则表、无规则引擎（PlatformCapabilities 未登记规则能力，无虚报）——故本文件在 pack.json 已声明，安装动作会如实记为『尚无安装器（待后续版本补齐）』；判定依赖的属性（certStatus / rohsCompliant / eolStatus 等）来自尚未落地的 attributes.json。",
+  "items": [
+    { "code": "R-SH-01", "name": "认证证书缺失不得进入发布阶段",
+      "trigger": "STAGE_ENTRY", "scope": "PRODUCT_MODEL", "stage": "IPD_RELEASE",
+      "condition": { "type": "FIELD_CHECK", "field": "CERT_STATUS", "operator": "NOT_IN", "value": ["OBTAINED"] },
+      "severity": "BLOCK",
+      "message": "产品 {model.code} 未完成认证，不得进入发布阶段",
+      "fixAction": { "type": "NAVIGATE", "target": "deliverable", "code": "DLV-CERT-REPORT" },
+      "industryNote": "fixAction 指向本包 deliverables.json 的 DLV-CERT-REPORT（46 项交付物之一），即『缺证书 → 一键跳到那份交付物去补』；企业画像的 CERT 题会把严重度提到 BLOCK" },
+
+    { "code": "R-SH-03", "name": "试产问题未闭环不得通过发布门（TR5）",
+      "trigger": "GATE_CHECK", "scope": "PRODUCT_MODEL", "gate": "TR5",
+      "condition": { "type": "ISSUE_OPEN", "issueType": "TEST_FAIL", "minCount": 1 },
+      "severity": "BLOCK",
+      "message": "存在 {count} 项未关闭的试产问题",
+      "industryNote": "文档原名为『试产问题未闭环不得通过 TR6』；按已落地阶段模板（TR5 = 发布门 / TR6 = 生命周期）改为 TR5 —— 试产问题属于发布前的门槛。与 gates.json 的 TR5 自动检查 ISSUE_OPEN（BLOCK, maxCount 0）是同一件事的两种表达：门上看总数，这里只看 TEST_FAIL 类" },
+
+    { "code": "R-SH-04", "name": "软件版本与硬件版本必须同时发布",
+      "trigger": "RELEASE", "scope": "PRODUCT_MODEL",
+      "condition": { "type": "OBJECT_MISSING", "objectType": "SW_FIRMWARE", "stage": "IPD_RELEASE" },
+      "severity": "WARN",
+      "message": "未绑定固件版本，整机发布后可能出现软硬件版本不匹配",
+      "industryNote": "软硬件版本错配是现场事故最常见的根因之一；与 deliverables.json 的 DLV-SW-RELEASE（软件发布包与升级说明）配套" },
+
+    { "code": "R-SH-05", "name": "包装 BOM 缺失",
+      "trigger": "STAGE_ENTRY", "scope": "PRODUCT_MODEL", "stage": "IPD_RELEASE",
+      "condition": { "type": "OBJECT_MISSING", "objectType": "PACKAGING_BOM" },
+      "severity": "WARN",
+      "message": "未创建包装 BOM",
+      "industryNote": "自研包装的企业可用企业画像把它们提到 BLOCK（同 R-SH-06 的 defaultOverride 手法）；包装 BOM 影响出货报关与跌落防护，缺了通常在发货前一刻才暴露" }
+  ]
+}

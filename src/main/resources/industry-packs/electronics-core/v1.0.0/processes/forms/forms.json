@@ -1,0 +1,135 @@
+{
+  "note": "行业包自带的流程表单模板（11 张）。**新范式（2026-10-12 用户定）**：表单组件固化在系统中（前端 components/task/taskForms/ 下的 Vue 组件），本文件只做两件事 —— ① 开启（\"enabled\": true）；② 标注对应的 component 名称（与前端视图注册表 FORM_COMPONENT_VIEWS 的键一致）。**字段不写在这里**（原 fields 已移除）：字段由组件定义，两处各写一份必然漂移；未实现组件的表单在办理页自动走兜底通用表单（同意 / 驳回 + 意见），按名补组件即生效、无需再改本文件。落库字段与 ck_process_form_template 一一对应：code / name / nodeTypes（逗号分隔，取值同 DSL 的 NodeType）/ component / builtin=false（行业资产：租户可停用、可改名称与描述）/ enabled / sortOrder / description / tenant_oid（按安装时的租户写入：平台安装→平台租户）。运行期解析顺序见 components/task/taskForms/index.js：语义固定表单 → 内置按 code → 行业表单按 component 名 → 兜底。",
+  "forms": [
+    {
+      "code": "technical-review-apply",
+      "name": "技术评审申请单",
+      "nodeTypes": "START,TASK",
+      "component": "TechnicalReviewApplyForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 120,
+      "description": "技术评审流程的发起单：选评审模板、填写待评对象与材料。评审模板码取自行业包的 reviews.json。（组件待补：当前运行期走兜底通用表单）"
+    },
+    {
+      "code": "technical-review-checklist",
+      "name": "技术评审检查表",
+      "nodeTypes": "APPROVAL",
+      "component": "TechnicalReviewChecklistForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 130,
+      "description": "检查项逐条核对用表：每一项给出 符合 / 不符合 / 不适用，不符合项强制登记为问题（BLOCK 级必须闭环）。检查项本身由评审模板（reviews.json）提供。（组件待补：当前运行期走兜底通用表单）"
+    },
+    {
+      "code": "technical-review-issue",
+      "name": "技术评审问题登记与分派",
+      "nodeTypes": "TASK",
+      "component": "TechnicalReviewIssueForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 132,
+      "description": "技术评审流程「问题登记与整改分派」节点专用：只读展示技术评审申请（待评对象 / 评审模板 / 所处阶段与阶段门 / 送审材料及其关联产出物）+ 检查表的不符合项与放行项，据此登记问题（类型 / 严重度 / 责任人 / 期限）并分派整改。2026-10-29 补齐：此前本包只有流程节点、没有这张表单，装出来的流程在问题登记节点会退化成兜底通用表单。"
+    },
+    {
+      "code": "technical-review-fix",
+      "name": "技术评审整改结果汇总",
+      "nodeTypes": "TASK",
+      "component": "TechnicalReviewFixForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 135,
+      "description": "技术评审流程「等待整改结果」节点专用：按问题逐条填写根因与整改措施并提交复评（提交后问题进入待验证）。问题清单优先取流程变量里登记过的问题；旧实例退化为责任人名下未闭环问题。无问题时可只填总结直接提交。"
+    },
+    {
+      "code": "technical-review-reverify",
+      "name": "技术评审复评确认",
+      "nodeTypes": "COUNTERSIGN_APPROVAL",
+      "component": "TechnicalReviewReverifyForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 136,
+      "description": "技术评审流程「复评（评审组）」节点专用：在会签（规则 / 各人意见 / 我的一票）之外，逐条验证整改结果 —— 通过即关闭问题，退回即回到处理中；全部验证完才能表决，有退回必须驳回。内置会签不推进问题状态，问题会一直停在「待验证」，阶段门的未闭环检查因此永远不通过。"
+    },
+    {
+      "code": "technical-review-verdict",
+      "name": "技术评审结论登记",
+      "nodeTypes": "TASK",
+      "component": "TechnicalReviewVerdictForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 137,
+      "description": "技术评审流程「结论登记（留痕）」节点专用：汇总检查结论与问题闭环情况，登记最终结论（通过 / 有条件通过 / 不通过）+ 依据 + 遗留条件，并写回 ckplmTechReview_verdict —— 产品详情的评审记录据此显示结论（此前一直显示「未评定」）。仍有 BLOCK 问题未闭环时不允许判通过。"
+    },
+    {
+      "code": "gate-decision-apply",
+      "name": "阶段门决策申请单",
+      "nodeTypes": "START,TASK",
+      "component": "GateDecisionApplyForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 140,
+      "description": "阶段决策流程的发起单：选门码、填写自检结果与决策材料。门码与检查类型取自行业包的 gates.json。（组件待补：当前运行期走兜底通用表单）"
+    },
+    {
+      "code": "gate-decision-material",
+      "name": "决策材料齐备性核对单",
+      "nodeTypes": "APPROVAL",
+      "component": "GateDecisionMaterialForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 145,
+      "description": "阶段决策流程「材料齐备性核对」节点专用：只读展示决策申请内容（阶段门 / 交付物完成率 / 未关闭阻断问题数 / 认证齐套与供应确认 / 决策材料）+ 核对结论与意见（口径与内置「审批意见」一致：允许驳回、驳回目标、意见必填全随节点声明）。2026-10-29 补齐 —— 此前该节点没有专属表单，核对人只能看到一张空的「审批意见」，等于凭记忆签字。"
+    },
+    {
+      "code": "gate-decision-meeting",
+      "name": "决策会表决单",
+      "nodeTypes": "COUNTERSIGN_APPROVAL",
+      "component": "GateDecisionMeetingForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 147,
+      "description": "阶段决策流程「决策会」节点专用：只读展示决策申请内容（阶段门 / 交付物完成率 / 未关闭阻断问题数 / 认证齐套与供应确认 / 决策材料）+ 会签（表决规则 / 各参与人结论与意见 / 我这一票，含一票否决语义）。2026-10-29 补齐 —— 此前该节点没有专属表单，会签人看不到在决策什么。"
+    },
+    {
+      "code": "gate-decision-record",
+      "name": "决策结论登记表",
+      "nodeTypes": "TASK",
+      "component": "GateDecisionRecordForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 150,
+      "description": "结论留痕用表：决策 + 三类风险 + 决策依据 + 附加条件。审厂与追溯看的正是这张表（gates.json 的 recordFields 与之对应）。（组件待补：当前运行期走兜底通用表单）"
+    },
+    {
+      "code": "component-qualification-apply",
+      "name": "元器件认证申请",
+      "nodeTypes": "START,TASK",
+      "component": "ComponentQualificationForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 160,
+      "description": "新器件申请认证：使用位置、认证要求、可靠性验证项、替代与 AVL 影响、目标准入状态。器件身份与 MPN 由流程关联的业务对象带出并只读展示（含 AML 认可制造商料号与单一来源风险汇总），不手填。已实现专属组件（即上方标注的 component 名）。"
+    },
+    {
+      "code": "component-qualification-review",
+      "name": "元器件认证审批",
+      "nodeTypes": "APPROVAL,TASK",
+      "component": "ComponentQualificationReviewForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 170,
+      "description": "本流程人工节点专用（评审/办理）：只读展示元器件引入申请信息（器件与 MPN、需求与参数、认证与可靠性、准入状态）+ 审批结论与意见（口径与内置「审批意见」一致：允许驳回、驳回目标、意见必填全随节点声明）。2026-10-13 新增 —— 内置审批表看不到申请信息，审批人等于凭记忆签字。"
+    },
+    {
+      "code": "component-qualification-countersign",
+      "name": "元器件认证会签",
+      "nodeTypes": "COUNTERSIGN_APPROVAL",
+      "component": "ComponentQualificationCountersignForm",
+      "builtin": false,
+      "enabled": true,
+      "sortOrder": 180,
+      "description": "本流程会签节点专用：只读展示元器件引入申请信息 + 会签规则与各参与人办理情况（谁同意、谁驳回、意见）+ 本人结论与意见（口径与内置「会签」一致，含一票否决语义）。2026-10-13 新增 —— 同理，会签人必须能看到在评审什么。"
+    }
+  ]
+}

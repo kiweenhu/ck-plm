@@ -1,0 +1,15 @@
+{
+  "capabilities": [
+    { "code": "COMPONENT_MANAGEMENT", "name": "元器件管理",   "default": true,
+      "note": "元器件库 + 器件分类树（19 大类 / 约 60 叶子）" },
+    { "code": "ECAD_MANAGEMENT",      "name": "ECAD 数据管理", "default": true,
+      "note": "封装 / 图符 / 原理图 / PCB 设计 / 电子设计项目" },
+    { "code": "STD_PART_LIBRARY",     "name": "标准件库",     "default": true },
+    { "code": "GEN_PART_QUALIFY",     "name": "通用件认定",   "default": true,
+      "note": "阈值驱动候选扫描 + 认定流程" },
+    { "code": "BOM_COST",             "name": "BOM 成本核算", "default": true,
+      "note": "已有实现（含成本缺口率诚实统计）" },
+    { "code": "MPN_MANAGEMENT",       "name": "MPN 管理",     "default": true,
+      "note": "参考 Windchill 的 AML/AVL：一个内部件认可多个制造商料号（制造商 + MPN），每个料号再挂多家供货渠道（供应商料号/价格/交期/MOQ/SPQ/首选）；顺带落地 SUPPLIER_INFO 属性组声明过的 supplierCount（= 去重供应商数），R-SH-11 单一来源风险据此可算" }
+  ]
+}

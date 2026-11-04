@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:ckplm="http://www.ck.com/plm/workflow/dsl"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.ck.com/plm/workflow">
+  <process id="gate-decision" name="阶段决策流程" isExecutable="true">
+    <documentation>通用阶段决策流程：决策申请与自检结果填写 → 材料齐备性核对 → 决策会 → 结论留痕。门码与检查类型来自行业包的 gates.json。</documentation>
+    <startEvent id="start_1" name="开始：决策申请" ckplm:nodeType="START" flowable:initiator="initiator" ckplm:initiator="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="gate-decision-apply" ckplm:formRef="gate-decision-apply"/>
+    <userTask id="n_apply" name="决策申请与自检结果" ckplm:nodeType="TASK" flowable:assignee="${initiator}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="gate-decision-apply" ckplm:formRef="gate-decision-apply"/>
+    <userTask id="set_assignee" name="设置审批人" ckplm:nodeType="SET_ASSIGNEE" flowable:assignee="${initiator}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="CKPLM_SETUP_ASSIGNEE" ckplm:formRef="CKPLM_SETUP_ASSIGNEE"/>
+    <userTask id="n_material" name="材料齐备性核对" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_n_material}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;QUALITY_ENGINEER&quot;]}" ckplm:approvalMode="&quot;SINGLE&quot;" ckplm:commentRequired="true" flowable:formKey="gate-decision-material" ckplm:formRef="gate-decision-material"/>
+    <userTask id="n_meeting" name="决策会" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;PROJECT_MANAGER&quot;,&quot;SYSTEM_ENGINEER&quot;,&quot;QUALITY_ENGINEER&quot;]}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;PERCENT&quot;,&quot;percent&quot;:100}" ckplm:commentRequired="true" flowable:formKey="gate-decision-meeting" ckplm:formRef="gate-decision-meeting">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_n_meeting}" flowable:elementVariable="ckplmApprover"><completionCondition>${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 100 || ckplmVetoed}</completionCondition></multiInstanceLoopCharacteristics></userTask>
+    <userTask id="n_record" name="结论留痕" ckplm:nodeType="TASK" flowable:candidateUsers="${ckplmSetupAssignees_n_record}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;PROJECT_MANAGER&quot;]}" flowable:formKey="gate-decision-record" ckplm:formRef="gate-decision-record"/>
+    <endEvent id="n_end" name="结束：决策完成" ckplm:nodeType="END"/>
+    <sequenceFlow id="e0" sourceRef="start_1" targetRef="n_apply"/>
+    <sequenceFlow id="e1" sourceRef="n_apply" targetRef="set_assignee"/>
+    <sequenceFlow id="e5" sourceRef="set_assignee" targetRef="n_material"/>
+    <sequenceFlow id="e2" sourceRef="n_material" targetRef="n_meeting"/>
+    <sequenceFlow id="e3" sourceRef="n_meeting" targetRef="n_record"/>
+    <sequenceFlow id="e4" sourceRef="n_record" targetRef="n_end"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="gate-decision">
+    <bpmndi:BPMNShape id="Shape_start_1" bpmnElement="start_1">
+      <omgdc:Bounds x="296" y="52" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_apply" bpmnElement="n_apply">
+      <omgdc:Bounds x="240" y="150" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_set_assignee" bpmnElement="set_assignee">
+      <omgdc:Bounds x="240" y="270" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_material" bpmnElement="n_material">
+      <omgdc:Bounds x="240" y="390" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_meeting" bpmnElement="n_meeting">
+      <omgdc:Bounds x="240" y="510" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_record" bpmnElement="n_record">
+      <omgdc:Bounds x="240" y="630" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_n_end" bpmnElement="n_end">
+      <omgdc:Bounds x="296" y="750" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNEdge id="Edge_e0" bpmnElement="e0">
+      <omgdi:waypoint x="311" y="82"/>
+      <omgdi:waypoint x="311" y="150"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e1" bpmnElement="e1">
+      <omgdi:waypoint x="311" y="194"/>
+      <omgdi:waypoint x="311" y="270"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e5" bpmnElement="e5">
+      <omgdi:waypoint x="311" y="314"/>
+      <omgdi:waypoint x="311" y="390"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e2" bpmnElement="e2">
+      <omgdi:waypoint x="311" y="434"/>
+      <omgdi:waypoint x="311" y="510"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e3" bpmnElement="e3">
+      <omgdi:waypoint x="311" y="554"/>
+      <omgdi:waypoint x="311" y="630"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e4" bpmnElement="e4">
+      <omgdi:waypoint x="311" y="674"/>
+      <omgdi:waypoint x="311" y="750"/>
+    </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

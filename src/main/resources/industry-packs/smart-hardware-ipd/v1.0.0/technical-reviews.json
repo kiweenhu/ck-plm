@@ -1,0 +1,113 @@
+{
+  "inherit": "electronics-core@1.0.0",
+  "items": [
+    { "code": "TR1_CONCEPT", "stage": "IPD_CONCEPT", "name": "概念与需求评审", "type": "TECHNICAL", "process": "technical-review", "sortOrder": 1,
+      "checkItems": [
+        { "seq": 1, "text": "每条需求是否可验证（有验收口径与量纲）",             "severity": "BLOCK" },
+        { "seq": 2, "text": "目标市场数据是否有来源与日期（非拍脑袋）",           "severity": "WARN"  },
+        { "seq": 3, "text": "是否给出两个以上备选概念方案并说明取舍",             "severity": "BLOCK" },
+        { "seq": 4, "text": "关键技术是否逐项标注成熟度与验证计划",               "severity": "BLOCK" },
+        { "seq": 5, "text": "目标售价反推的 BOM 目标价是否可成立",               "severity": "WARN"  },
+        { "seq": 6, "text": "目标市场认证清单（CE/UL/FCC 等）是否已列出",         "severity": "WARN"  }
+      ],
+      "outputTypes": ["ISSUE_LIST", "VERDICT"],
+      "verdictOptions": ["PASS", "PASS_WITH_CONDITION", "FAIL"],
+      "industryNote": "需求只写「高性价比」「外观漂亮」这类词，等于没有需求——此评审唯一要治的就是不可验证的表述。挂概念阶段，不设门：技术评审是「会」，不是「门」" },
+
+    { "code": "TR2_SPEC", "stage": "IPD_PLAN", "name": "需求规格与架构评审", "type": "TECHNICAL", "process": "technical-review", "sortOrder": 1,
+      "checkItems": [
+        { "seq": 1, "text": "规格是否覆盖功能/性能/环境/安规四类，且有判定条件", "severity": "BLOCK" },
+        { "seq": 2, "text": "系统架构是否给出模块职责与接口定义",                 "severity": "BLOCK" },
+        { "seq": 3, "text": "关键器件是否给出备份或替代方案",                     "severity": "WARN"  },
+        { "seq": 4, "text": "关键器件的优选等级是否 P0/P1（不得 P3）",           "severity": "BLOCK" },
+        { "seq": 5, "text": "长交期物料（主控、存储、模具）交期是否已核实",       "severity": "WARN"  },
+        { "seq": 6, "text": "EVT/DVT/PVT 测试项与样机数量是否明确",              "severity": "WARN"  },
+        { "seq": 7, "text": "认证与合规计划（送检时间、周期、费用）是否排入计划", "severity": "WARN"  }
+      ],
+      "outputTypes": ["ISSUE_LIST", "VERDICT"],
+      "verdictOptions": ["PASS", "PASS_WITH_CONDITION", "FAIL"],
+      "industryNote": "架构错、后面全返工；器件选错、采购就买错料——这两件事在计划阶段一次性看住，比在验证阶段补救便宜一个数量级" },
+
+    { "code": "TR4_HW_SCHEMATIC", "stage": "IPD_DEVELOP", "name": "原理图技术评审", "type": "TECHNICAL", "process": "technical-review", "sortOrder": 1,
+      "checkItems": [
+        { "seq": 1, "text": "电源架构是否满足各级电压/电流余量要求（≥20% 降额）", "severity": "BLOCK" },
+        { "seq": 2, "text": "关键信号（时钟、复位、差分对）走线规划是否合理",     "severity": "BLOCK" },
+        { "seq": 3, "text": "所有器件是否均来自优选库（P0/P1）",                   "severity": "WARN"  },
+        { "seq": 4, "text": "单一来源器件是否已标注并给出风险应对",               "severity": "WARN"  },
+        { "seq": 5, "text": "ESD/浪涌防护器件是否覆盖所有对外接口",               "severity": "BLOCK" },
+        { "seq": 6, "text": "是否预留测试点（关键信号、电源、地）",               "severity": "WARN"  },
+        { "seq": 7, "text": "调试接口（SWD/JTAG/UART）是否引出",                  "severity": "WARN"  },
+        { "seq": 8, "text": "器件封装是否与实物库一致（避免封装错误导致改板）",   "severity": "BLOCK" }
+      ],
+      "outputTypes": ["ISSUE_LIST", "VERDICT"],
+      "verdictOptions": ["PASS", "PASS_WITH_CONDITION", "FAIL"],
+      "industryNote": "第 1 条（20% 降额）与第 8 条（封装与实物库一致）是纯行业经验：来自「板子冒烟了」与「贴片厂说贴不上」两类真实事故。code 沿用文档第 12 节原样（历史码，改码会断掉 deliverables.json 里 REVIEW_PASSED.reviewTemplate 的引用）" },
+
+    { "code": "TR3_STRUCT", "stage": "IPD_DEVELOP", "name": "结构设计评审（开模前）", "type": "TECHNICAL", "process": "technical-review", "sortOrder": 2,
+      "checkItems": [
+        { "seq": 1, "text": "拔模斜度、壁厚与缩水是否满足注塑工艺要求",           "severity": "BLOCK" },
+        { "seq": 2, "text": "卡扣/螺钉柱是否做过装配干涉检查（含公差链）",       "severity": "BLOCK" },
+        { "seq": 3, "text": "关键尺寸公差是否标注齐全且与检验能力匹配",           "severity": "BLOCK" },
+        { "seq": 4, "text": "散热路径是否验证过（热点温升是否在限值内）",         "severity": "WARN"  },
+        { "seq": 5, "text": "跌落/振动薄弱点是否已识别并有加强措施",             "severity": "WARN"  },
+        { "seq": 6, "text": "表面处理与丝印/标识是否与安规要求一致",             "severity": "WARN"  }
+      ],
+      "outputTypes": ["ISSUE_LIST", "VERDICT"],
+      "verdictOptions": ["PASS", "PASS_WITH_CONDITION", "FAIL"],
+      "industryNote": "模具一开，改图就是改钱：此评审前把干涉、公差、拔模看住，等于把开模返工的风险提前消化" },
+
+    { "code": "TR3_SW", "stage": "IPD_DEVELOP", "name": "软件 / 固件设计评审", "type": "TECHNICAL", "process": "technical-review", "sortOrder": 3,
+      "checkItems": [
+        { "seq": 1, "text": "看门狗与异常复位策略是否明确（含复位原因留痕）",     "severity": "BLOCK" },
+        { "seq": 2, "text": "固件升级是否支持回滚（或双分区）",                   "severity": "BLOCK" },
+        { "seq": 3, "text": "内存/Flash 余量是否满足后续迭代（≥20%）",           "severity": "WARN"  },
+        { "seq": 4, "text": "软硬件版本对应关系是否声明（防止错配）",             "severity": "BLOCK" },
+        { "seq": 5, "text": "关键外设驱动是否做过异常注入测试",                   "severity": "WARN"  },
+        { "seq": 6, "text": "量产烧录与密钥管理方案是否定义",                     "severity": "WARN"  }
+      ],
+      "outputTypes": ["ISSUE_LIST", "VERDICT"],
+      "verdictOptions": ["PASS", "PASS_WITH_CONDITION", "FAIL"],
+      "industryNote": "没有回滚方案的升级，等于把用户当测试机；软硬件版本错配是现场事故最常见的根因之一" },
+
+    { "code": "TR4_VERIFY", "stage": "IPD_VERIFY", "name": "验证与认证评审", "type": "TECHNICAL", "process": "technical-review", "sortOrder": 1,
+      "checkItems": [
+        { "seq": 1, "text": "DVT 全项测试是否通过，遗留问题是否闭环",             "severity": "BLOCK" },
+        { "seq": 2, "text": "可靠性（高低温/振动/跌落/寿命）是否按计划完成",     "severity": "BLOCK" },
+        { "seq": 3, "text": "EMC 预测试超标项是否整改并复测通过",                 "severity": "BLOCK" },
+        { "seq": 4, "text": "认证证书是否与出货型号/配置一一对应",               "severity": "BLOCK" },
+        { "seq": 5, "text": "需求-设计-测试追溯矩阵是否覆盖全部需求条目",         "severity": "WARN"  },
+        { "seq": 6, "text": "产线测试方案与工装是否可用（阈值已标定）",           "severity": "WARN"  },
+        { "seq": 7, "text": "RoHS/REACH 合规声明是否齐备（出口机型必查）",       "severity": "BLOCK" }
+      ],
+      "outputTypes": ["ISSUE_LIST", "VERDICT"],
+      "verdictOptions": ["PASS", "PASS_WITH_CONDITION", "FAIL"],
+      "industryNote": "认证机构与 Tier-1 审厂都按追溯矩阵抽查；证书与出货型号不一致，是最容易被判「体系失效」的点" },
+
+    { "code": "TR5_RELEASE", "stage": "IPD_RELEASE", "name": "量产就绪评审", "type": "TECHNICAL", "process": "technical-review", "sortOrder": 1,
+      "checkItems": [
+        { "seq": 1, "text": "生产 BOM 是否全部为已准入器件（无未准入引用）",     "severity": "BLOCK" },
+        { "seq": 2, "text": "MBOM 与 EBOM 差异是否逐条核对",                     "severity": "BLOCK" },
+        { "seq": 3, "text": "SOP/作业指导书是否覆盖全部工序与关键控制点",         "severity": "BLOCK" },
+        { "seq": 4, "text": "试产良率/直通率是否达标，遗留问题是否关闭",         "severity": "BLOCK" },
+        { "seq": 5, "text": "关键物料是否双源或有替代方案（AVL 已确认）",         "severity": "WARN"  },
+        { "seq": 6, "text": "包装标识与安规标识是否合规（出口机型必查）",         "severity": "WARN"  }
+      ],
+      "outputTypes": ["ISSUE_LIST", "VERDICT"],
+      "verdictOptions": ["PASS", "PASS_WITH_CONDITION", "FAIL"],
+      "industryNote": "产线靠人发现不良、靠口头传工艺，量产后不良率会按比例放大——此评审看的是「体系能不能替人记住」" },
+
+    { "code": "TR6_LESSONS", "stage": "IPD_LIFECYCLE", "name": "生命周期复盘评审", "type": "TECHNICAL", "process": "technical-review", "sortOrder": 1,
+      "checkItems": [
+        { "seq": 1, "text": "现场返修率/客诉是否统计到型号与批次粒度",           "severity": "WARN"  },
+        { "seq": 2, "text": "EOL 计划的客户切换期是否满足合同/客户要求",         "severity": "BLOCK" },
+        { "seq": 3, "text": "各版本变更点、兼容性与升级路径是否归档",             "severity": "WARN"  },
+        { "seq": 4, "text": "复盘结论是否转化为可复用资产或下一代的默认值",       "severity": "WARN"  },
+        { "seq": 5, "text": "变更通知（ECN/PCN）是否已发出并留存回执",           "severity": "WARN"  }
+      ],
+      "outputTypes": ["ISSUE_LIST", "VERDICT"],
+      "verdictOptions": ["PASS", "PASS_WITH_CONDITION", "FAIL"],
+      "industryNote": "行业包的价值是把这一次的教训变成下一次的默认值——复盘不沉淀成默认值，下一个项目会把同样的坑再走一遍" }
+  ],
+
+  "note": "技术评审清单（2026-10-29 扁平化）。① 结构变了：技术评审不再挂在「技术门」下面，而是**直接挂阶段**（stage 字段，取值同 stages.json）——技术评审是「一场会」，不是「一道门」，为它单独造一道门等于凭空多一层没人管的壳（界面上一行门 + 展开一行评审，看的人还得先理解「门下面还有会」）。门只留真正的决策门（详见 decision-gates.json）。② 数据模型：评审模板新增 stage_key（可空），gate 变可空；老库里的评审仍带 gate（TR1…TR6），后端取阶段时按 stage_key → gate→门阶段 的顺序回落，读得出来就不算迁移。③ 与交付件的交叉引用不变：deliverables.json 里 REVIEW_PASSED.reviewTemplate 仍指向本文件的 code（如 TR4_HW_SCHEMATIC），只是这条评审现在归属阶段而非门。④ process 仍只允许空或包链里真实存在的 <key>.bpmn20.xml（全部为 electronics-core 的 technical-review），悬空记 FAILED。⑤ sortOrder 是**阶段内**顺序：开模前同一个开发阶段有三场会（原理图 / 结构 / 软件），按 1/2/3 排，跨阶段由阶段顺序决定，不需要再拼接全局序号。"
+}

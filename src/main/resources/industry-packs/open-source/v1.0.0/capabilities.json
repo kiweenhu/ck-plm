@@ -1,0 +1,29 @@
+{
+  "capabilities": [
+    { "code": "DELIVERABLE_MANAGEMENT", "name": "交付物管理", "default": false,
+      "note": "开启后：系列/型号页阶段内出现「交付件」页签。本包不带交付件模板，页签会是空的（验证门控用）" },
+    { "code": "GATE_REVIEW", "name": "阶段门与评审", "default": false,
+      "note": "开启后：出现「阶段门」「评审」两个页签；业务配置下出现门/评审模板页" },
+    { "code": "RULE_ENGINE", "name": "检查规则", "default": false,
+      "note": "开启后：阶段内出现「检查规则」页签" },
+    { "code": "METRIC_MANAGEMENT", "name": "指标管理", "default": false,
+      "note": "开启后：整机视角页出现「指标」区；页头出现「整机视角」入口（与 DASHBOARD 任一开启即可见）" },
+    { "code": "DASHBOARD", "name": "驾驶舱", "default": false,
+      "note": "开启后：整机视角页出现「驾驶舱」区；页头出现「整机视角」入口" },
+    { "code": "COMPONENT_MANAGEMENT", "name": "元器件管理", "default": false,
+      "note": "开启后：企业资源下出现「元器件库」（本包不带电子分类树，库可建但分类为空）" },
+    { "code": "ECAD_MANAGEMENT", "name": "ECAD 数据管理", "default": false,
+      "note": "开启后：出现封装·图符库等 ECAD 数据入口（依赖平台级 ENG_DOCUMENT 类型，本包已随 platform-base 提供）" },
+    { "code": "STD_PART_LIBRARY", "name": "标准件库", "default": false,
+      "note": "开启后：出现标准件库与其「标准件入库流程」配置页签" },
+    { "code": "GEN_PART_QUALIFY", "name": "通用件认定", "default": false,
+      "note": "开启后：出现通用件库与「通用件阈值配置」页签" },
+    { "code": "BOM_COST", "name": "BOM 成本核算", "default": false,
+      "note": "开启后：零组件详情 BOM 工具栏出现「成本报告」入口" },
+    { "code": "MPN_MANAGEMENT", "name": "MPN 管理", "default": false,
+      "note": "开启后：左侧导航出现「MPN 厂商」菜单；零组件详情出现「MPN」页签；企业资源出现「MPN 管理」页签" },
+    { "code": "FUNCTIONAL_ARCHITECTURE", "name": "功能架构", "default": false,
+      "note": "开启后：系列/型号页出现「新建功能架构」按钮（类型 FUNCTIONAL 由 military-gjb / automotive-apqp 提供，本包未装 → 入口可见但类型树为空）" }
+  ],
+  "note": "本包把平台已实现的全部能力登记为 default:false —— 安装引擎对 default:false 只记「跳过」不写账本，因此装完 ck_tenant_capability 里本租户一行都没有，界面上所有受能力门控的入口如实隐藏。\n\n这是「功能开关测试台」的起点：要验证某个开关，往 ck_tenant_capability 插一行（tenant_oid=本租户、capability_code/name 照抄本文件、enabled=true、source_pack='open-source@1.0.0'），刷新页面即可看到对应入口出现；再 UPDATE enabled=false 则消失 —— 一进一出即可确认门控链路（读侧 API → useCapabilities → 各页面 v-if）是否全程生效。\n\n注意：能力码必须在 PlatformCapabilities 白名单里（本文件 12 项全部在册）。另有 4 个能力码平台尚未实现，本包不登记（登记了也会被安装引擎记「平台未实现」跳过）：CERTIFICATION_MANAGEMENT / SOFTWARE_VERSION / ISSUE_MANAGEMENT / CHANGE_MANAGEMENT。"
+}

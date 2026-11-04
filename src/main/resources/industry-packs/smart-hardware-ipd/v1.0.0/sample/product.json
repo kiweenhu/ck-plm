@@ -1,0 +1,46 @@
+{
+  "note": "示例数据：SC-2000 智能控制器（整机）。用途见 pack.json 的 sample 段（默认随包安装、按自然键幂等、可用「清理示例」精确回滚）。类型码全部取自已落地的软类型：PRODUCT_LINE / PRODUCT_MODEL / STRUCTURAL / DOCUMENT（platform-base）+ ELECTRONIC / PCBA / SCHEMATIC / PCB_LAYOUT（electronics-core 电子域）。器件上的字段（manufacturer / mpn / qualificationStatus / preferredLevel / rohsCompliant / partLifeCycle / supplierCount / needAlternate）取自本包组 attributes.json 的 24 个属性 —— 示例数据是这些属性的第一批真实填充样本。示例里故意埋了两个负例：SC-2000-LEGACY-REG（P3 优选等级 + NRND 非在产，触发规则 R-SH-08 BLOCK 与 R-SH-10 WARN）、SC-2000-WIFI（单一来源，触发 R-SH-11 WARN）—— 演示检查规则时不用现编数据。落地通道：平台目前没有示例数据安装器（PackManifest.sample 只在包详情接口被读出，REMOVE_SAMPLE 动作尚无实现），故本文件与 demo-bom.json 属『内容就绪、通道未建』；demo-script.md 是给人看的演示脚本，立即可用（pack.json 的 sample.script 正指向它）。",
+  "series": {
+    "code": "SC",
+    "name": "智能控制系列",
+    "type": "PRODUCT_LINE",
+    "description": "面向工业控制与物联网终端的整机系列；SC-2000 是其中第一款"
+  },
+  "model": {
+    "code": "SC-2000",
+    "name": "SC-2000 智能控制器",
+    "type": "PRODUCT_MODEL",
+    "seriesRef": "SC",
+    "description": "支持以太网与无线的边缘控制器：主控 + 电源双板、导轨式安装、宽温设计",
+    "attributes": {
+      "stage": "IPD_DEVELOP",
+      "CERT_STATUS": "IN_PROGRESS",
+      "note": "certStatus 是 product 级认证状态（属性模板为器件级，未定义此字段），此处仅演示规则 R-SH-01 的判定形态：未取得 OBTAINED 即不得进入发布阶段"
+    }
+  },
+  "parts": [
+    { "code": "SC-2000-MCU", "name": "主控 MCU（GD32F470）", "type": "ELECTRONIC",
+      "attributes": { "manufacturer": "GigaDevice", "mpn": "GD32F470ZGT6", "QUALIFICATION_STATUS": "QUALIFIED", "PREFERRED_LEVEL": "P0", "ROHS_COMPLIANT": true, "REACH_COMPLIANT": true, "SUPPLIER_COUNT": 2, "NEED_ALTERNATE": true, "LEAD_TIME": 12, "moq": 1000 } },
+    { "code": "SC-2000-PMIC", "name": "电源管理 IC（TPS54331）", "type": "ELECTRONIC",
+      "attributes": { "manufacturer": "Texas Instruments", "mpn": "TPS54331DR", "QUALIFICATION_STATUS": "QUALIFIED", "PREFERRED_LEVEL": "P1", "ROHS_COMPLIANT": true, "SUPPLIER_COUNT": 3, "LEAD_TIME": 16, "moq": 2500 } },
+    { "code": "SC-2000-WIFI", "name": "无线模组（Wi-Fi + BLE）", "type": "ELECTRONIC",
+      "attributes": { "manufacturer": "Espressif", "mpn": "ESP32-C6-MINI-1", "QUALIFICATION_STATUS": "SAMPLING", "PREFERRED_LEVEL": "P1", "ROHS_COMPLIANT": true, "SUPPLIER_COUNT": 1, "NEED_ALTERNATE": true, "note": "负例 A：单一来源 → 触发规则 R-SH-11（WARN）" } },
+    { "code": "SC-2000-CAP-100U", "name": "钽电容 100µF/10V", "type": "ELECTRONIC",
+      "attributes": { "manufacturer": "KEMET", "mpn": "T491A107K010AT", "QUALIFICATION_STATUS": "QUALIFIED", "PREFERRED_LEVEL": "P2", "ROHS_COMPLIANT": true, "SUPPLIER_COUNT": 2 } },
+    { "code": "SC-2000-LEGACY-REG", "name": "线性稳压器（旧设计沿用）", "type": "ELECTRONIC",
+      "attributes": { "manufacturer": "onsemi", "mpn": "MC7805CTG", "QUALIFICATION_STATUS": "RESTRICTED", "PREFERRED_LEVEL": "P3", "PART_LIFE_CYCLE": "NRND", "ROHS_COMPLIANT": true, "SUPPLIER_COUNT": 1, "EOL_DATE": "2027-06-30", "note": "负例 B：P3 + 非在产 → 触发规则 R-SH-08（BLOCK）与 R-SH-10（WARN），并让指标 EOL_RISK_COUNT 有数可算" } },
+    { "code": "SC-2000-HOUSING", "name": "上壳体（PC+ABS）", "type": "STRUCTURAL",
+      "attributes": { "ROHS_COMPLIANT": true, "HALOGEN_FREE": true } },
+    { "code": "SC-2000-BASE", "name": "下壳体（含导轨卡扣）", "type": "STRUCTURAL",
+      "attributes": { "ROHS_COMPLIANT": true, "HALOGEN_FREE": true } },
+    { "code": "SC-2000-MAIN-PCBA", "name": "主控板 PCBA", "type": "PCBA" },
+    { "code": "SC-2000-PWR-PCBA", "name": "电源板 PCBA", "type": "PCBA" }
+  ],
+  "designObjects": [
+    { "code": "SC-2000-SCH", "name": "SC-2000 主控板原理图", "type": "SCHEMATIC", "host": "SC-2000-MAIN-PCBA",
+      "review": "TR4_HW_SCHEMATIC",
+      "note": "演示交付物 DLV-SCHEMATIC 的判定：BOUND + 已评审 + REVIEW_PASSED(TR4_HW_SCHEMATIC) + 阻断问题清零" },
+    { "code": "SC-2000-PCB", "name": "SC-2000 主控板 PCB 设计", "type": "PCB_LAYOUT", "host": "SC-2000-MAIN-PCBA" },
+    { "code": "SC-2000-MANUAL", "name": "SC-2000 用户手册", "type": "DOCUMENT" }
+  ]
+}
