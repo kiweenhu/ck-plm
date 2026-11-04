@@ -1,5 +1,33 @@
 # 更新日志
 
+## [v0.3.0] - 2026-11-04
+
+**v0.3 开发周期积累** —— 三个月开发，597 文件，+99743 行。
+
+### 新增后端模块
+- `bom` — BOM 用量链接与快照管理
+- `process` — Flowable 7.2.0 流程引擎集成（审批/会签/分支终止/加签）
+- `change` — 变更管理（ECR/ECN/技术评审/变更任务）
+- `improve` — 持续改进（Issue 管理）
+- `cad` — CADForge 轻量化转换对接（CAD 可视化）
+- `search` — 全局搜索
+- `revise` — 版本修订（Part/Document/EngineeringDocument）
+
+### 新增能力
+- 方法论模板体系（Gate/Deliverable/Metric/Review/Rule Template + 实例化）
+- MPN 制造商管理（Manufacturer/Supplier/AML/AVL）
+- 行业包框架（industry-packs，platform-base 开源，商业包外部投放）
+- 角色租户隔离
+- EngDoc-Part 关联
+- 前端流程设计器（flow-designer DSL + BPMN 编译 + 版本 diff）
+- CAD 结构树与可视化查看器
+- 变更管理全流程表单（ECR/ECN/技术评审/门径决策/组件认证）
+
+### 技术栈变更
+- 流程引擎：Activiti 7 → **Flowable 7.2.0**（Activiti 已停止演进、与 SB 3.5 兼容阻塞）
+
+---
+
 ## [未发布]
 
 ### 本次更新摘要
