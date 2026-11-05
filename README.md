@@ -1,5 +1,7 @@
 # CK-PLM
 
+**中文** | [English](README.en.md)
+
 > 国内首个开源的产品生命周期管理（PLM）平台
 > The First Open-Source PLM Platform in China
 >
