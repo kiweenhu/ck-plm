@@ -16,7 +16,7 @@
 CK-PLM 由**深圳乘恺科技有限公司**发起并开源，基于十余年 Windchill 实施经验与架构理解全新构建。面向离散制造业，提供版本控制、BOM 管理、生命周期、软类型扩展、分类体系、工程文档、流程引擎、资源库等核心 PLM 能力。
 
 > ⚠️ **项目状态**：平台仍在持续构建中（Work In Progress）——核心架构已落地为代码，欢迎克隆体验与参与共建；暂不建议直接用于生产环境。
-> 最近一次发版：[v0.2.1](CHANGELOG.md)（2026-10-03），修复版本规则序号与若干租户 SQL 缺陷，新增退出其他设备与个人中心改版。
+> 最近一次发版：[v0.3.0](CHANGELOG.md)（2026-11-04），v0.3 开发周期积累：新增 BOM 管理、变更管理（ECR/ECN/技术评审）、CAD 可视化集成、方法论模板体系、MPN 制造商管理、行业包框架，流程引擎由 Activiti 切换为 Flowable 7.2.0。
 
 ## 目录
 
@@ -66,6 +66,12 @@ PLM 的本质不是一堆 CRUD 页面，而是**版本控制引擎 + 生命周�
 | 🔢 编号规则引擎 | 可配置编号段；常量/日期/序列/分类值/分隔符多种值提供器 |
 | 🔌 外部系统集成 | 目标系统（TargetSystem）登记与出站调用治理，含 URL 白名单防护 |
 | 🏠 工作台 | 最近访问对象、我的待办任务、我的近期对象等首页聚合数据 |
+| 🛠️ 变更管理 | ECR（变更请求）/ ECN（变更通知）/ 变更任务 / 技术评审 / 组件认证全流程，含会签、分支终止、加签等流程能力 |
+| 📐 CAD 可视化集成 | 与 CK-CADForge 轻量化转换服务对接，STEP → GLB 浏览器直渲，装配结构树与三维模型联动 |
+| 📋 方法论模板体系 | 阶段门（Gate）/ 交付件（Deliverable）/ 评审（Review）/ 检查规则（Rule）/ 指标（Metric）/ 驾驶舱（Dashboard）六类模板，创建产品时自动实例化快照 |
+| 🏭 MPN 制造商管理 | 制造商（Manufacturer）/ 供应商（Supplier）+ AML（认可制造商清单）/ AVL（认可供应商清单） |
+| 🔄 版本修订 | 部件 / 文档 / 工程文档统一修订入口，自动衍生新版本迭代 |
+| 📦 行业包框架 | industry-packs 体系，platform-base 开源随仓库分发；汽车 APQP / 电子核心 / 军工 GJB / 智能硬件 IPD / 传统阶段门多行业交付包 |
 
 ## 技术栈
 
@@ -120,15 +126,9 @@ docker compose down -v             # 停掉并清库（下次启动重新导入 
 # 创建数据库
 psql -U postgres -c "CREATE DATABASE ck_plm;"
 
-# 方式一：由应用自动初始化（推荐）
-# 打开 src/main/resources/application.yml，取消 sql.init 配置注释：
-#   spring:
-#     sql:
-#       init:
-#         mode: always
-#         schema-locations: classpath:schema.sql
-
-# 方式二：手动导入 schema
+# 应用启动时会自动执行 schema.sql 建表（sql.init.mode: always），
+# schema.sql 全幂等（CREATE TABLE IF NOT EXISTS），重跑无副作用。
+# 如需手动导入：
 psql -U postgres -d ck_plm -f src/main/resources/schema.sql
 
 # 注：schema.sql 是 UTF-8（无 BOM），且首行已自行 SET client_encoding='UTF8' ——
@@ -136,7 +136,7 @@ psql -U postgres -d ck_plm -f src/main/resources/schema.sql
 #     请勿把该文件另存为 GBK，否则带中文注释的语句会整条失败、建表缺一大半。
 ```
 
-> 📌 库结构的唯一真相是 `src/main/resources/schema.sql`。项目未集成 Flyway/Liquibase，应用启动不再自动建表；跨版本升级请按发布说明里的增量 SQL 手工执行。
+> 📌 库结构的唯一真相是 `src/main/resources/schema.sql`。应用启动时自动执行（`spring.sql.init.mode: always`），脚本全幂等可重跑。项目未集成 Flyway/Liquibase，跨版本升级请按发布说明里的增量 SQL 手工执行。
 
 ### 2. 启动后端
 
@@ -174,14 +174,13 @@ npm run dev
 ## 已知限制
 
 - 项目整体处于 WIP 阶段，接口与数据模型仍可能调整，不建议直接上生产
-- **变更管理（ECR/ECO）**尚未实现，需求追溯能力仍依托于功能架构模块
 - **国际化（多语言）**尚未支持，界面与提示目前仅中文
 - BOM 多视图的完整语义（视图间转换、有效性管理）仍在打磨
 - 跨版本库升级需手工执行增量 SQL（未接入自动迁移框架），`schema.sql` 只描述当前版本的完整结构
+- CAD 可视化依赖独立部署的 CK-CADForge 服务（许可证边界：Apache-2.0 vs LGPL-3.0），不随本仓库分发
 
 ## 后续规划
 
-- 变更管理（ECR/ECO）模块
 - BOM 有效性（Effectivity）与视图转换
 - MCAD / ECAD 深度工具集成
 - 需求管理与追溯矩阵增强
