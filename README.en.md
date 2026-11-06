@@ -17,6 +17,10 @@ CK-PLM is an open-source Product Lifecycle Management platform initiated and ope
 >
 > Latest release: [v0.3.0](CHANGELOG.md) (2026-11-04) — v0.3 development cycle: added BOM management, change management (ECR/ECN/technical review), CAD visualization integration, methodology template system, MPN manufacturer management, and industry pack framework. Workflow engine switched from Activiti to Flowable 7.2.0.
 
+> 🌐 **Live Demo**: <http://plm.ckai-tech.group/>
+>
+> Try CK-PLM directly in your browser — no installation required. Data is periodically reset; do not enter real business data.
+
 ## Table of Contents
 
 - [Core Architecture](#core-architecture)

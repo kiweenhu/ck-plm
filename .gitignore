@@ -34,6 +34,7 @@ application-prod.yml
 # ===== Node (frontend) =====
 frontend/node_modules/
 frontend/dist/
+frontend/dist-*/
 frontend/.env.local
 
 # ===== AI/IDE Tools (不进开源仓库) =====

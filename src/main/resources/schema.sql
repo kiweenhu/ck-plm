@@ -3086,8 +3086,9 @@ ALTER TABLE ck_change_request ADD COLUMN IF NOT EXISTS cert_impact      VARCHAR(
 ALTER TABLE ck_change_request ADD COLUMN IF NOT EXISTS customer_impact  VARCHAR(20);
 ALTER TABLE ck_change_request ADD COLUMN IF NOT EXISTS inventory_impact VARCHAR(20);
 -- 补充材料：存 ck_attachment.oid（上传在保存之前完成，随单据落库；与 PART/DOCUMENT 的 attachment_oid 同口径）
+-- 注意：ck_change_notice 的同名补列放在其 CREATE TABLE 之后（见下方变更通告一节），
+-- 否则新装库首次执行时表还不存在，ALTER 会直接失败 —— 2026-11-06 新装部署踩坑修复
 ALTER TABLE ck_change_request ADD COLUMN IF NOT EXISTS attachment_oid  CHAR(36);
-ALTER TABLE ck_change_notice  ADD COLUMN IF NOT EXISTS attachment_oid  CHAR(36);
 
 -- ============================================================================
 -- 变更请求 ↔ 问题（多对多）
@@ -3142,26 +3143,8 @@ CREATE INDEX IF NOT EXISTS idx_crao_request   ON ck_change_request_affected_obje
 CREATE INDEX IF NOT EXISTS idx_crao_container ON ck_change_request_affected_object (tenant_oid, container_oid);
 
 -- ============================================================================
--- 变更通告 ↔ 问题（多对多）
---   · 与 ck_change_request_issue 同构、刻意不合并成一张多态表：
---     两张表各自有外键与唯一约束，SQL 直白；多态表要在每条语句里带 owner_type，
---     换来的只是"少建一张表"，得不偿失
---   · 从 ECR 转来的通告会把 ECR 的关联问题**带过来**（只带未关闭的，见服务层）
+-- 变更通告 ↔ 问题（多对多）与存量补录：见下方「变更通告（ECN）」建表之后
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS ck_change_notice_issue (
-    oid          CHAR(36)     PRIMARY KEY,
-    notice_oid   CHAR(36)     NOT NULL,
-    issue_oid    CHAR(36)     NOT NULL,
-    tenant_oid   CHAR(36),
-    creator      VARCHAR(100),
-    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_cni_notice FOREIGN KEY (notice_oid) REFERENCES ck_change_notice (oid) ON DELETE CASCADE,
-    CONSTRAINT fk_cni_issue  FOREIGN KEY (issue_oid)  REFERENCES ck_issue (oid) ON DELETE CASCADE,
-    UNIQUE (notice_oid, issue_oid)
-);
-
-CREATE INDEX IF NOT EXISTS idx_cni_notice ON ck_change_notice_issue (tenant_oid, notice_oid);
-CREATE INDEX IF NOT EXISTS idx_cni_issue  ON ck_change_notice_issue (issue_oid);
 
 -- 存量数据补录：把已有的单个来源问题搬进关联表（幂等，重复启动不重复插）
 INSERT INTO ck_change_request_issue (oid, request_oid, issue_oid, tenant_oid, created_at)
@@ -3227,6 +3210,9 @@ CREATE INDEX IF NOT EXISTS idx_change_notice_request ON ck_change_notice (reques
 -- 直接开的 ECN（无来源请求）就没法挂到任何产品下。
 ALTER TABLE ck_change_notice ADD COLUMN IF NOT EXISTS product_oid  CHAR(36);
 ALTER TABLE ck_change_notice ADD COLUMN IF NOT EXISTS product_type VARCHAR(50);
+-- 存量库升级（2026-11-01）补充材料列：新装库建表时已含此列（幂等），此处为已有老库补列。
+-- 必须位于 CREATE TABLE ck_change_notice 之后，否则新装库执行到此表尚不存在
+ALTER TABLE ck_change_notice ADD COLUMN IF NOT EXISTS attachment_oid  CHAR(36);
 
 -- 存量库补列（2026-11-03）：只用变更通告的租户也要能说清「改什么、多严重、影响什么、为什么改、怎么做」。
 --   · 无来源请求（独立 ECN）：这 8 列由填单人给，是审批人判断的唯一依据；
@@ -3243,6 +3229,29 @@ ALTER TABLE ck_change_notice ADD COLUMN IF NOT EXISTS reason           VARCHAR(4
 ALTER TABLE ck_change_notice ADD COLUMN IF NOT EXISTS proposal         VARCHAR(4000);
 
 CREATE INDEX IF NOT EXISTS idx_change_notice_product ON ck_change_notice (tenant_oid, product_oid);
+
+-- ============================================================================
+-- 变更通告 ↔ 问题（多对多）
+--   · 与 ck_change_request_issue 同构、刻意不合并成一张多态表：
+--     两张表各自有外键与唯一约束，SQL 直白；多态表要在每条语句里带 owner_type，
+--     换来的只是"少建一张表"，得不偿失
+--   · 从 ECR 转来的通告会把 ECR 的关联问题**带过来**（只带未关闭的，见服务层）
+--   · 位置约束：必须位于 ck_change_notice 建表之后（外键引用），2026-11-06 修复顺序 bug
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ck_change_notice_issue (
+    oid          CHAR(36)     PRIMARY KEY,
+    notice_oid   CHAR(36)     NOT NULL,
+    issue_oid    CHAR(36)     NOT NULL,
+    tenant_oid   CHAR(36),
+    creator      VARCHAR(100),
+    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_cni_notice FOREIGN KEY (notice_oid) REFERENCES ck_change_notice (oid) ON DELETE CASCADE,
+    CONSTRAINT fk_cni_issue  FOREIGN KEY (issue_oid)  REFERENCES ck_issue (oid) ON DELETE CASCADE,
+    UNIQUE (notice_oid, issue_oid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cni_notice ON ck_change_notice_issue (tenant_oid, notice_oid);
+CREATE INDEX IF NOT EXISTS idx_cni_issue  ON ck_change_notice_issue (issue_oid);
 
 -- ============================================================================
 -- 变更任务

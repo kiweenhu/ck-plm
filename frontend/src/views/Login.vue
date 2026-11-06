@@ -181,10 +181,9 @@
         </div>
       </div>
 
-      <!-- PLM 能力卡片（0.2.0 口径：多专业域/类型树、低代码页面设计器、资源库与电子域为本版能力） -->
+      <!-- 差异化特性卡：只保留 4 条核心特性，避免能力清单式罗列 -->
       <div class="plm-capability-card">
-        <h3 class="capability-title">平台能力</h3>
-        <p class="capability-desc">CK-PLM 为企业提供全栈产品生命周期管理</p>
+        <h3 class="capability-title">关键特性</h3>
 
         <div class="tech-tags">
           <span class="tech-tag spring">Spring Boot 3</span>
@@ -241,8 +240,7 @@ import { h, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   UserOutlined, LockOutlined,
-  ApartmentOutlined, LayoutOutlined, DatabaseOutlined, AppstoreOutlined,
-  TagsOutlined, BranchesOutlined, DeploymentUnitOutlined, SafetyCertificateOutlined
+  ApartmentOutlined, LayoutOutlined, AppstoreOutlined, GithubOutlined
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { login, registerTenant } from '@/api'
@@ -259,18 +257,17 @@ const userStore = useUserStore()
 const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.2.0'
 
 /**
- * 平台能力（0.2.0 口径）—— 前三项是本版新增/重构的能力，界面上带 NEW 标记。
- * 图标改用 antd 图标 + 每项自带主色（emoji 在不同系统渲染差异大，观感不可控）。
+ * 差异化特性（登录页只讲 4 条关键特性，不做全能力罗列）：
+ *   1. 开源模式 —— 传统商业 PLM 是闭源黑盒 + 高额 License，CK-PLM 源码全开放（Open Core）
+ *   2. 零改表扩展 —— 传统 PLM 加字段/改页面要走二开和升级合并，CK-PLM 用低代码设计器 + IBA 直接搞定
+ *   3. 多专业域与类型继承 —— 软类型树开箱即用，新品类零代码接入
+ *   4. 内置研发域管理体系与流程 —— 传统 PLM 需要从零建模和定制，CK-PLM 预置研发业务域、最佳实践与可视化审批流程，开箱即用
  */
 const capabilities = [
-  { icon: ApartmentOutlined, color: '#22d3ee', name: '多专业域与类型树', hint: '6 个预置业务域 · 类型继承 · 零改表扩展', isNew: true },
-  { icon: LayoutOutlined, color: '#a78bfa', name: '低代码页面设计器', hint: '列表 / 表单 / 详情编排 · IBA 扩展属性', isNew: true },
-  { icon: DatabaseOutlined, color: '#34d399', name: '资源库与电子域', hint: '标准件 / 通用件库 · 元器件库 · 封装符号库', isNew: true },
-  { icon: AppstoreOutlined, color: '#60a5fa', name: '产品全生命周期管理', hint: '产品系列 · 型号 · 研发阶段' },
-  { icon: TagsOutlined, color: '#fbbf24', name: '分类与编码管理', hint: '分类树 · 编码规则 · 版本控制' },
-  { icon: BranchesOutlined, color: '#f472b6', name: '复合实体与迭代', hint: 'Revision / Iteration · 检出检入 · BOM' },
-  { icon: DeploymentUnitOutlined, color: '#4ade80', name: '可视化工作流引擎', hint: 'BPMN 2.0 · 生命周期模板 · 审批' },
-  { icon: SafetyCertificateOutlined, color: '#fb7185', name: '多租户与权限控制', hint: '租户隔离 · RBAC · 平台管理' }
+  { icon: GithubOutlined, color: '#4ade80', name: '真开源 · Apache-2.0', hint: '源码 100% 开放 · 告别闭源黑盒与天价 License' },
+  { icon: LayoutOutlined, color: '#a78bfa', name: '零改表低代码扩展', hint: '页面设计器编排列表/表单/详情 · IBA 扩展属性即配即用', isNew: true },
+  { icon: ApartmentOutlined, color: '#22d3ee', name: '多专业域与类型继承', hint: '6 大预置业务域 · 软类型树 · 新品类零代码接入', isNew: true },
+  { icon: AppstoreOutlined, color: '#f9a03f', name: '内置研发域管理体系与流程', hint: '预置研发业务域与最佳实践 · BPMN 2.0 可视化流程 · 开箱即用' }
 ]
 
 const formRef = ref()
@@ -552,7 +549,7 @@ const handleRegister = async () => {
   box-shadow: 0 0 40px rgba(74,222,128,0.03), 0 8px 32px rgba(0,0,0,0.4);
   padding: 32px 28px; display: flex; flex-direction: column;
 }
-.capability-title { font-size: 16px; font-weight: 600; color: #e8edf5; margin: 0 0 4px; letter-spacing: 1px; }
+.capability-title { font-size: 16px; font-weight: 600; color: #e8edf5; margin: 0 0 18px; letter-spacing: 1px; }
 .capability-desc { font-size: 12px; color: rgba(167,178,200,0.55); margin: 0 0 18px; }
 
 /* 技术栈标签 */
@@ -563,9 +560,9 @@ const handleRegister = async () => {
 .tech-tag.pg { color: #4da6ff; background: rgba(77,166,255,0.1); border-color: rgba(77,166,255,0.25); }
 .tech-tag.flowable { color: #f9a03f; background: rgba(249,160,63,0.1); border-color: rgba(249,160,63,0.25); }
 
-/* 能力列表：每项自带主色 --cap-color（由模板按数据注入） */
-.capability-list { display: flex; flex-direction: column; gap: 6px; flex: 1; }
-.capability-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s ease; }
+/* 能力列表：每项自带主色 --cap-color（由模板按数据注入）；4 条精简版加大间距与内边距，避免卡片下半部留白 */
+.capability-list { display: flex; flex-direction: column; gap: 12px; flex: 1; justify-content: center; }
+.capability-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s ease; }
 .capability-item:hover { background: rgba(255,255,255,0.06); border-color: var(--cap-color, rgba(74,222,128,0.18)); transform: translateX(3px); box-shadow: 0 0 20px -10px var(--cap-color, rgba(74,222,128,0.5)); }
 /* 图标块：统一尺寸 + 主色描边，替代原来各平台渲染不一的 emoji */
 .capability-icon {
@@ -578,9 +575,9 @@ const handleRegister = async () => {
 }
 .capability-item:hover .capability-icon { border-color: var(--cap-color, #4ade80); box-shadow: 0 0 14px -5px var(--cap-color, #4ade80); }
 .capability-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.capability-name { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: #e8edf5; letter-spacing: 0.3px; }
+.capability-name { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: #e8edf5; letter-spacing: 0.3px; }
 .capability-new { font-style: normal; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; line-height: 13px; padding: 0 5px; border-radius: 4px; color: #4ade80; background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.28); }
-.capability-hint { font-size: 11px; line-height: 1.35; color: rgba(167,178,200,0.55); }
+.capability-hint { font-size: 11.5px; line-height: 1.4; color: rgba(167,178,200,0.55); }
 
 /* 底部链接 */
 .capability-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 8px; font-size: 11px; }
