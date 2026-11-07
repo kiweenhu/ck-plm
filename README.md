@@ -173,7 +173,7 @@ npm run dev
 | 资源 | 说明 |
 |------|------|
 | [CHANGELOG.md](CHANGELOG.md) | 版本更新记录 |
-| [CK-CADForge 安装指南](docs/CK-CADForge-安装指南.md) | CAD 轻量化转换服务的部署与对接：Docker / 裸机、令牌与共享卷、验收步骤、故障排查 |
+| [CK-CADForge 安装指南](http://ckai-tech.group/docs/ck-cadforge-install.html) | CAD 轻量化转换服务的部署与对接：Docker / 裸机、令牌与共享卷、验收步骤、故障排查 |
 | [架构与领域文章](http://ckai-tech.group/blog/) | 版本控制、替代料、ECAD 领域模型、流程设计器等深度文章 |
 | [社区 Wiki](https://github.com/kiweenhu/ck-plm/wiki) | 设计说明与常见问题 |
 
