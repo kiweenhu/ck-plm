@@ -82,6 +82,32 @@
           </a-form-item>
         </a-form>
 
+        <!--
+          社区支持：企业侧登录被拦（未审核 / 已驳回 / 已暂停）时，这里直接承载原因，
+          并把用户引向社区贡献者 —— toast 三秒就没了，用户来不及照着提示去联系人。
+          平时也常驻，遇到审核或接入问题随时能找到人；二维码可点开看大图再扫。
+        -->
+        <div class="community-support" :class="{ 'is-blocked': tenantBlockMessage }">
+          <a-image
+            class="community-qr"
+            :src="communityWechatQr"
+            :width="tenantBlockMessage ? 80 : 44"
+            :height="tenantBlockMessage ? 80 : 44"
+            alt="社区微信二维码"
+          />
+          <div class="community-text">
+            <p class="community-title">
+              {{ tenantBlockMessage ? tenantBlockTitle : '企业审核遇到问题？' }}
+            </p>
+            <p class="community-desc">
+              {{ tenantBlockMessage || '点击二维码，添加社区贡献者微信协助处理企业审核与接入问题' }}
+            </p>
+            <p v-if="tenantBlockMessage" class="community-action">
+              扫码联系社区贡献者，协助跟进审核
+            </p>
+          </div>
+        </div>
+
         <div class="register-toggle">
           <span class="register-hint">还没有账号？</span>
           <a class="register-link" @click="isRegistering = true">注册租户</a>
@@ -181,9 +207,12 @@
         </div>
       </div>
 
-      <!-- 差异化特性卡：只保留 4 条核心特性，避免能力清单式罗列 -->
+      <!--
+        差异化特性卡：只保留 4 条核心特性，避免能力清单式罗列。
+        标题写给"还没进来的人"看 —— 登录页不是产品手册，不说「关键特性」，而是回答选型时的第一问。
+      -->
       <div class="plm-capability-card">
-        <h3 class="capability-title">关键特性</h3>
+        <h3 class="capability-title">为什么选择 CK-PLM</h3>
 
         <div class="tech-tags">
           <span class="tech-tag spring">Spring Boot 3</span>
@@ -236,7 +265,7 @@
 </template>
 
 <script setup>
-import { h, reactive, ref } from 'vue'
+import { computed, h, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   UserOutlined, LockOutlined,
@@ -246,6 +275,8 @@ import { message } from 'ant-design-vue'
 import { login, registerTenant } from '@/api'
 import { useUserStore } from '@/stores/user'
 import { recordLogin } from '@/composables/useActivity'
+// 社区站点（ckai-tech.group）页脚那张微信二维码，随包发布，避免登录页依赖外网图片
+import communityWechatQr from '@/assets/community-wechat-qr.png'
 // 路由层缓存的「行业初始化状态」在登录成功时必须清掉（见该函数注释）——
 // 否则租户管理员在"审批通过前登录过"之后再登录，会拿旧状态直接进 home，要按 F5 才去引导页
 import { resetOnboardingState } from '@/router'
@@ -274,6 +305,27 @@ const formRef = ref()
 const loading = ref(false)
 const isRegistering = ref(false)
 
+/**
+ * 企业侧原因导致的登录阻断 —— 未审核 / 已驳回 / 已暂停 / 已停用。
+ *
+ * <p>后端统一用 code=403 + 中文文案返回（AuthController#describeTenantBlock / tenantStatusMessage），
+ * 企业侧文案里必有「企业」或「租户」；「用户已被禁用 / 已被锁定」是账号自身问题，不在此列。
+ */
+const isTenantBlocked = (res) => res.code === 403 && /企业|租户/.test(res.message || '')
+
+/** 企业未过审的提示文案：留在页面上，替代一闪而过的 toast，用户要照着它去联系社区贡献者 */
+const tenantBlockMessage = ref('')
+
+/** 按后端文案落回真实状态，避免把「已驳回 / 已暂停」也说成"还在审核中" */
+const tenantBlockTitle = computed(() => {
+  const msg = tenantBlockMessage.value
+  if (msg.includes('审核中')) return '企业正在审核中'
+  if (msg.includes('未通过审核')) return '企业审核未通过'
+  if (msg.includes('暂停')) return '企业已暂停使用'
+  if (msg.includes('停用')) return '企业已停用'
+  return '企业暂时无法登录'
+})
+
 const formState = reactive({
   username: '',
   password: ''
@@ -290,8 +342,11 @@ const rules = {
 const handleLogin = async () => {
   try { await formRef.value.validate() } catch { return }
   loading.value = true
+  tenantBlockMessage.value = ''
   try {
-    const res = await login(formState.username.trim(), formState.password)
+    // 关掉拦截器的自动 toast：登录页要自己在卡片里留一条持久提示（尤其是企业未过审时），
+    // 否则同一条错误会弹两遍，且 toast 消失后用户就看不到该联系谁了
+    const res = await login(formState.username.trim(), formState.password, { skipErrorToast: true })
     if (res.code === 200 && res.data) {
       userStore.setLogin(res.data)
       // 换身份进入系统：清掉路由层缓存的「行业初始化状态」—— 否则会拿上一个账号
@@ -300,6 +355,10 @@ const handleLogin = async () => {
       message.success(`欢迎回来，${res.data.displayName || res.data.username}`)
       recordLogin(res.data.username)
       setTimeout(() => router.replace('/home'), 600)
+    } else if (isTenantBlocked(res)) {
+      tenantBlockMessage.value = res.message || '您的企业尚未通过平台审核'
+    } else {
+      message.error(res.message || '登录失败')
     }
   } finally {
     loading.value = false
@@ -532,6 +591,31 @@ const handleRegister = async () => {
 }
 :deep(.ant-btn-primary:hover) { background: linear-gradient(135deg, #33ddff 0%, #3888ff 100%) !important; box-shadow: 0 4px 28px rgba(0,212,255,0.4); transform: translateY(-1px); }
 :deep(.ant-btn-primary:active) { transform: translateY(0); }
+
+/* 社区支持（企业审核 / 接入问题）：常驻低调，企业没过审时转成警示态 */
+.community-support {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 18px; padding: 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(0,212,255,0.12);
+  transition: all 0.3s ease;
+}
+.community-support.is-blocked {
+  background: rgba(249,160,63,0.08);
+  border-color: rgba(249,160,63,0.35);
+  box-shadow: 0 0 18px -8px rgba(249,160,63,0.6);
+}
+/* a-image 会把 class 透到 <img> 上（不是外层 .ant-image），选择器要按 img 写 */
+.community-qr { cursor: zoom-in; }
+:deep(img.community-qr) { display: block; border-radius: 6px; background: #fff; }
+/* 外层 .ant-image 是 flex 子项，默认会被文案挤压 → 二维码被横向压扁（扫不出来），必须禁止收缩 */
+.community-support :deep(.ant-image) { flex-shrink: 0; }
+.community-text { min-width: 0; }
+.community-title { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: #e8edf5; }
+.community-support.is-blocked .community-title { color: #f9a03f; }
+.community-desc { margin: 0; font-size: 11.5px; line-height: 1.5; color: rgba(167,178,200,0.6); }
+.community-action { margin: 4px 0 0; font-size: 11.5px; line-height: 1.5; color: rgba(249,160,63,0.9); }
 
 /* 注册切换 */
 .register-toggle { text-align: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,212,255,0.08); }
