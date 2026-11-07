@@ -37,7 +37,7 @@ request.interceptors.response.use(
      * </ul>
      */
     const enveloped = res && typeof res === 'object' && 'code' in res && 'data' in res
-    if (enveloped && res.code !== 200) {
+    if (enveloped && res.code !== 200 && !response.config?.skipErrorToast) {
       message.error(res.message || '请求失败')
     }
     return res
@@ -66,12 +66,17 @@ request.interceptors.response.use(
 
 /**
  * 登录
+ *
+ * <p>{@code config} 透传给 axios：登录页会传 {@code skipErrorToast} 关掉拦截器的自动 toast，
+ * 由页面自己渲染持久提示（企业未过审这类错误需要留在屏幕上给用户看）。
+ *
  * @param {string} username
  * @param {string} password
+ * @param {object} [config]
  * @returns {Promise<{code, message, data: {token, username, displayName, roles}}>}
  */
-export function login(username, password) {
-  return request.post('/auth/login', { username, password })
+export function login(username, password, config = {}) {
+  return request.post('/auth/login', { username, password }, config)
 }
 
 /**
@@ -178,14 +183,19 @@ export function getPendingCount() {
   return request.get('/tenants/pending/count')
 }
 
-/** 审核通过 */
-export function approveTenant(oid) {
-  return request.put(`/tenants/${oid}/approve`)
+/**
+ * 审核通过
+ *
+ * <p>{@code config} 透传给 axios：审核页会传 {@code skipErrorToast} 自己提示 ——
+ * 失败往往意味着这条申请已经不存在（被别处处理或清理），需要同时刷新列表。
+ */
+export function approveTenant(oid, config = {}) {
+  return request.put(`/tenants/${oid}/approve`, null, config)
 }
 
-/** 驳回 */
-export function rejectTenant(oid, reason) {
-  return request.put(`/tenants/${oid}/reject`, { reason })
+/** 驳回（{@code config} 同 approveTenant） */
+export function rejectTenant(oid, reason, config = {}) {
+  return request.put(`/tenants/${oid}/reject`, { reason }, config)
 }
 
 /** 获取当前用户所属租户信息 */
@@ -1684,9 +1694,10 @@ export function planOnboarding(industryCode, devMethodCode) {
   })
 }
 
-/** 完成行业初始化：选定行业与研发方法，后端把该行业包装到本租户（幂等） */
+/** 完成行业初始化：选定行业与研发方法，后端把该行业包装到本租户（幂等）。
+ *  安装是逐资源落库的长操作（低配服务器可达分钟级），必须覆盖全局 15s 超时 */
 export function completeOnboarding(payload) {
-  return request.post('/onboarding/complete', payload)
+  return request.post('/onboarding/complete', payload, { timeout: 300000 })
 }
 
 // ==================== 行业包（Industry Pack）API ====================
@@ -1719,10 +1730,11 @@ export function planIndustryPack(code, version) {
   return request.get(`/industry-packs/${encodeURIComponent(code)}/${encodeURIComponent(version)}/plan`)
 }
 
-/** 安装行业包（幂等）—— 平台级包通常由启动自动安装，这里留给实施/排障手动触发 */
+/** 安装行业包（幂等）—— 平台级包通常由启动自动安装，这里留给实施/排障手动触发。
+ *  同 completeOnboarding：安装耗时可能超过全局 15s 默认超时 */
 export function installIndustryPack(code, version, params) {
   return request.post(`/industry-packs/${encodeURIComponent(code)}/${encodeURIComponent(version)}/install`,
-    params ? { params } : {})
+    params ? { params } : {}, { timeout: 300000 })
 }
 
 // ==================== 视图定义 API ====================

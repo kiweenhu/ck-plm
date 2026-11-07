@@ -128,14 +128,26 @@ const fetchPending = async () => {
   }
 }
 
+/**
+ * 审核通过。
+ *
+ * <p>失败（400「租户不存在 / 不在待审核状态」）通常不是请求出错，而是<b>这行已经过期</b> ——
+ * 申请被别处处理过，或测试数据被清理过。此时必须刷新列表，否则用户会对着一行早已不存在的
+ * 记录反复点「通过」，每次只看到一句「租户不存在」。
+ */
 const handleApprove = async (record) => {
   try {
-    const res = await approveTenant(record.oid)
+    const res = await approveTenant(record.oid, { skipErrorToast: true })
     if (res.code === 200) {
       message.success(`租户「${record.name}」审核通过，管理员账号已创建`)
-      await fetchPending()
+    } else {
+      message.warning(`${res.message || '审核失败'}，列表已刷新`)
     }
-  } catch { /* handled */ }
+  } catch {
+    message.error('审核请求失败，请稍后重试')
+  } finally {
+    await fetchPending()
+  }
 }
 
 const showRejectModal = (record) => {
@@ -151,14 +163,19 @@ const handleReject = async () => {
   }
   rejectModal.loading = true
   try {
-    const res = await rejectTenant(rejectModal.record.oid, rejectModal.reason)
+    const res = await rejectTenant(rejectModal.record.oid, rejectModal.reason, { skipErrorToast: true })
     if (res.code === 200) {
       message.success('已驳回')
-      rejectModal.visible = false
-      await fetchPending()
+    } else {
+      message.warning(`${res.message || '驳回失败'}，列表已刷新`)
     }
-  } catch { /* handled */ } finally {
+    rejectModal.visible = false
+  } catch {
+    message.error('驳回请求失败，请稍后重试')
+    rejectModal.visible = false
+  } finally {
     rejectModal.loading = false
+    await fetchPending()
   }
 }
 
