@@ -165,7 +165,7 @@ Default access: http://localhost:5173
 | Resource | Description |
 |----------|-------------|
 | [CHANGELOG.md](CHANGELOG.md) | Version update records |
-| [CK-CADForge Install Guide](http://ckai-tech.group/docs/ck-cadforge-install.html) | CAD lightweight conversion service deployment & integration: Docker / bare metal, tokens & shared volumes, acceptance steps, troubleshooting |
+| [CK-PLM Developer Onboarding Guide](http://ckai-tech.group/docs/ck-plm-install.html) | Set up your dev environment from scratch: prerequisites, code download, database init, backend/frontend startup, login and core feature walkthrough |
 | [Architecture & Domain Articles](http://ckai-tech.group/blog/) | Deep-dive articles on version control, alternate parts, ECAD domain model, flow designer |
 | [Community Wiki](https://github.com/kiweenhu/ck-plm/wiki) | Design notes and FAQ |
 
