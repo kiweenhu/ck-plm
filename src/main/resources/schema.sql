@@ -1485,6 +1485,7 @@ CREATE TABLE IF NOT EXISTS ck_tenant (
     status           VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
     contact_name     VARCHAR(100),
     contact_email    VARCHAR(200),
+    contact_phone    VARCHAR(50),
     admin_username   VARCHAR(50),
     admin_password   VARCHAR(200),
     admin_display_name VARCHAR(100),
@@ -1504,6 +1505,9 @@ CREATE TABLE IF NOT EXISTS ck_tenant (
     updater          VARCHAR(100),
     updated_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 存量库升级：注册时登记的联系电话（联系人 / 邮箱之外多一个可达方式）
+ALTER TABLE ck_tenant ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(50);
 
 -- 初始化平台层租户（所有租户共享的系统配置数据归属）
 -- 平台本身不是"客户"，不需要走行业引导 → onboarding_state 显式 DONE
@@ -3529,3 +3533,39 @@ CREATE INDEX IF NOT EXISTS idx_cadvis_inflight
 -- 存量库平滑升级：当前阶段（转换器上报的一句话，如「网格化零件 42/118」）。
 -- 只有进度百分比时，卡在 85% 的用户完全不知道在等什么。
 ALTER TABLE ck_cad_visualization ADD COLUMN IF NOT EXISTS stage VARCHAR(64);
+
+-- ==================== 使用反馈 (Feedback) ====================
+-- 页脚「问题反馈」提交的使用问题 / 缺陷 / 新功能建议。
+-- 刻意**不参与租户隔离**（登记在 TenantStatementInterceptor 的 SHARED 名单）：
+-- 平台管理员要跨租户统一查看处理，租户信息只作为文本维度冗余存一份。
+CREATE TABLE IF NOT EXISTS ck_feedback (
+    oid           CHAR(36)     PRIMARY KEY,
+    category      VARCHAR(20)  NOT NULL,
+    title         VARCHAR(200) NOT NULL,
+    content       TEXT         NOT NULL,
+    contact       VARCHAR(200),
+    page_url      VARCHAR(500),
+    tenant_id     VARCHAR(50),
+    tenant_name   VARCHAR(200),
+    reporter_oid  CHAR(36),
+    reporter_name VARCHAR(100),
+    client_info   VARCHAR(500),
+    status        VARCHAR(20)  NOT NULL DEFAULT 'NEW',
+    -- 平台管理员的回复：内容为纯文本（回复框是 textarea，不是富文本）
+    reply         TEXT,
+    reply_at      TIMESTAMP,
+    replier_name  VARCHAR(100),
+    creator       VARCHAR(100),
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater       VARCHAR(100),
+    updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 存量库升级（schema.sql 同时充当升级脚本，重跑无副作用）
+ALTER TABLE ck_feedback ADD COLUMN IF NOT EXISTS reply        TEXT;
+ALTER TABLE ck_feedback ADD COLUMN IF NOT EXISTS reply_at     TIMESTAMP;
+ALTER TABLE ck_feedback ADD COLUMN IF NOT EXISTS replier_name VARCHAR(100);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_created  ON ck_feedback (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_reporter ON ck_feedback (reporter_oid);
+CREATE INDEX IF NOT EXISTS idx_feedback_status   ON ck_feedback (status);

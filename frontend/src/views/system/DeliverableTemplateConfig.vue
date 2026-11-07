@@ -187,7 +187,7 @@
           </a-col>
           <a-col :span="12">
             <a-form-item label="责任人">
-              <a-input v-model:value="modal.form.ownerRole" placeholder="如 HW_ENGINEER（角色编码）" />
+              <a-input v-model:value="modal.form.ownerRole" placeholder="如 HARDWARE_ENGINEER（角色编码）" />
             </a-form-item>
           </a-col>
         </a-row>

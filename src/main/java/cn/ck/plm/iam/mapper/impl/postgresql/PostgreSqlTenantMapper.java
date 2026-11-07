@@ -28,7 +28,7 @@ import java.util.List;
 public interface PostgreSqlTenantMapper extends TenantMapper {
 
     /** 全列清单（含行业引导字段） */
-    String COLUMNS = "oid, tenant_id, name, status, contact_name, contact_email, "
+    String COLUMNS = "oid, tenant_id, name, status, contact_name, contact_email, contact_phone, "
             + "admin_username, admin_display_name, "
             + "approved_at, approved_by, reject_reason, "
             + "industry_code, dev_method_code, industry_pack_code, "
@@ -36,12 +36,12 @@ public interface PostgreSqlTenantMapper extends TenantMapper {
             + "creator, created_at, updater, updated_at";
 
     @Override
-    @Insert("INSERT INTO ck_tenant (oid, tenant_id, name, status, contact_name, contact_email, "
+    @Insert("INSERT INTO ck_tenant (oid, tenant_id, name, status, contact_name, contact_email, contact_phone, "
             + "admin_username, admin_password, admin_display_name, "
             + "industry_code, dev_method_code, industry_pack_code, "
             + "onboarding_state, onboarded_at, onboarded_by, profile_json, "
             + "creator, created_at, updater, updated_at) "
-            + "VALUES (#{oid}, #{tenantId}, #{name}, #{status}, #{contactName}, #{contactEmail}, "
+            + "VALUES (#{oid}, #{tenantId}, #{name}, #{status}, #{contactName}, #{contactEmail}, #{contactPhone}, "
             + "#{adminUsername}, #{adminPassword}, #{adminDisplayName}, "
             + "#{industryCode}, #{devMethodCode}, #{industryPackCode}, "
             + "#{onboardingState}, #{onboardedAt}, #{onboardedBy}, #{profileJson}, "
@@ -67,6 +67,7 @@ public interface PostgreSqlTenantMapper extends TenantMapper {
             @Result(property = "status",         column = "status"),
             @Result(property = "contactName",    column = "contact_name"),
             @Result(property = "contactEmail",   column = "contact_email"),
+            @Result(property = "contactPhone",   column = "contact_phone"),
             @Result(property = "adminUsername",  column = "admin_username"),
             @Result(property = "adminDisplayName", column = "admin_display_name"),
             @Result(property = "approvedAt",     column = "approved_at"),

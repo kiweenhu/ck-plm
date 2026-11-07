@@ -73,6 +73,7 @@ public class TenantServiceImpl implements TenantService {
         tenant.setName(request.getName() != null ? request.getName().trim() : tenantId);
         tenant.setContactName(request.getContactName());
         tenant.setContactEmail(request.getContactEmail());
+        tenant.setContactPhone(request.getContactPhone() != null ? request.getContactPhone().trim() : null);
         tenant.setAdminUsername(username);
         tenant.setAdminDisplayName(request.getAdminDisplayName() != null
                 ? request.getAdminDisplayName().trim() : username);
@@ -263,8 +264,16 @@ public class TenantServiceImpl implements TenantService {
         if (request.getTenantId() == null || request.getTenantId().trim().isEmpty()) {
             throw new IllegalArgumentException("租户标识不能为空");
         }
-        if (!request.getTenantId().trim().matches("^[a-zA-Z0-9][a-zA-Z0-9_-]{1,48}$")) {
-            throw new IllegalArgumentException("租户标识只允许字母/数字/下划线/连字符，长度 2-49，以字母或数字开头");
+        if (!request.getTenantId().trim().matches("^[a-zA-Z0-9][a-zA-Z0-9._-]{1,48}$")) {
+            throw new IllegalArgumentException("租户标识只允许字母/数字/点/下划线/连字符，长度 2-49，以字母或数字开头");
+        }
+        // 联系电话选填；填了必须是合法号码：11 位手机号 / 带区号的固话（可带分机）/ 400、800 热线。
+        // 与前端 Login.vue 的 PHONE_PATTERN 同一条规则（原来只校验字符集，"1501259622" 这种也能过）
+        if (request.getContactPhone() != null && !request.getContactPhone().trim().isEmpty()) {
+            String phone = request.getContactPhone().trim().replaceAll("\\s", "");
+            if (!phone.matches("^(?:1[3-9]\\d{9}|0\\d{2,3}-?\\d{7,8}(?:-\\d{1,6})?|(?:400|800)-?\\d{3}-?\\d{4})$")) {
+                throw new IllegalArgumentException("请输入有效联系电话（11 位手机号，或 0755-12345678 这样的固话）");
+            }
         }
         if (request.getAdminUsername() == null || request.getAdminUsername().trim().isEmpty()) {
             throw new IllegalArgumentException("管理员用户名不能为空");

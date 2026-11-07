@@ -87,7 +87,8 @@ public class SysAdminInitializer implements CommandLineRunner {
                 sysadmin.setEmail("sysadmin@ck-plm.com");
                 sysadmin.setTenantOid(TenantContext.PLATFORM_TENANT_OID);
                 userService.create(sysadmin, SYSADMIN_PASSWORD);
-                Role platformAdminRole = roleMapper.selectByCode(PLATFORM_ADMIN_ROLE_CODE);
+                Role platformAdminRole = roleMapper.selectByTenantAndCode(
+                        TenantContext.PLATFORM_TENANT_OID, PLATFORM_ADMIN_ROLE_CODE);
                 if (platformAdminRole != null) {
                     userService.assignRole(sysadmin.getOid(), platformAdminRole.getOid());
                 }
@@ -200,7 +201,8 @@ public class SysAdminInitializer implements CommandLineRunner {
      * 确保用户拥有指定角色（如果尚未分配）。
      */
     private void ensureRole(User user, String roleCode) {
-        Role role = roleMapper.selectByCode(roleCode);
+        // 启动期没有 TenantContext，selectByCode 会命中所有租户的同码角色（TooManyResultsException）
+        Role role = roleMapper.selectByTenantAndCode(TenantContext.PLATFORM_TENANT_OID, roleCode);
         if (role == null) {
             log.warn("  角色 {} 不存在，跳过分配", roleCode);
             return;
@@ -219,7 +221,9 @@ public class SysAdminInitializer implements CommandLineRunner {
      */
     private void initPlatformRole(String code, String name, String description) {
         try {
-            Role role = roleMapper.selectByCode(code);
+            // 角色自 2026-10-11 起按租户隔离：每个租户各有一份同名 code，
+            // 启动期无租户上下文，必须显式限定平台租户，否则 selectOne 直接抛 TooManyResults
+            Role role = roleMapper.selectByTenantAndCode(TenantContext.PLATFORM_TENANT_OID, code);
             if (role == null) {
                 role = new Role(code, name);
                 role.setDescription(description);
@@ -237,8 +241,7 @@ public class SysAdminInitializer implements CommandLineRunner {
                 }
             }
         } catch (Exception e) {
-            // 多租户模式下 selectByCode 可能被拦截器过滤导致查不到已有角色
-            // 捕获 DuplicateKeyException 等异常，确保幂等
+            // 捕获 DuplicateKeyException 等异常，确保初始化幂等、不阻塞启动
             log.warn("  初始化平台角色 {} 异常(可能已存在): {}", code, e.getMessage());
         }
     }

@@ -124,12 +124,14 @@
           <a-menu-item key="/system/security">安全策略</a-menu-item>
           <a-menu-item key="/system/tenants">租户审核</a-menu-item>
           <a-menu-item key="/system/industry-packs">行业包</a-menu-item>
+          <!-- 问题反馈：各租户用户在页脚提交的反馈，平台管理员统一查看并回复 -->
+          <a-menu-item key="/system/feedback">问题反馈</a-menu-item>
         </a-sub-menu>
       </a-menu>
 
-      <!-- 租户信息 -->
+      <!-- 租户标识（企业标识，如 CKAI-TECH）：名称放 tooltip，侧栏放不下全称 -->
       <div class="sider-author">
-        <div v-if="tenantDisplayName" class="tenant-name">{{ tenantDisplayName }}</div>
+        <div v-if="tenantCode" class="tenant-name" :title="tenantFullName">{{ tenantCode }}</div>
       </div>
     </a-layout-sider>
 
@@ -270,10 +272,23 @@
         <router-view />
       </a-layout-content>
 
-      <!-- 版权声明 -->
+      <!-- 版权声明 + 问题反馈入口（平台管理员不提交反馈，只在「系统配置 → 问题反馈」里回复） -->
       <a-layout-footer class="layout-footer">
-        © 2026 - 2029 乘恺科技 · 保留所有权利
+        <span>© 2026 - 2029 乘恺科技 · 保留所有权利</span>
+        <a-button
+          v-if="!isPlatformAdmin"
+          type="link"
+          size="small"
+          class="footer-feedback"
+          @click="feedbackOpen = true"
+        >
+          <template #icon><MessageOutlined /></template>
+          问题反馈
+        </a-button>
       </a-layout-footer>
+
+      <!-- 问题反馈 / 新功能建议：任何页面都能提，自动带上当前页面与登录身份 -->
+      <FeedbackModal v-model:open="feedbackOpen" />
     </a-layout>
   </a-layout>
 </template>
@@ -290,6 +305,7 @@ import {
   notifTickerText, notifTickerTooltip, notifTickerShouldScroll,
 } from '@/utils/notifications'
 import AiAssistant from '@/components/AiAssistant.vue'
+import FeedbackModal from '@/components/FeedbackModal.vue'
 import { recordLogout } from '@/composables/useActivity'
 import {
   HomeOutlined, AppstoreOutlined, DatabaseOutlined,
@@ -297,7 +313,7 @@ import {
   SettingOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
   BellOutlined, DownOutlined, UserOutlined, LogoutOutlined,
   ApartmentOutlined, FolderOutlined,
-  FileTextOutlined, SoundOutlined
+  FileTextOutlined, SoundOutlined, MessageOutlined
 } from '@ant-design/icons-vue'
 import { useCapabilities } from '@/composables/useCapabilities'
 
@@ -311,6 +327,9 @@ const hasMpn = computed(() => has('MPN_MANAGEMENT'))
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+
+/** 页脚「问题反馈」弹窗 */
+const feedbackOpen = ref(false)
 
 // 初始化 user store
 userStore.init()
@@ -344,10 +363,15 @@ const isTenantAdmin = computed(() => {
   )
 })
 
-/** 租户展示名称（优先用 store 中的 tenantName，其次用 tenantOid） */
-const tenantDisplayName = computed(() => {
-  return userStore.tenantName || userStore.tenantOid || ''
-})
+/**
+ * 侧栏底部的租户标识。
+ *
+ * <p>用**企业标识**（如 CKAI-TECH）而不是 store 里的 tenantOid：后者登录时是 36 位 UUID，
+ * 要等 /tenants/current 回来才变成标识，直接显示会闪一串乱码似的字符。
+ */
+const tenantCode = ref('')
+/** 租户全称，只用于 tooltip */
+const tenantFullName = ref('')
 
 // ---- 菜单选中 ----
 const selectedKeys = ref(['/home'])
@@ -393,6 +417,7 @@ const breadcrumbMap = {
   '/system/designer': '业务配置 / 页面设计器',
   '/system/tenants': '系统配置 / 租户审核',
   '/system/industry-packs': '系统配置 / 行业包',
+  '/system/feedback': '系统配置 / 问题反馈',
   '/log': '操作日志',
   '/profile': '个人信息'
 }
@@ -549,12 +574,14 @@ function onSearchSelect(value, option) {
 }
 
 onMounted(async () => {
-  // 获取当前租户名称（非平台租户时显示）
+  // 获取当前租户信息（侧栏底部显示企业标识，tooltip 显示全称）
   try {
     const res = await getCurrentTenant()
     if (res.code === 200 && res.data) {
       userStore.tenantOid = res.data.tenantId || res.data.oid || ''
       userStore.tenantName = res.data.name || ''
+      tenantCode.value = res.data.tenantId || res.data.name || ''
+      tenantFullName.value = res.data.name || res.data.tenantId || ''
       // 同步到 localStorage
       const stored = localStorage.getItem('user')
       if (stored) {
@@ -784,6 +811,8 @@ async function handleUserMenu({ key }) {
    它自己占固定一块，两者互不侵占 */
 .sider-author {
   flex: 0 0 auto;
+  /* 页脚是 fixed 的满屏黑条（约 42px）：这里让出等高空白，否则租户标识正好被它压住 */
+  margin-bottom: 42px;
   padding: 10px 12px 12px;
   text-align: center;
   font-size: 12px;
@@ -795,10 +824,13 @@ async function handleUserMenu({ key }) {
 }
 
 .tenant-name {
-  font-size: 13px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
-  font-weight: 500;
-  margin-bottom: 2px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .author-text {
@@ -1111,18 +1143,33 @@ async function handleUserMenu({ key }) {
   transform: translateY(-10px);
 }
 
-/* ===== 版权声明 ===== */
+/* ===== 版权声明 + 问题反馈入口 ===== */
 .layout-footer {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.65);
   padding: 12px 24px;
   background: #1a1a1a;
   letter-spacing: 0.5px;
   z-index: 100;
+}
+
+/* 反馈入口做低调的链接样式：平时不抢视线，hover 才亮起来 */
+.layout-footer .footer-feedback {
+  height: auto;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: rgba(0, 212, 255, 0.75);
+}
+.layout-footer .footer-feedback:hover {
+  color: #00d4ff;
 }
 </style>

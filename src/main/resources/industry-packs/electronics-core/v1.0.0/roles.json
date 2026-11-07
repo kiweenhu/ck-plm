@@ -1,5 +1,5 @@
 {
-  "note": "元器件引入流程涉及的业务角色（电子行业通用岗位）+ 技术评审/阶段决策流程需要的 3 个工程岗位。按平台级播一次（ck_role 是平台共享表，且 code 全局唯一），所有租户都能选到；租户可在角色配置里调整成员，不必也不该各存一份同名角色。code 与流程 DSL 里 assignee.roleCodes / BPMN 的 flowable:candidateGroups 必须逐字一致 —— 改 code 等于改流程。baseRole 是**通用角色基线**（文档第 18 节：『每个角色必须 inherit 自通用角色基线。这一条不做，跨行业统计和 L4 行业基准数据就都做不了』），取值只用该节出现的 8 个基线码：PRODUCT_MANAGER / PROJECT_MANAGER / SYSTEM_ENGINEER / ENGINEER / LIBRARIAN / QA / EXTERNAL_ROLE / DECISION_MAKER。行业包的同名岗位据此桥接（例：smart-hardware-ipd 的 PM → PROJECT_MANAGER，与这里的 PROJECT_MANAGER 同基线）。重叠：该包的 SYSTEM_ENGINEER / COMPONENT_ENGINEER 与本包同码，装第二遍时按已存在的复用。",
+  "note": "元器件引入流程涉及的业务角色（电子行业通用岗位）+ 技术评审/阶段决策流程需要的 3 个工程岗位。按平台级播一次，各租户装包时得到自己的副本（角色自 2026-10-11 起按租户隔离）；租户可在角色配置里调整成员。code 与流程 DSL 里 assignee.roleCodes / BPMN 的 flowable:candidateGroups 必须逐字一致 —— 改 code 等于改流程。baseRole 是**通用角色基线**（文档第 18 节：『每个角色必须 inherit 自通用角色基线。这一条不做，跨行业统计和 L4 行业基准数据就都做不了』），取值只用该节出现的 8 个基线码：PRODUCT_MANAGER / PROJECT_MANAGER / SYSTEM_ENGINEER / ENGINEER / LIBRARIAN / QA / EXTERNAL_ROLE / DECISION_MAKER。角色码统一（2026-11-07）：smart-hardware-ipd 原 PM / QA_ENGINEER / HW_ENGINEER / SUPPLY_CHAIN 已分别并入本包的 PROJECT_MANAGER / QUALITY_ENGINEER / HARDWARE_ENGINEER / SOURCING_ENGINEER，全系统每个岗位只有一个码。与该包同码的条目（SYSTEM_ENGINEER / COMPONENT_ENGINEER 及上述 4 个）在装第二个包时按 code 跳过。",
   "roles": [
     {
       "code": "HARDWARE_ENGINEER",
@@ -53,13 +53,7 @@
       "code": "PROJECT_MANAGER",
       "name": "项目经理",
       "baseRole": "PROJECT_MANAGER",
-      "description": "技术评审与阶段决策的组织者：评审排期、问题分派、结论留痕；行业包里的 PM / IPDT 组长等岗位都以它为基线"
-    },
-    {
-      "code": "PM",
-      "name": "项目经理",
-      "baseRole": "PROJECT_MANAGER",
-      "description": "项目计划与节奏、评审与门决策的组织者；对应交付物 DLV-PROJ-PLAN / DLV-LESSONS。与系统里技术评审流程「等待整改结果，并提交复评」节点指定的岗位一致 —— 缺这个角色，该节点在「设置审批人」里没有候选人"
+      "description": "项目计划与节奏、评审与门决策的组织者：评审排期、问题分派、结论留痕；对应交付物 DLV-PROJ-PLAN / DLV-LESSONS。技术评审流程「等待整改结果，并提交复评」节点的指定岗位也是它（2026-11-07 起原 PM 码并入本码，全系统只保留这一个「项目经理」码）"
     },
     {
       "code": "QUALITY_ENGINEER",

@@ -1,5 +1,35 @@
 # 更新日志
 
+## [v0.3.1] - 2026-11-07
+
+**v0.3.0 后续迭代** —— 演示环境上线后的首批修复与增强。
+
+### 新增功能
+- **用户反馈模块**：前端 FeedbackModal 组件 + FeedbackManage 管理后台，用户可在任意页面提交反馈，管理员集中查看与处理
+- **租户注册审核增强**：TenantRegistrationRequest 补充企业信息字段；TenantReview 页面审核流程优化
+
+### 改进
+- **租户体系完善**：Tenant 实体扩展；TenantServiceImpl 注册逻辑优化；角色 Mapper 按租户隔离查询修正
+- **产品团队角色解析**：ProductTeamRoleResolver 修正租户上下文下的角色解析逻辑
+- **TenantStatementInterceptor**：SQL 拦截器修正，避免特定场景下的租户注入异常
+- **SysAdminInitializer**：系统管理员初始化逻辑微调
+
+### 行业包修正
+- **electronics-core**：pack.json 元信息更新；technical-review 流程（BPMN + DSL）修正；roles.json 角色定义调整
+- **smart-hardware-ipd**：decision-gates / deliverables / roles 内容校正
+
+### 前端优化
+- Login 页面交互优化
+- MainLayout / OnboardingPage 布局调整
+- DeliverableTemplateConfig / GateTemplateConfig 模板配置页改进
+- notifications 通知工具优化
+- API 接口层调整
+
+### 数据库
+- schema.sql 新增反馈相关表结构
+
+---
+
 ## [v0.3.0] - 2026-11-04
 
 **v0.3 开发周期积累** —— 三个月开发，597 文件，+99743 行。

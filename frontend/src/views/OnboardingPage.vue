@@ -404,6 +404,8 @@ const state = ref(null)
 const options = ref([])
 const step = ref(-1)   // -1 = 欢迎说明页（向导之前的一页）；0 起为向导的四步
 const selected = ref('')
+/** 引导页默认勾选的行业包（code 与行业包清单 industryCode 一致） */
+const DEFAULT_INDUSTRY_CODE = 'SMART_HARDWARE'
 const result = ref({})
 const profile = ref({ segment: undefined, size: undefined, products: [] })
 const planLayers = ref([])
@@ -571,7 +573,11 @@ async function loadOptions() {
     if (res.code === 200) {
       options.value = res.data || []
       if (options.value.length && !selected.value) {
-        selected.value = options.value[0].industryCode
+        // 默认选中「智能硬件 · IPD 研发体系包」：多数客户属于该行业，少点一次；
+        // 该包不存在或仍在建设（enabled=false）时退回第一个，不至于预选一个点不动的项
+        const preferred = options.value.find(
+          o => o.industryCode === DEFAULT_INDUSTRY_CODE && o.enabled !== false)
+        selected.value = preferred ? preferred.industryCode : options.value[0].industryCode
       }
     }
   } catch (e) {

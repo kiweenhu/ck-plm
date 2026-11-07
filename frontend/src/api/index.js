@@ -102,6 +102,61 @@ export function registerTenant(data) {
   return request.post('/tenants/register', data)
 }
 
+// ==================== 使用反馈 API ====================
+
+/**
+ * 提交使用反馈（使用问题 / 缺陷 / 新功能建议）
+ *
+ * <p>页面路径、客户端信息由前端带上，租户与提交人由服务端补齐。
+ *
+ * @param {{category: string, title: string, content: string, contact?: string,
+ *          pageUrl?: string, clientInfo?: string}} data
+ */
+export function submitFeedback(data) {
+  return request.post('/feedback', data)
+}
+
+/**
+ * 反馈列表（平台管理员，跨租户）。
+ *
+ * <p>列表<b>不含</b>富文本正文（正文可能内嵌 base64 截图，一次拉几百条会把响应撑爆），
+ * 正文用 {@link getFeedbackDetail} 单条取。
+ *
+ * @param {{limit?: number, status?: string}} params status: NEW / PROCESSING / DONE / REJECTED
+ */
+export function getFeedbackList(params = {}) {
+  return request.get('/feedback', { params })
+}
+
+/** 反馈详情（含正文 HTML）：平台管理员可看全部，普通用户只能看自己提交的 */
+export function getFeedbackDetail(oid) {
+  return request.get(`/feedback/${oid}`)
+}
+
+/**
+ * 我提交过的反馈（含状态与回复），任何登录用户只看自己的。
+ *
+ * @param {number} [limit] 条数，默认 50
+ */
+export function getMyFeedbacks(limit = 50) {
+  return request.get('/feedback/mine', { params: { limit } })
+}
+
+/**
+ * 回复反馈：回复内容落库，并发站内通知给提交人。
+ *
+ * @param {string} oid 反馈 oid
+ * @param {{reply: string, status?: string}} data status 缺省 DONE（已回复）
+ */
+export function replyFeedback(oid, data) {
+  return request.post(`/feedback/${oid}/reply`, data)
+}
+
+/** 未处理反馈条数（角标用） */
+export function getUnprocessedFeedbackCount() {
+  return request.get('/feedback/unprocessed')
+}
+
 // ==================== 通知 API ====================
 
 /** 获取未读通知数 */

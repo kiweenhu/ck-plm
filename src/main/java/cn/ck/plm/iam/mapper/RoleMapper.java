@@ -28,6 +28,15 @@ public interface RoleMapper {
 
     Role selectByCode(String code);
 
+    /**
+     * 按「租户 + code」查询，显式限定租户，不依赖租户拦截器注入。
+     *
+     * <p>{@link #selectByCode(String)} 靠拦截器补 {@code tenant_oid} 条件，只能在有
+     * {@code TenantContext} 的请求里用；启动期（如 {@code SysAdminInitializer}）没有上下文，
+     * 同码角色跨多个租户各有一行，会抛 TooManyResultsException —— 平台级初始化必须走本方法。
+     */
+    Role selectByTenantAndCode(String tenantOid, String code);
+
     List<Role> selectAll();
 
     List<Role> selectByUserOid(String userOid);

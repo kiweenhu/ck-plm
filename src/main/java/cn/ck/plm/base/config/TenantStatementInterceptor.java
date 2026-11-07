@@ -81,7 +81,10 @@ public class TenantStatementInterceptor implements Interceptor {
             // 业务域（类型树/对象的域标签）：平台预置、不允许租户自定义，所有租户共享同一套域。
             // 放在"完全共享"里（而不是 PLATFORM_SHARED）：域行只有平台租户一份，
             // 完全共享即不做任何租户过滤，查询天然可见。
-            "ck_business_domain"
+            "ck_business_domain",
+            // 使用反馈：平台管理员要跨租户统一查看处理，故不注入租户条件；
+            // 表里没有 tenant_oid 列，只冗余存 tenant_id / tenant_name 文本。
+            "ck_feedback"
     ));
 
     /** 平台层共享表 —— 查询时注入 tenant_oid IN ('platform_oid', ?)；INSERT 时注入 ? */

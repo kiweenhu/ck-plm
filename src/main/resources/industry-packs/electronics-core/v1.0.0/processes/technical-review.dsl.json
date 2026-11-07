@@ -85,7 +85,7 @@
         "assignee": {
           "strategy": "ROLE",
           "roleCodes": [
-            "PM"
+            "PROJECT_MANAGER"
           ]
         },
         "formRef": "technical-review-fix"

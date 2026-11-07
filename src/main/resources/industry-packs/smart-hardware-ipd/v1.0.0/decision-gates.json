@@ -8,7 +8,7 @@
         { "type": "COST_ACHIEVE",     "maxDeviationPercent": 15, "severity": "WARN" },
         { "type": "ISSUE_OPEN",       "severity": "BLOCK", "maxCount": 0 }
       ],
-      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "PM", "QA_ENGINEER", "SUPPLY_CHAIN"],
+      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "PROJECT_MANAGER", "QUALITY_ENGINEER", "SOURCING_ENGINEER"],
       "recordFields": ["decision", "businessRisk", "technicalRisk", "supplyRisk", "decisionBasis"],
       "evidenceRequired": true,
       "industryNote": "立项决策必须留痕（Go / Hold / Terminate 及其依据）——Tier-1 客户审厂时，拿不出立项依据的项目会被当作「没有研发体系」" },
@@ -20,7 +20,7 @@
         { "type": "COST_ACHIEVE",     "maxDeviationPercent": 15, "severity": "WARN" },
         { "type": "ISSUE_OPEN",       "severity": "BLOCK", "maxCount": 0 }
       ],
-      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "PM", "SUPPLY_CHAIN", "QA_ENGINEER"],
+      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "PROJECT_MANAGER", "SOURCING_ENGINEER", "QUALITY_ENGINEER"],
       "recordFields": ["decision", "businessRisk", "technicalRisk", "supplyRisk", "decisionBasis"],
       "evidenceRequired": true,
       "industryNote": "计划阶段的决策要覆盖模具与试产预算、长交期物料锁期——试产窗口是要提前锁产能的，批不下来就得往后排一个季度" },
@@ -33,7 +33,7 @@
         { "type": "ISSUE_OPEN",       "severity": "BLOCK", "maxCount": 0 },
         { "type": "SUPPLY_CONFIRMED", "severity": "WARN" }
       ],
-      "requiredParticipants": ["PM", "PRODUCT_MANAGER", "QA_ENGINEER", "SUPPLY_CHAIN", "IPDT_LEADER"],
+      "requiredParticipants": ["PROJECT_MANAGER", "PRODUCT_MANAGER", "QUALITY_ENGINEER", "SOURCING_ENGINEER", "IPDT_LEADER"],
       "recordFields": ["decision", "businessRisk", "technicalRisk", "supplyRisk", "decisionBasis"],
       "evidenceRequired": true,
       "industryNote": "量产门（可获得性）：过此门即对外承诺交期 —— 证书齐套、产线可跑、供应有量，三者缺一不可；承诺了交不出去，比晚发布更伤客户" },
@@ -45,7 +45,7 @@
         { "type": "CERT_COMPLETE",    "severity": "BLOCK" },
         { "type": "ISSUE_OPEN",       "severity": "BLOCK", "maxCount": 0 }
       ],
-      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "QA_ENGINEER", "SUPPLY_CHAIN", "PM"],
+      "requiredParticipants": ["IPDT_LEADER", "PRODUCT_MANAGER", "QUALITY_ENGINEER", "SOURCING_ENGINEER", "PROJECT_MANAGER"],
       "recordFields": ["decision", "businessRisk", "technicalRisk", "supplyRisk", "decisionBasis"],
       "evidenceRequired": true,
       "industryNote": "上市资料必须与实测规格一致（虚标是合规风险）；定价与渠道政策一并留痕，这是上市决策的完整依据" }

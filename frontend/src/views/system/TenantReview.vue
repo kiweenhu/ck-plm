@@ -100,6 +100,7 @@ const columns = [
   { title: '租户标识', dataIndex: 'tenantId', key: 'tenantId' },
   { title: '公司名称', dataIndex: 'name', key: 'name' },
   { title: '联系人', dataIndex: 'contactName', key: 'contactName' },
+  { title: '联系电话', dataIndex: 'contactPhone', key: 'contactPhone' },
   { title: '邮箱', dataIndex: 'contactEmail', key: 'contactEmail' },
   { title: '管理员', dataIndex: 'adminUsername', key: 'adminUsername' },
   { title: '申请时间', dataIndex: 'createdAt', key: 'createdAt' },

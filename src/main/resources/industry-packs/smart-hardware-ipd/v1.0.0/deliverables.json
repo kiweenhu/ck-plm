@@ -26,12 +26,12 @@
       "dueOffsetDays": -3, "gate": "TR1",
       "industryNote": "逐项列出关键技术与成熟度，高风险项给出验证计划——把风险留到开发阶段是最贵的做法" },
 
-    { "code": "DLV-IP-LANDSCAPE", "name": "专利与合规初筛", "stage": "IPD_CONCEPT", "discipline": "QUALITY", "mandatory": false, "ownerRole": "QA_ENGINEER", "bindMode": "DOCUMENT",
+    { "code": "DLV-IP-LANDSCAPE", "name": "专利与合规初筛", "stage": "IPD_CONCEPT", "discipline": "QUALITY", "mandatory": false, "ownerRole": "QUALITY_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -3, "gate": "TR1",
       "industryNote": "目标市场专利检索 + 认证清单（CE/UL/FCC 等）；出口产品此前后再发现侵权或漏认证，代价是重开模" },
 
-    { "code": "DLV-COST-TARGET", "name": "成本目标与初估", "stage": "IPD_CONCEPT", "discipline": "PRODUCT", "mandatory": true, "ownerRole": "PM", "bindMode": "DOCUMENT",
+    { "code": "DLV-COST-TARGET", "name": "成本目标与初估", "stage": "IPD_CONCEPT", "discipline": "PRODUCT", "mandatory": true, "ownerRole": "PROJECT_MANAGER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -3, "gate": "TR1",
       "industryNote": "由目标售价反推 BOM 目标价并给出成本结构假设——没有成本目标的项目，后期一定超支" },
@@ -41,7 +41,7 @@
       "dueOffsetDays": -3, "gate": "TR1",
       "industryNote": "与现有产品系列的定位 / 替代 / 互补关系——防止内部两条产品线互相蚕食" },
 
-    { "code": "DLV-PROJ-PLAN", "name": "项目计划（WBS + 里程碑）", "stage": "IPD_PLAN", "discipline": "SYSTEM", "mandatory": true, "ownerRole": "PM", "bindMode": "DOCUMENT",
+    { "code": "DLV-PROJ-PLAN", "name": "项目计划（WBS + 里程碑）", "stage": "IPD_PLAN", "discipline": "SYSTEM", "mandatory": true, "ownerRole": "PROJECT_MANAGER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -10, "gate": "TR2",
       "industryNote": "任务 / 人力 / 工期与依赖齐备、关键路径明确——试产窗口是要提前锁产能的，计划晚一周就丢一个窗口" },
@@ -56,12 +56,12 @@
       "dueOffsetDays": -5, "gate": "TR2",
       "industryNote": "分模块职责 / 接口 / 关键器件选型与备份方案——架构错，后面全部返工" },
 
-    { "code": "DLV-KEY-COMPONENT-LIST", "name": "关键器件选型与优选清单", "stage": "IPD_PLAN", "discipline": "HARDWARE", "mandatory": true, "ownerRole": "HW_ENGINEER", "objectType": "ELECTRONIC", "bindMode": "PART_SET",
+    { "code": "DLV-KEY-COMPONENT-LIST", "name": "关键器件选型与优选清单", "stage": "IPD_PLAN", "discipline": "HARDWARE", "mandatory": true, "ownerRole": "HARDWARE_ENGINEER", "objectType": "ELECTRONIC", "bindMode": "PART_SET",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "FIELD_CHECK", "field": "PREFERRED_LEVEL", "notIn": ["P3"] }, { "type": "FIELD_CHECK", "field": "QUALIFICATION_STATUS", "in": ["QUALIFIED", "SAMPLING"] }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -5, "gate": "TR2",
       "industryNote": "P3 器件不得出现在新设计清单中；已停产器件需给出替代方案" },
 
-    { "code": "DLV-DFMEA", "name": "设计失效模式分析（DFMEA）", "stage": "IPD_PLAN", "discipline": "QUALITY", "mandatory": true, "ownerRole": "QA_ENGINEER", "bindMode": "DOCUMENT",
+    { "code": "DLV-DFMEA", "name": "设计失效模式分析（DFMEA）", "stage": "IPD_PLAN", "discipline": "QUALITY", "mandatory": true, "ownerRole": "QUALITY_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" }, { "type": "ISSUE_CLOSED", "severity": "BLOCK" } ] },
       "dueOffsetDays": -5, "gate": "TR2",
       "industryNote": "高风险项必须有缓解措施与责任人——DFMEA 是预防清单，不是事后说明" },
@@ -71,22 +71,22 @@
       "dueOffsetDays": -5, "gate": "TR2",
       "industryNote": "EVT/DVT/PVT 各阶段测什么、样机几台、判定标准是什么——智能硬件的节奏由这三轮试产定义" },
 
-    { "code": "DLV-COMPLIANCE-PLAN", "name": "认证与合规计划", "stage": "IPD_PLAN", "discipline": "QUALITY", "mandatory": true, "ownerRole": "QA_ENGINEER", "bindMode": "DOCUMENT",
+    { "code": "DLV-COMPLIANCE-PLAN", "name": "认证与合规计划", "stage": "IPD_PLAN", "discipline": "QUALITY", "mandatory": true, "ownerRole": "QUALITY_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -5, "gate": "TR2",
       "industryNote": "认证项 / 送检时间 / 周期与费用——认证没排进计划，量产就等证书" },
 
-    { "code": "DLV-SUPPLY-PLAN", "name": "供应链与试产准备计划", "stage": "IPD_PLAN", "discipline": "SUPPLY", "mandatory": true, "ownerRole": "SUPPLY_CHAIN", "bindMode": "DOCUMENT",
+    { "code": "DLV-SUPPLY-PLAN", "name": "供应链与试产准备计划", "stage": "IPD_PLAN", "discipline": "SUPPLY", "mandatory": true, "ownerRole": "SOURCING_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -5, "gate": "TR2",
       "industryNote": "关键物料交期、代工厂与产线初选——长交期料（如主控 / 结构模具）要现在就锁" },
 
-    { "code": "DLV-SCHEMATIC", "name": "硬件原理图（评审版）", "stage": "IPD_DEVELOP", "discipline": "HARDWARE", "mandatory": true, "ownerRole": "HW_ENGINEER", "objectType": "SCHEMATIC", "objectSubType": "原理图", "bindMode": "DOCUMENT",
+    { "code": "DLV-SCHEMATIC", "name": "硬件原理图（评审版）", "stage": "IPD_DEVELOP", "discipline": "HARDWARE", "mandatory": true, "ownerRole": "HARDWARE_ENGINEER", "objectType": "SCHEMATIC", "objectSubType": "原理图", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND", "desc": "已绑定对象" }, { "type": "LIFECYCLE", "minState": "已发布" }, { "type": "REVIEW_PASSED", "reviewTemplate": "TR4_HW_SCHEMATIC" }, { "type": "ISSUE_CLOSED", "severity": "BLOCK" } ] },
       "dueOffsetDays": -5, "gate": "TR3",
       "industryNote": "投板前必须关闭阻断项；原理图未评审即投板是硬件改板的首要原因。门取本阶段的门（开发=TR3，即投板门）——文档第 10 节原写 TR4，与已落地的 stages.json（TR4 属验证阶段）冲突，以阶段模板为准" },
 
-    { "code": "DLV-PCB-LAYOUT", "name": "PCB 设计文件（叠层 / 阻抗）", "stage": "IPD_DEVELOP", "discipline": "HARDWARE", "mandatory": true, "ownerRole": "HW_ENGINEER", "objectType": "PCB_LAYOUT", "bindMode": "DOCUMENT",
+    { "code": "DLV-PCB-LAYOUT", "name": "PCB 设计文件（叠层 / 阻抗）", "stage": "IPD_DEVELOP", "discipline": "HARDWARE", "mandatory": true, "ownerRole": "HARDWARE_ENGINEER", "objectType": "PCB_LAYOUT", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" }, { "type": "ISSUE_CLOSED", "severity": "BLOCK" } ] },
       "dueOffsetDays": -3, "gate": "TR3",
       "industryNote": "叠层与阻抗必须与板厂工艺能力对齐——阻抗不控的高速板，EMC 阶段一定返工" },
@@ -101,7 +101,7 @@
       "dueOffsetDays": -3, "gate": "TR3",
       "industryNote": "源码 + 可重复构建说明，版本与硬件版本对应关系明确——软硬件版本错配是现场事故的常见根因" },
 
-    { "code": "DLV-EBOM", "name": "工程 BOM（EBOM）", "stage": "IPD_DEVELOP", "discipline": "HARDWARE", "mandatory": true, "ownerRole": "HW_ENGINEER", "bindMode": "PART_SET",
+    { "code": "DLV-EBOM", "name": "工程 BOM（EBOM）", "stage": "IPD_DEVELOP", "discipline": "HARDWARE", "mandatory": true, "ownerRole": "HARDWARE_ENGINEER", "bindMode": "PART_SET",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "ISSUE_CLOSED", "severity": "BLOCK" } ] },
       "dueOffsetDays": -3, "gate": "TR3",
       "industryNote": "与图文档版本一致，位号 / 用量 / 替代料完整——EBOM 与图纸不一致，采购就会买错料" },
@@ -141,7 +141,7 @@
       "dueOffsetDays": -3, "gate": "TR4",
       "industryNote": "预测试通过、问题整改闭环——直接送正式认证而不预测试，是最常见的交学费方式" },
 
-    { "code": "DLV-CERT-REPORT", "name": "第三方认证证书 / 报告", "stage": "IPD_VERIFY", "discipline": "QUALITY", "mandatory": false, "ownerRole": "QA_ENGINEER", "bindMode": "DOCUMENT",
+    { "code": "DLV-CERT-REPORT", "name": "第三方认证证书 / 报告", "stage": "IPD_VERIFY", "discipline": "QUALITY", "mandatory": false, "ownerRole": "QUALITY_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "FIELD_CHECK", "field": "ROHS_COMPLIANT", "in": [true] }, { "type": "FIELD_CHECK", "field": "REACH_COMPLIANT", "in": [true] }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -10, "gate": "TR4",
       "industryNote": "CE / UL / FCC 等证书齐套且与出货型号一致；是否强制由企业画像的「产品是否出口」决定（pack.json 中 parameter deliverable.DLV-CERT-REPORT.mandatory）" },
@@ -156,7 +156,7 @@
       "dueOffsetDays": -3, "gate": "TR4",
       "industryNote": "测试项 / 判定阈值 / 工装清单可用——工装没就绪，产线只能靠人来发现不良" },
 
-    { "code": "DLV-QUALITY-PLAN", "name": "质量计划与检验标准", "stage": "IPD_VERIFY", "discipline": "QUALITY", "mandatory": true, "ownerRole": "QA_ENGINEER", "bindMode": "DOCUMENT",
+    { "code": "DLV-QUALITY-PLAN", "name": "质量计划与检验标准", "stage": "IPD_VERIFY", "discipline": "QUALITY", "mandatory": true, "ownerRole": "QUALITY_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -3, "gate": "TR4",
       "industryNote": "进料 / 过程 / 出货检验项与 AQL 明确——检验标准是供应商来料争议的唯一依据" },
@@ -186,7 +186,7 @@
       "dueOffsetDays": -3, "gate": "TR5",
       "industryNote": "良率与直通率达标、遗留问题关闭——小批量的问题不解决，大批量会按比例放大" },
 
-    { "code": "DLV-AVL", "name": "合格供应商清单（AVL）与价格", "stage": "IPD_RELEASE", "discipline": "SUPPLY", "mandatory": true, "ownerRole": "SUPPLY_CHAIN", "bindMode": "DOCUMENT",
+    { "code": "DLV-AVL", "name": "合格供应商清单（AVL）与价格", "stage": "IPD_RELEASE", "discipline": "SUPPLY", "mandatory": true, "ownerRole": "SOURCING_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -5, "gate": "TR5",
       "industryNote": "关键物料双源或有替代方案——单一来源在缺货周期里就是停产风险" },
@@ -196,7 +196,7 @@
       "dueOffsetDays": -3, "gate": "TR5",
       "industryNote": "规格书 / 彩页 / FAQ / 竞品对比——上市资料要与实测规格一致，虚标是合规风险" },
 
-    { "code": "DLV-SERVICE-DOC", "name": "售后与维修资料", "stage": "IPD_RELEASE", "discipline": "QUALITY", "mandatory": false, "ownerRole": "QA_ENGINEER", "bindMode": "DOCUMENT",
+    { "code": "DLV-SERVICE-DOC", "name": "售后与维修资料", "stage": "IPD_RELEASE", "discipline": "QUALITY", "mandatory": false, "ownerRole": "QUALITY_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -3, "gate": "TR5",
       "industryNote": "维修手册 / 备件清单 / 返修流程——返修能力决定售后成本，发布前定不清就只能边修边补" },
@@ -211,7 +211,7 @@
       "dueOffsetDays": -10, "gate": "TR6",
       "industryNote": "停产时间表、库存处置与替代型号方案——EOL 通知要留足客户切换期，否则退货与索赔一起到" },
 
-    { "code": "DLV-ECN", "name": "变更通知（ECN / PCN）", "stage": "IPD_LIFECYCLE", "discipline": "SYSTEM", "mandatory": false, "ownerRole": "HW_ENGINEER", "bindMode": "DOCUMENT",
+    { "code": "DLV-ECN", "name": "变更通知（ECN / PCN）", "stage": "IPD_LIFECYCLE", "discipline": "SYSTEM", "mandatory": false, "ownerRole": "HARDWARE_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" }, { "type": "ISSUE_CLOSED", "severity": "BLOCK" } ] },
       "dueOffsetDays": -5, "gate": "TR6",
       "industryNote": "影响评估、客户通知与切换时间——器件停产换料是小改动，但客户要的是提前通知" },
@@ -221,12 +221,12 @@
       "dueOffsetDays": -5, "gate": "TR6",
       "industryNote": "各版本变更点、兼容性与升级路径——用户现场版本越杂，维护成本越高，记录是唯一解法" },
 
-    { "code": "DLV-FIELD-QUALITY", "name": "现场质量分析报告", "stage": "IPD_LIFECYCLE", "discipline": "QUALITY", "mandatory": false, "ownerRole": "QA_ENGINEER", "bindMode": "DOCUMENT",
+    { "code": "DLV-FIELD-QUALITY", "name": "现场质量分析报告", "stage": "IPD_LIFECYCLE", "discipline": "QUALITY", "mandatory": false, "ownerRole": "QUALITY_ENGINEER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" }, { "type": "ISSUE_CLOSED", "severity": "BLOCK" } ] },
       "dueOffsetDays": -5, "gate": "TR6",
       "industryNote": "返修率 / 客诉统计与改进措施闭环——现场数据是下一代产品的需求输入" },
 
-    { "code": "DLV-LESSONS", "name": "项目复盘与经验库", "stage": "IPD_LIFECYCLE", "discipline": "SYSTEM", "mandatory": false, "ownerRole": "PM", "bindMode": "DOCUMENT",
+    { "code": "DLV-LESSONS", "name": "项目复盘与经验库", "stage": "IPD_LIFECYCLE", "discipline": "SYSTEM", "mandatory": false, "ownerRole": "PROJECT_MANAGER", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" } ] },
       "dueOffsetDays": -5, "gate": "TR6",
       "industryNote": "复盘结论、可复用资产与改进项归档——行业包的价值是把这次的教训变成下一次的默认值" }

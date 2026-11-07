@@ -26,6 +26,9 @@ public class TenantRegistrationRequest {
     /** 联系人邮箱 */
     private String contactEmail;
 
+    /** 联系电话（选填） */
+    private String contactPhone;
+
     /** 管理员用户名（登录账号） */
     private String adminUsername;
 
@@ -48,6 +51,9 @@ public class TenantRegistrationRequest {
 
     public String getContactEmail() { return contactEmail; }
     public void setContactEmail(String contactEmail) { this.contactEmail = contactEmail; }
+
+    public String getContactPhone() { return contactPhone; }
+    public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
 
     public String getAdminUsername() { return adminUsername; }
     public void setAdminUsername(String adminUsername) { this.adminUsername = adminUsername; }

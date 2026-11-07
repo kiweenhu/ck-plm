@@ -132,7 +132,7 @@
             <a-input
               v-model:value="registerState.tenantId"
               size="large"
-              placeholder="租户标识（全局唯一，如 my-company）"
+              placeholder="租户标识（如 ckai-tech.group）"
               :prefix="h(UserOutlined)"
               allow-clear
             />
@@ -160,16 +160,25 @@
               </a-form-item>
             </a-col>
             <a-col :span="12">
-              <a-form-item name="contactEmail">
+              <a-form-item name="contactPhone">
                 <a-input
-                  v-model:value="registerState.contactEmail"
+                  v-model:value="registerState.contactPhone"
                   size="large"
-                  placeholder="联系邮箱"
+                  placeholder="手机号 / 固话"
                   allow-clear
                 />
               </a-form-item>
             </a-col>
           </a-row>
+
+          <a-form-item name="contactEmail">
+            <a-input
+              v-model:value="registerState.contactEmail"
+              size="large"
+              placeholder="联系邮箱"
+              allow-clear
+            />
+          </a-form-item>
 
           <a-form-item name="adminUsername">
             <a-input
@@ -290,15 +299,15 @@ const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0
 /**
  * 差异化特性（登录页只讲 4 条关键特性，不做全能力罗列）：
  *   1. 开源模式 —— 传统商业 PLM 是闭源黑盒 + 高额 License，CK-PLM 源码全开放（Open Core）
- *   2. 零改表扩展 —— 传统 PLM 加字段/改页面要走二开和升级合并，CK-PLM 用低代码设计器 + IBA 直接搞定
- *   3. 多专业域与类型继承 —— 软类型树开箱即用，新品类零代码接入
- *   4. 内置研发域管理体系与流程 —— 传统 PLM 需要从零建模和定制，CK-PLM 预置研发业务域、最佳实践与可视化审批流程，开箱即用
+ *   2. 内置研发域管理体系与流程 —— 预置智能硬件（IPD）/ 汽车（APQP）/ 军工（构型管理）等行业方法论
+ *   3. 多专业域与类型继承 —— 产品、架构、电子、结构、电气、软件 6 大业务域对象，软类型树开箱即用
+ *   4. 零改表扩展 —— 传统 PLM 加字段/改页面要走二开和升级合并，CK-PLM 用低代码设计器 + IBA 直接搞定
  */
 const capabilities = [
   { icon: GithubOutlined, color: '#4ade80', name: '真开源 · Apache-2.0', hint: '源码 100% 开放 · 告别闭源黑盒与天价 License' },
-  { icon: LayoutOutlined, color: '#a78bfa', name: '零改表低代码扩展', hint: '页面设计器编排列表/表单/详情 · IBA 扩展属性即配即用', isNew: true },
-  { icon: ApartmentOutlined, color: '#22d3ee', name: '多专业域与类型继承', hint: '6 大预置业务域 · 软类型树 · 新品类零代码接入', isNew: true },
-  { icon: AppstoreOutlined, color: '#f9a03f', name: '内置研发域管理体系与流程', hint: '预置研发业务域与最佳实践 · BPMN 2.0 可视化流程 · 开箱即用' }
+  { icon: AppstoreOutlined, color: '#f9a03f', name: '内置研发域管理体系与流程', hint: '智能硬件（IPD）· 汽车（APQP）· 军工（构型管理）等' },
+  { icon: ApartmentOutlined, color: '#22d3ee', name: '多专业域与类型继承', hint: '产品、架构、电子、结构、电气、软件 6 大业务域对象 · 软类型树 · 新品类零代码接入', isNew: true },
+  { icon: LayoutOutlined, color: '#a78bfa', name: '零改表低代码扩展', hint: '页面设计器编排列表/表单/详情 · IBA 扩展属性即配即用', isNew: true }
 ]
 
 const formRef = ref()
@@ -368,17 +377,36 @@ const handleLogin = async () => {
 const registerFormRef = ref()
 const registerLoading = ref(false)
 const registerState = reactive({
-  tenantId: '', name: '', contactName: '', contactEmail: '',
+  tenantId: '', name: '', contactName: '', contactEmail: '', contactPhone: '',
   adminUsername: '', adminPassword: ''
 })
+
+/**
+ * 联系电话：11 位手机号 / 带区号的固话（可带分机）/ 400、800 热线。
+ *
+ * <p>与后端 {@code TenantServiceImpl#validateRequest} 保持同一条规则 —— 原来前后端都只校验
+ * "只含数字和几个符号"，于是「1501259622」这样的 10 位号码也能提交。
+ */
+const PHONE_PATTERN = /^(?:1[3-9]\d{9}|0\d{2,3}-?\d{7,8}(?:-\d{1,6})?|(?:400|800)-?\d{3}-?\d{4})$/
 
 const registerRules = {
   tenantId: [
     { required: true, message: '请输入租户标识', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,48}$/, message: '2-49位，字母/数字/下划线/连字符', trigger: 'blur' }
+    { pattern: /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,48}$/, message: '2-49位，字母/数字/点/下划线/连字符', trigger: 'blur' }
   ],
   name: [{ required: true, message: '请输入公司/组织名称', trigger: 'blur' }],
   contactEmail: [{ type: 'email', message: '请输入有效邮箱', trigger: 'blur' }],
+  // 联系电话选填；填了就要是合法号码（空格忽略，方便按 3-4-4 分组输入）
+  contactPhone: [{
+    validator: (_rule, value) => {
+      const phone = (value || '').replace(/\s/g, '')
+      if (!phone) return Promise.resolve()
+      return PHONE_PATTERN.test(phone)
+        ? Promise.resolve()
+        : Promise.reject('请输入有效联系电话（11 位手机号，或 0755-12345678 这样的固话）')
+    },
+    trigger: 'blur'
+  }],
   adminUsername: [
     { required: true, message: '请输入管理员用户名', trigger: 'blur' },
     { pattern: /^[a-zA-Z0-9][a-zA-Z0-9._@-]{2,49}$/, message: '3-50位，字母或数字开头', trigger: 'blur' }
@@ -398,6 +426,8 @@ const handleRegister = async () => {
       name: registerState.name.trim(),
       contactName: registerState.contactName.trim(),
       contactEmail: registerState.contactEmail.trim(),
+      // 提交前去掉分隔用的空格，存库统一成 11 位手机号或 0755-12345678 这种形态
+      contactPhone: (registerState.contactPhone || '').replace(/\s/g, ''),
       adminUsername: registerState.adminUsername.trim(),
       adminPassword: registerState.adminPassword,
       adminDisplayName: registerState.contactName?.trim() || registerState.adminUsername.trim()

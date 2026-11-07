@@ -227,7 +227,7 @@
               <a-textarea
                 v-model:value="modal.form.requiredParticipants"
                 :rows="2"
-                placeholder='["SYSTEM_ENGINEER","HW_ENGINEER","QA_ENGINEER"]'
+                placeholder='["SYSTEM_ENGINEER","HARDWARE_ENGINEER","QUALITY_ENGINEER"]'
               />
             </a-form-item>
           </a-col>

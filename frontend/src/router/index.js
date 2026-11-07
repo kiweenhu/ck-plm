@@ -168,6 +168,13 @@ const routes = [
         component: () => import('@/views/system/IndustryPackPage.vue'),
         meta: { title: '行业包' }
       },
+      {
+        // 问题反馈：平台管理员跨租户查看各租户用户提交的反馈，并回复到人（站内通知）
+        path: 'system/feedback',
+        name: 'FeedbackManage',
+        component: () => import('@/views/system/FeedbackManage.vue'),
+        meta: { title: '问题反馈' }
+      },
       // 工作流
       // 「流程清单」已由新一代设计器承载（DSL + X6 画布，spec: docs/ck-plm-flow-designer-spec.md）：
       // 该页自带模板库（列表/新建/复制/启停/删除）+ 设计器 + 版本历史 + 部署，
@@ -280,7 +287,7 @@ const router = createRouter({
 let verified = false
 
 /** 需要平台管理员角色的路由 */
-const PLATFORM_ADMIN_ROUTES = ['/system/tenants', '/system/industry-packs']
+const PLATFORM_ADMIN_ROUTES = ['/system/tenants', '/system/industry-packs', '/system/feedback']
 
 /**
  * 需要 ADMIN（租户管理员）角色的路由 —— 业务配置 / 流程管理相关。

@@ -60,6 +60,12 @@ public interface PostgreSqlRoleMapper extends RoleMapper {
     Role selectByCode(@Param("code") String code);
 
     @Select("SELECT oid, code, name, description, role_type, creator, created_at, updater, updated_at " +
+            "FROM ck_role WHERE tenant_oid = #{tenantOid} AND code = #{code}")
+    @ResultMap("roleResult")
+    @Override
+    Role selectByTenantAndCode(@Param("tenantOid") String tenantOid, @Param("code") String code);
+
+    @Select("SELECT oid, code, name, description, role_type, creator, created_at, updater, updated_at " +
             "FROM ck_role ORDER BY code ASC")
     @ResultMap("roleResult")
     @Override

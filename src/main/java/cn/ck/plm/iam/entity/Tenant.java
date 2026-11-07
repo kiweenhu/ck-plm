@@ -65,6 +65,9 @@ public class Tenant extends BaseEntity {
     /** 联系人邮箱 */
     private String contactEmail;
 
+    /** 联系电话 */
+    private String contactPhone;
+
     // ==== 申请时提交的管理员信息（审核通过后使用） ====
 
     /** 管理员用户名 */
@@ -144,6 +147,9 @@ public class Tenant extends BaseEntity {
 
     public String getContactEmail() { return contactEmail; }
     public void setContactEmail(String contactEmail) { this.contactEmail = contactEmail; }
+
+    public String getContactPhone() { return contactPhone; }
+    public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
 
     public String getAdminUsername() { return adminUsername; }
     public void setAdminUsername(String adminUsername) { this.adminUsername = adminUsername; }

@@ -66,12 +66,11 @@ public class ProductTeamRoleResolver {
     /**
      * 可发起流程（阶段门 / 评审）的团队角色。
      *
-     * <p>{@code PM} 与 {@code PROJECT_MANAGER} 都要写：{@code ck_role} 里同名「项目经理」
-     * 存在两条不同编码的记录，name → code 映射取到哪一条取决于查询顺序（2026-11-01 实测取到 {@code PM}），
-     * 只写 {@code PROJECT_MANAGER} 时项目经理会被判成"没有发起权"。
+     * <p>角色码已统一（2026-11-07）：原 {@code PM} 并入 {@code PROJECT_MANAGER}，
+     * 全系统只有一个「项目经理」码，{@code name → code} 映射不会再取到另一条。
      */
     private static final Set<String> START_ROLES =
-            Set.of("PRODUCT_MANAGER", "PROJECT_MANAGER", "PM", "IPDT_LEADER");
+            Set.of("PRODUCT_MANAGER", "PROJECT_MANAGER", "IPDT_LEADER");
     /**
      * 可查看「本项目不适用」（被裁剪）条目的团队角色（2026-11-01 用户要求：
      * 「产品经理和项目经理，以及租户管理员」）。
@@ -79,10 +78,10 @@ public class ProductTeamRoleResolver {
      * <p>只看不改：裁剪（标记 / 恢复 / 改强制）仍限产品经理 —— 项目经理需要知道哪些交付件本项目不做，
      * 但不该替产品经理改口径。
      *
-     * <p>{@code PM} 的理由同 {@link #START_ROLES}：库里有两条「项目经理」角色记录。
+     * <p>角色码统一后不再需要兼容 {@code PM}（已并入 {@link #START_ROLES} 的 {@code PROJECT_MANAGER}）。
      */
     private static final Set<String> TAILORED_VIEW_ROLES =
-            Set.of("PRODUCT_MANAGER", "PROJECT_MANAGER", "PM");
+            Set.of("PRODUCT_MANAGER", "PROJECT_MANAGER");
 
     private final TeamMemberMapper teamMemberMapper;
     private final ProductLineMapper productLineMapper;

@@ -17,7 +17,7 @@
     { "type": "SOFT_TYPE",      "file": "softtypes.json",       "count": 7, "scope": "PLATFORM", "display": "业务对象定义", "reusable": false },
     { "type": "ATTRIBUTE",      "file": "attributes.json",      "count": 28, "scope": "PLATFORM", "display": "属性定义",     "reusable": false },
     { "type": "RESOURCE_LIBRARY","file": "resourceLibraries.json","count": 4, "scope": "PLATFORM", "display": "企业资源库",   "reusable": false },
-    { "type": "ROLE",           "file": "roles.json",           "count": 12, "scope": "PLATFORM", "display": "业务角色",     "reusable": false },
+    { "type": "ROLE",           "file": "roles.json",           "count": 11, "scope": "PLATFORM", "display": "业务角色",     "reusable": false },
     { "type": "PROCESS",        "file": "processes",            "count": 3, "scope": "TENANT",   "display": "流程模板",     "reusable": false },
     { "type": "RULE",           "file": "rules.json",           "count": 7, "scope": "PLATFORM", "display": "检查规则",     "reusable": false },
     { "type": "FORM",           "file": "processes/forms/forms.json", "count": 11, "scope": "PLATFORM", "display": "流程表单", "reusable": false },

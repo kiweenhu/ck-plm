@@ -1,6 +1,7 @@
 import {
   BellOutlined, ClockCircleOutlined, CheckCircleOutlined,
   SoundOutlined, SwapOutlined, ApartmentOutlined, UserSwitchOutlined, BranchesOutlined,
+  MessageOutlined, CommentOutlined,
 } from '@ant-design/icons-vue'
 
 /**
@@ -8,7 +9,8 @@ import {
  *
  * <p>类型编码由后端写入 `ck_notification.type`：TASK 待办 / TASK_DELEGATE 委派 /
  * TASK_TRANSFER 转办 / PROCESS_RESULT 流程结果 / ANNOUNCEMENT 公告 /
- * TENANT_REGISTRATION 租户注册审核 / VERSION_RULE 版本规则（修订被规则用尽拦截时提醒管理员）。
+ * TENANT_REGISTRATION 租户注册审核 / VERSION_RULE 版本规则（修订被规则用尽拦截时提醒管理员）/
+ * FEEDBACK 收到使用反馈（平台管理员）/ FEEDBACK_REPLY 反馈已回复（发给提交人）。
  */
 
 /** 类型 → 展示元信息（图标直接给组件，模板用 <component :is>） */
@@ -28,6 +30,10 @@ export function notifTypeMeta(type) {
       return { label: '租户审核', color: 'purple', icon: ApartmentOutlined }
     case 'VERSION_RULE':
       return { label: '版本规则', color: 'volcano', icon: BranchesOutlined }
+    case 'FEEDBACK':
+      return { label: '问题反馈', color: 'cyan', icon: MessageOutlined }
+    case 'FEEDBACK_REPLY':
+      return { label: '反馈回复', color: 'geekblue', icon: CommentOutlined }
     default:
       return { label: '通知', color: 'default', icon: BellOutlined }
   }
@@ -56,6 +62,9 @@ export function notifLink(notification) {
     case 'VERSION_RULE':
       // 直接落到「业务配置 → 版本规则」页签；oid 是规则编码，仅作定位信息
       return '/org/config?module=versionrule'
+    case 'FEEDBACK':
+      // 平台管理员点「收到使用反馈」→ 反馈处理页并直接打开这条
+      return oid ? `/system/feedback?oid=${oid}` : '/system/feedback'
     default:
       return ''
   }
