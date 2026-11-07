@@ -341,11 +341,12 @@ CREATE TABLE IF NOT EXISTS ck_user (
 CREATE INDEX IF NOT EXISTS idx_user_org ON ck_user(org_oid);
 
 -- ==================== 角色 ====================
--- oid 为全局唯一主键，code 为角色编码唯一键
+-- oid 为全局唯一主键；(code, tenant_oid) 组合唯一（下方唯一索引 uk_ck_role_code_tenant）——
+-- 角色按租户隔离（2026-10-11），每个租户持有同名 code 的角色副本，code 不能再全局唯一
 -- role_type 取值: PLATFORM（平台级角色，系统初始化导入，不可编辑/删除）| BUSINESS（自定义业务流程角色，可自由维护）
 CREATE TABLE IF NOT EXISTS ck_role (
     oid          CHAR(36)     PRIMARY KEY,
-    code         VARCHAR(50)  NOT NULL UNIQUE,
+    code         VARCHAR(50)  NOT NULL,
     name         VARCHAR(100) NOT NULL,
     description  VARCHAR(500),
     role_type    VARCHAR(20)  NOT NULL DEFAULT 'BUSINESS',
@@ -355,6 +356,12 @@ CREATE TABLE IF NOT EXISTS ck_role (
     updater      VARCHAR(100),
     updated_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 存量库迁移（幂等，兼容 Spring SQL 脚本解析器——不能用 DO $$ 块）：
+-- 早期版本 code 全局唯一（约束 ck_role_code_key），会阻断"审核通过时为租户复制角色副本"；
+-- 统一用组合唯一索引保证 (code, tenant_oid) 唯一，新老库行为一致。
+ALTER TABLE ck_role DROP CONSTRAINT IF EXISTS ck_role_code_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ck_role_code_tenant ON ck_role (code, tenant_oid);
 
 -- ==================== 角色成员关联 ====================
 -- oid 为全局唯一主键，user_oid / role_oid 级联删除

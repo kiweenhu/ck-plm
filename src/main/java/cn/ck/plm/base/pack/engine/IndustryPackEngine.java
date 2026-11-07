@@ -33,6 +33,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 行业包安装引擎 —— 读清单、算依赖、按资源类型分派、幂等落库、记账。
@@ -81,6 +83,14 @@ public class IndustryPackEngine {
     /** 租户能力账本：包里声明的、且平台已实现的能力，装包时落到 ck_tenant_capability */
     private final TenantCapabilityMapper capabilityMapper;
 
+    /**
+     * 按租户的真实安装单飞锁（dryRun 不参与）：安装是逐条自动提交的长事务，
+     * 前端超时后用户重试会造成两个安装并发——各 Installer 的「先查后插」不是原子的，
+     * 双方都判"不存在"就会双插撞唯一键。这里保证同一租户同一时刻只有一个安装在跑，
+     * 并发请求直接快速失败（引擎幂等，稍后重试只会 SKIP 补齐）。
+     */
+    private final ConcurrentHashMap<String, ReentrantLock> tenantInstallLocks = new ConcurrentHashMap<>();
+
     public IndustryPackEngine(IndustryPackLoader loader,
                               IndustryPackRepository repository,
                               ObjectMapper objectMapper,
@@ -119,7 +129,20 @@ public class IndustryPackEngine {
         // SOFT_TYPE / STAGE / GATE / DELIVERABLE …）—— 供 Installer 预演时判前置依赖是否就绪
         //（如软类型判父类型、检查规则判被引用的阶段/门/交付件）
         Map<String, Set<String>> chainDeclaredCodes = new HashMap<>();
-        installRecursive(packId, tenantOid, params, dryRun, new HashSet<>(), reports, chainDeclaredCodes);
+        if (dryRun) {
+            installRecursive(packId, tenantOid, params, true, new HashSet<>(), reports, chainDeclaredCodes);
+            return reports;
+        }
+        // 真实安装：按租户单飞，防止前端超时重试导致的并发双装（撞唯一键）
+        ReentrantLock lock = tenantInstallLocks.computeIfAbsent(tenantOid, k -> new ReentrantLock());
+        if (!lock.tryLock()) {
+            throw new IllegalStateException("该租户正在安装行业解决方案，请勿重复提交，稍后在「已安装」中查看结果");
+        }
+        try {
+            installRecursive(packId, tenantOid, params, false, new HashSet<>(), reports, chainDeclaredCodes);
+        } finally {
+            lock.unlock();
+        }
         return reports;
     }
 
