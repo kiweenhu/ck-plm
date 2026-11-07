@@ -293,8 +293,8 @@ import { resetOnboardingState } from '@/router'
 const router = useRouter()
 const userStore = useUserStore()
 
-/** 版本号：构建期由 vite.config.js 的 define 注入（单一来源：frontend/package.json 的 version） */
-const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.2.0'
+/** 版本号：构建期由 vite.config.js 的 define 注入（取 git 最新 tag，与 GitHub tag 对齐） */
+const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.3.1'
 
 /**
  * 差异化特性（登录页只讲 4 条关键特性，不做全能力罗列）：

@@ -257,6 +257,12 @@
                 <a-menu-item key="settings">
                   <setting-outlined /> 个人设置
                 </a-menu-item>
+                <a-menu-item key="about">
+                  <info-circle-outlined /> 关于 CK-PLM
+                </a-menu-item>
+                <a-menu-item key="help">
+                  <question-circle-outlined /> 使用说明
+                </a-menu-item>
                 <a-menu-divider />
                 <a-menu-item key="logout">
                   <logout-outlined /> 退出登录
@@ -289,6 +295,9 @@
 
       <!-- 问题反馈 / 新功能建议：任何页面都能提，自动带上当前页面与登录身份 -->
       <FeedbackModal v-model:open="feedbackOpen" />
+
+      <!-- 用户菜单：关于 CK-PLM -->
+      <AppInfoModal v-model:open="appInfoOpen" />
     </a-layout>
   </a-layout>
 </template>
@@ -306,6 +315,7 @@ import {
 } from '@/utils/notifications'
 import AiAssistant from '@/components/AiAssistant.vue'
 import FeedbackModal from '@/components/FeedbackModal.vue'
+import AppInfoModal from '@/components/AppInfoModal.vue'
 import { recordLogout } from '@/composables/useActivity'
 import {
   HomeOutlined, AppstoreOutlined, DatabaseOutlined,
@@ -313,7 +323,8 @@ import {
   SettingOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
   BellOutlined, DownOutlined, UserOutlined, LogoutOutlined,
   ApartmentOutlined, FolderOutlined,
-  FileTextOutlined, SoundOutlined, MessageOutlined
+  FileTextOutlined, SoundOutlined, MessageOutlined,
+  InfoCircleOutlined, QuestionCircleOutlined
 } from '@ant-design/icons-vue'
 import { useCapabilities } from '@/composables/useCapabilities'
 
@@ -330,6 +341,12 @@ const userStore = useUserStore()
 
 /** 页脚「问题反馈」弹窗 */
 const feedbackOpen = ref(false)
+
+/** 用户菜单「关于 CK-PLM」弹窗 */
+const appInfoOpen = ref(false)
+
+/** 使用说明文档地址：由 vite 的 docsPlugin 从仓库根 docs/ 提供（见 vite.config.js） */
+const USER_GUIDE_URL = `${import.meta.env.BASE_URL}docs/ck-plm-user-guide.html`
 
 // 初始化 user store
 userStore.init()
@@ -620,6 +637,11 @@ async function handleUserMenu({ key }) {
     router.push({ path: '/profile', query: { tab: 'profile' } })
   } else if (key === 'settings') {
     router.push({ path: '/profile', query: { tab: 'security' } })
+  } else if (key === 'about') {
+    appInfoOpen.value = true
+  } else if (key === 'help') {
+    // 使用说明是整篇文档：新标签页打开，浏览器 Ctrl+F 直接检索，弹窗里又挤又搜不了
+    window.open(USER_GUIDE_URL, '_blank', 'noopener')
   }
 }
 </script>
