@@ -59,6 +59,76 @@ public interface PostgreSqlChangeObjectLookupMapper extends ChangeObjectLookupMa
     @Select(ENG_SNAPSHOT)
     Map<String, Object> selectEngDocumentSnapshot(@Param("oid") String oid, @Param("tenantOid") String tenantOid);
 
+    // ---- 修订产物所在大版本的最新小版本 ----
+    // base = 结果表里那条迭代（B.1）；cur = 同 master + 同 revision 的全部迭代（B.1、B.2…）。
+    // 取 cur.iteration 最大的 display_version，就是执行人后续修改后的最新版本。
+    // master 主表 JOIN 带出 tenant_oid，既做租户隔离，也让拦截器识别为"已有租户条件"。
+    String PART_VERSION_OF_REVISION =
+            "SELECT cur.display_version AS \"version\" FROM ck_part_iteration base "
+                    + "JOIN ck_part_iteration cur ON cur.master_oid = base.master_oid AND cur.revision = base.revision "
+                    + "JOIN ck_part p ON p.oid = base.master_oid AND p.tenant_oid = #{tenantOid} "
+                    + "WHERE base.oid = #{iterationOid} ORDER BY cur.iteration DESC LIMIT 1";
+
+    String DOC_VERSION_OF_REVISION =
+            "SELECT cur.display_version AS \"version\" FROM ck_document_iteration base "
+                    + "JOIN ck_document_iteration cur ON cur.master_oid = base.master_oid AND cur.revision = base.revision "
+                    + "JOIN ck_document d ON d.oid = base.master_oid AND d.tenant_oid = #{tenantOid} "
+                    + "WHERE base.oid = #{iterationOid} ORDER BY cur.iteration DESC LIMIT 1";
+
+    String ENG_VERSION_OF_REVISION =
+            "SELECT cur.display_version AS \"version\" FROM ck_eng_document_iteration base "
+                    + "JOIN ck_eng_document_iteration cur ON cur.master_oid = base.master_oid AND cur.revision = base.revision "
+                    + "JOIN ck_eng_document e ON e.oid = base.master_oid AND e.tenant_oid = #{tenantOid} "
+                    + "WHERE base.oid = #{iterationOid} ORDER BY cur.iteration DESC LIMIT 1";
+
+    @Override
+    @Select(PART_VERSION_OF_REVISION)
+    String selectPartVersionOfRevision(@Param("iterationOid") String iterationOid,
+                                       @Param("tenantOid") String tenantOid);
+
+    @Override
+    @Select(DOC_VERSION_OF_REVISION)
+    String selectDocumentVersionOfRevision(@Param("iterationOid") String iterationOid,
+                                           @Param("tenantOid") String tenantOid);
+
+    @Override
+    @Select(ENG_VERSION_OF_REVISION)
+    String selectEngDocumentVersionOfRevision(@Param("iterationOid") String iterationOid,
+                                              @Param("tenantOid") String tenantOid);
+
+    // ---- 结果迭代 → 大版本 revision ----
+    // ck_process_entity_set.entity_version 记大版本（B），不是 display_version（B.1）。
+    // 同样显式带 tenant_oid 条件，避免租户拦截器在 JOIN 语句上二次改写别名。
+    String PART_REVISION_OF_ITERATION =
+            "SELECT base.revision AS \"revision\" FROM ck_part_iteration base "
+                    + "JOIN ck_part p ON p.oid = base.master_oid AND p.tenant_oid = #{tenantOid} "
+                    + "WHERE base.oid = #{iterationOid}";
+
+    String DOC_REVISION_OF_ITERATION =
+            "SELECT base.revision AS \"revision\" FROM ck_document_iteration base "
+                    + "JOIN ck_document d ON d.oid = base.master_oid AND d.tenant_oid = #{tenantOid} "
+                    + "WHERE base.oid = #{iterationOid}";
+
+    String ENG_REVISION_OF_ITERATION =
+            "SELECT base.revision AS \"revision\" FROM ck_eng_document_iteration base "
+                    + "JOIN ck_eng_document e ON e.oid = base.master_oid AND e.tenant_oid = #{tenantOid} "
+                    + "WHERE base.oid = #{iterationOid}";
+
+    @Override
+    @Select(PART_REVISION_OF_ITERATION)
+    String selectPartRevisionOfIteration(@Param("iterationOid") String iterationOid,
+                                         @Param("tenantOid") String tenantOid);
+
+    @Override
+    @Select(DOC_REVISION_OF_ITERATION)
+    String selectDocumentRevisionOfIteration(@Param("iterationOid") String iterationOid,
+                                             @Param("tenantOid") String tenantOid);
+
+    @Override
+    @Select(ENG_REVISION_OF_ITERATION)
+    String selectEngDocumentRevisionOfIteration(@Param("iterationOid") String iterationOid,
+                                                @Param("tenantOid") String tenantOid);
+
     // ==================== 候选 ====================
 
     /**
@@ -203,6 +273,39 @@ public interface PostgreSqlChangeObjectLookupMapper extends ChangeObjectLookupMa
     @Select(RELATED_DOCUMENTS)
     List<Map<String, Object>> selectRelatedDocuments(@Param("partOid") String partOid,
                                                      @Param("tenantOid") String tenantOid);
+
+    /**
+     * 关联工程数据：{@code ck_eng_doc_part_link} 里挂在零件<b>最新迭代</b>上的数模。
+     *
+     * <p>与 {@link #RELATED_DOCUMENTS} 刻意不同口径：文档是一个零件挂多份、跨迭代累积是正常的，
+     * 而工程数据是"一个零件版本恰好一份数模"（EPMBuildRule）。把旧迭代那份也收进来，
+     * 变更任务就会去改一份已经被新版本取代的数模 —— 用户第一眼就看出不对。
+     *
+     * <p>{@code NOT EXISTS} 兜底：最新迭代一行关联都没有时（刚检出、新迭代还没挂数模），
+     * 退回收集所有迭代的 —— 返回旧数模也比空手而归有用，与 {@code CadVisualizationMapper}
+     * 放宽到"同零件所有迭代"的理由一致。
+     *
+     * <p>不按 {@code part_oid} 连（那列从来不写值，见接口注释）。
+     */
+    String RELATED_ENG_DOCUMENTS =
+            "SELECT DISTINCT e.oid AS \"oid\", 'ENG_DOCUMENT' AS \"entityType\", e.number AS \"code\", "
+                    + "e.name AS \"name\", e.container_oid AS \"containerOid\", 'ENG_DOCUMENT' AS \"relation\" "
+                    + "FROM ck_part_iteration i "
+                    + "JOIN ck_eng_doc_part_link l ON l.part_iteration_oid = i.oid "
+                    + "JOIN ck_eng_document e ON e.oid = l.eng_document_oid "
+                    + "WHERE i.master_oid = #{partOid} AND i.delete_mark IS NOT TRUE "
+                    + "  AND e.tenant_oid = #{tenantOid} "
+                    + "  AND (i.latest IS TRUE OR NOT EXISTS ("
+                    + "        SELECT 1 FROM ck_part_iteration li "
+                    + "        JOIN ck_eng_doc_part_link ll ON ll.part_iteration_oid = li.oid "
+                    + "        WHERE li.master_oid = #{partOid} AND li.latest IS TRUE "
+                    + "          AND li.delete_mark IS NOT TRUE)) "
+                    + "ORDER BY e.number";
+
+    @Override
+    @Select(RELATED_ENG_DOCUMENTS)
+    List<Map<String, Object>> selectRelatedEngDocuments(@Param("partOid") String partOid,
+                                                        @Param("tenantOid") String tenantOid);
 
     /**
      * 替代件：A 端 / B 端双向查（有序对里本方可能在任一端），取另一端。

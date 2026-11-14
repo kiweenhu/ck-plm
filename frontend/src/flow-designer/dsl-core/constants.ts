@@ -48,6 +48,18 @@ export const NodeType = {
    * 一律由它指定，无需各自声明。
    */
   SET_ASSIGNEE: 'SET_ASSIGNEE',
+  /**
+   * 变更任务结果审批设置参与者（2026-11-09）。
+   *
+   * <p>{@link NodeType.SET_ASSIGNEE} 的行业变体：<b>语义完全相同</b>（由发起人一次性指定
+   * 下游人工活动的人，自己不出审批结论），差别只在于默认节点表单 ——
+   * 内置那张「设置流程参与者」只列可挑人的活动，而这张还要先把"本变更任务修订了哪些对象、
+   * 改成了哪一版"摆出来，审批人才知道该派给谁。
+   *
+   * <p>所以它在编译、校验、人员变量化三处一律按 {@link SETUP_NODE_TYPES} 处理，
+   * 不要为它单独写分支 —— 两份实现迟早会漂移（一边认为它要指定人、一边认为不用）。
+   */
+  CHANGE_TASK_SETUP: 'CHANGE_TASK_SETUP',
   TASK: 'TASK',
   SERVICE: 'SERVICE',
   EXCLUSIVE_GATEWAY: 'EXCLUSIVE_GATEWAY',
@@ -65,6 +77,7 @@ export const NODE_TYPE_LABEL: Record<NodeType, string> = {
   APPROVAL: '审批节点',
   COUNTERSIGN_APPROVAL: '会签审批',
   SET_ASSIGNEE: '设置审批人',
+  CHANGE_TASK_SETUP: '变更任务结果审批设置参与者',
   TASK: '办理节点',
   SERVICE: '函数调用',
   EXCLUSIVE_GATEWAY: '条件分支',
@@ -73,6 +86,33 @@ export const NODE_TYPE_LABEL: Record<NodeType, string> = {
   NOTIFY: '通知',
   SUB_PROCESS: '子流程',
   TIMER: '定时等待',
+}
+
+/**
+ * 节点类型的一句话说明（属性面板头部展示）。
+ *
+ * <p>与 {@link NODE_TYPE_LABEL} 同放在契约层：这句文案回答的是「这类活动是什么」，
+ * 面板、节点库与文档应当说同一句话；散进 Vue 组件里必然改一处漏一处。
+ *
+ * <p>只写**区别性**信息（审批 vs 会签、设置审批人 vs 变更任务设置参与者），
+ * 字段级规则仍由各字段的 hint 承担 —— 否则面板会变成一篇说明书。
+ */
+export const NODE_TYPE_DESCRIPTION: Record<NodeType, string> = {
+  START: '流程的起点。由发起人手动或对象事件自动启动，并在此确定业务对象与发起表单；全流程只能有一个。',
+  END: '流程的终点。通过或驳回终止都走到这里；可在结束时回写对象状态或发送通知。',
+  APPROVAL: '由一个人给出同意 / 驳回结论。多人共同决策请改用「会签审批」—— 此处写入的多人模式会被静默降级为单签。',
+  COUNTERSIGN_APPROVAL: '多人各给一票，按通过规则（比例 / 票数 / 一票否决）聚合，再决定流程继续还是驳回。',
+  SET_ASSIGNEE: '由发起人为后续的审批 / 会签 / 办理活动指定具体人员。本节点不出审批结论，只决定「谁来办」。',
+  CHANGE_TASK_SETUP:
+    '与「设置审批人」是同一件事：由发起人指定后续活动人员。差别在于挑人前会先列出本变更任务修订了哪些对象、改成了哪一版。',
+  TASK: '需要人动手做事的活动（填单、上传交付件等），不产生同意 / 驳回结论，办完即往下走。',
+  SERVICE: '无人参与，自动执行平台内置服务（检出 / 检入 / 修订 / 改状态 / 改属性 / 发通知 / 接口调用）。',
+  EXCLUSIVE_GATEWAY: '按条件只走其中一条路径。除条件边外必须指定一条默认分支，否则条件全不命中时实例会卡住。',
+  PARALLEL_GATEWAY: '所有分支同时走，汇聚处等全部完成再继续。分支上不能配条件。',
+  INCLUSIVE_GATEWAY: '条件命中的分支都走（可以多条），全部结束后汇聚。必须指定一条默认分支。',
+  NOTIFY: '给指定人员发送通知（站内 / 邮件等），不产生待办任务。',
+  SUB_PROCESS: '调用另一条已部署的流程。可配成「一个节点拉起 N 个实例」（如一张变更通告派生 N 个变更任务），全部结束才继续。',
+  TIMER: '等待固定时长（如 PT2H）或等到指定时点，再继续往下走。',
 }
 
 export const ALL_NODE_TYPES: NodeType[] = Object.values(NodeType)
@@ -93,8 +133,22 @@ export const ASSIGNEE_NODE_TYPES: NodeType[] = [
   NodeType.APPROVAL,
   NodeType.COUNTERSIGN_APPROVAL,
   NodeType.SET_ASSIGNEE,
+  NodeType.CHANGE_TASK_SETUP,
   NodeType.TASK,
   NodeType.NOTIFY,
+]
+
+/**
+ * 「设置参与者」类活动的**唯一事实源**：内置的「设置审批人」与变更任务行业的
+ * 「变更任务结果审批设置参与者」。
+ *
+ * <p>两者编译产物形状相同（userTask + 发起人 + 人员变量），差别只有默认表单。
+ * 校验（谁能当 setter）、编译（谁触发下游人员变量化）、画布（怎么画）都认这个集合，
+ * 新增同类活动时只加到这里，别在别处再写 `=== SET_ASSIGNEE`。
+ */
+export const SETUP_NODE_TYPES: NodeType[] = [
+  NodeType.SET_ASSIGNEE,
+  NodeType.CHANGE_TASK_SETUP,
 ]
 
 /**
@@ -506,11 +560,13 @@ export const IssueCode = {
   /** 流程里有审批/会签/办理活动，却没有「设置审批人」活动 —— 那些人不会被发起人指派 */
   SETUP_MISSING: 'SETUP_MISSING',
   /**
-   * 「设置审批人」**之前**有不由发起人办理的人力活动。
+   * 「设置审批人」**之前**有不由发起人办理、也没配流程变量的人力活动。
    *
-   * <p>它之前执行的活动人员不会被它指派 —— 若这些活动全是"由发起人办理"（承办人明确），
-   * 不构成问题（2026-10-13 用户口径：原先"必须直接跟在开始之后"的结论并不必然成立）；
-   * 只要有一个活动的责任人不是发起人，其承办人就会落空，故报 ERROR 拦保存。
+   * <p>它之前执行的活动人员不会被它指派 —— 若这些活动的承办人另有来源，就不构成问题：
+   * 「由发起人办理」（INITIATOR，2026-10-13 用户口径）与「流程变量」（VARIABLE，
+   * 2026-11-08 用户口径：变量由运行期/上游节点装人，例如子流程的 taskAssignee）
+   * 都不会落空；
+   * 只要有一个活动的责任人既不是发起人、也没有变量来源，其承办人就会落空，故报 ERROR 拦保存。
    */
   SETUP_NOT_FIRST: 'SETUP_NOT_FIRST',
   /**
@@ -522,6 +578,14 @@ export const IssueCode = {
   SETUP_MULTIPLE: 'SETUP_MULTIPLE',
   /** 设置审批人活动下游没有任何审批/会签/办理活动（没有可设置的对象） */
   SETUP_NO_TARGET: 'SETUP_NO_TARGET',
+  /**
+   * 「设置审批人」节点换了一张**不会挑人**的表单。
+   *
+   * <p>ERROR（拦保存）：编译期仍会把下游活动的承办人指向 {@code ckplmSetupAssignees_{nodeId}}，
+   * 而那张表单提交时根本不写这个变量 —— 下游任务建出来没有办理人，流程停住且不报错。
+   * 判据见 {@code forms.ts#isSetupFormCode}。
+   */
+  SETUP_FORM_INVALID: 'SETUP_FORM_INVALID',
   MISSING_CONDITION: 'MISSING_CONDITION',
   COUNTERSIGN_NO_PASS_RULE: 'COUNTERSIGN_NO_PASS_RULE',
   PASS_PERCENT_TOO_LOW: 'PASS_PERCENT_TOO_LOW',
@@ -692,6 +756,42 @@ export const SERVICE_SET_STATE = 'object.setLifecycleState'
 export const SERVICE_SET_CHANGE_STATUS = 'change.setRequestStatus'
 
 /**
+ * 「变更任务结项」服务 id。
+ *
+ * <p>子流程走完 ≠ 任务单状态变了 —— 流程是流程、单据是单据。这个节点把
+ * {@code ck_change_task} 推到「已完成」（COMPLETED），并写完成时间与一条时间线。
+ *
+ * <p>为什么不复用 {@link SERVICE_SET_CHANGE_STATUS}：那个按 businessKey 找的是
+ * {@code ck_change_request} / {@code ck_change_notice}，够不着独立主表
+ * {@code ck_change_task}；而且任务不能靠直接改 status 收尾。
+ *
+ * <p>后端实现：{@code ChangeTaskCompletionHandler}，按流程 businessKey（= 任务 oid）定位。
+ */
+export const SERVICE_COMPLETE_TASK = 'change.completeTask'
+
+/**
+ * 「变更通告实施完成」服务 id —— 汇总确认通过后的那一下。
+ *
+ * <p>多实例子流程全部结束后，通告不能直接结束：要有人逐个核对任务的执行结果，
+ * 确认通过才把通告落「已完成」。门槛与人工「完成」一致
+ * （受影响对象必须全部执行完），拦不住就抛异常、流程停在汇总节点。
+ *
+ * <p>后端实现：{@code ChangeNoticeCompletionHandler}。
+ */
+export const SERVICE_COMPLETE_NOTICE = 'change.completeNotice'
+
+/**
+ * 「执行修订」服务 id —— 变更任务流程走到这一步时自动把变更前对象修出新大版本。
+ *
+ * <p>为什么不复用「修订对象」（{@code object.promote}）：那个是"对流程关联的对象集合逐个升版"，
+ * 而这里要按<b>变更任务</b>的范围执行，并把产物写进 {@code ck_change_result_object}
+ * （变更后），同时把 base_* 记成来源版本 —— 修订对象服务不认这张业务表。
+ *
+ * <p>后端实现：{@code ChangeExecuteTaskHandler}。
+ */
+export const SERVICE_EXECUTE_TASK = 'change.executeTask'
+
+/**
  * 「系统集成」服务 id（旧称「发布到目标系统」）。
  *
  * <p>与「设置状态」并列的一条自动化服务：把本流程的<b>业务对象集合</b>（ProcessEntitySet，
@@ -749,7 +849,9 @@ export const BUILTIN_SERVICES: ServiceDescriptor[] = [
         type: ValueType.STRING,
         required: true,
         optionsSource: 'LIFECYCLE_STATES',
-        help: '候选为生命周期模板里定义的状态；运行期按当前对象的状态迁移规则执行',
+        help: '候选是所有生命周期模板状态的合集（括号里是状态编码）：必须选目标对象所绑模板里'
+          + '有的那个编码，同名不同码不算 —— 变更请求的 REVIEWING 不能用在零件 / 文档的'
+          + ' STANDARD 模板上（那边对应的是 APPROVING）。运行期按当前对象的状态迁移规则执行',
       },
     ],
   },
@@ -887,11 +989,33 @@ export const BUILTIN_SERVICES: ServiceDescriptor[] = [
         type: ValueType.STRING,
         required: true,
         control: 'text',
-        help: '填状态 code。变更请求：ANALYZING 影响分析中 / REVIEWING 评审中 / ACCEPTED 已受理 / '
-          + 'REJECTED 已否决；变更通告：APPROVING 审批中 / APPROVED 已批准 / REJECTED 已驳回。'
-          + '只允许这几个 —— 退回草稿、关闭、取消是人的决定，不让流程节点写',
+        help: '面板会按流程类型给下拉：变更请求 ANALYZING 影响分析中 / REVIEWING 评审中 / '
+          + 'ACCEPTED 已受理 / REJECTED 已否决；变更通告 APPROVING 审批中 / APPROVED 已批准 / '
+          + 'IN_WORK 实施中 / REJECTED 已驳回。只允许这几个 —— 退回草稿、关闭、取消是人的决定，'
+          + '不让流程节点写；完成仍只能走「完成变更通告」节点（要过"受影响对象全部执行完"的门槛）',
       },
     ],
+  },
+  {
+    // 变更任务执行修订：把任务下的"变更前"对象逐个修出新大版本，产物写进结果表。
+    // 与「修订对象」分开的原因见 SERVICE_EXECUTE_TASK 的注释（范围与产物表都不同）。
+    id: SERVICE_EXECUTE_TASK,
+    label: '执行变更修订',
+    params: [],
+  },
+  {
+    // 变更任务子流程尾部：任务流程走完就把单子结项。
+    // 与「设置变更单据状态」分开的原因见 SERVICE_COMPLETE_TASK 的注释（够不着任务主表）。
+    id: SERVICE_COMPLETE_TASK,
+    label: '变更任务结项',
+    params: [],
+  },
+  {
+    // 变更通告尾部：汇总确认通过后落「已完成」。
+    // 不扩 NOTICE_ALLOWED 是为了保住"受影响对象全部执行完"这道门槛，见后端 handler 注释。
+    id: SERVICE_COMPLETE_NOTICE,
+    label: '变更通告实施完成',
+    params: [],
   },
 ]
 

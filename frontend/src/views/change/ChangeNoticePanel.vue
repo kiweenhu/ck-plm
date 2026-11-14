@@ -79,8 +79,21 @@
                 </a-button>
               </span>
             </a-tooltip>
+            <!--
+              流程还在跑（任务已经派下去了）：「开始实施」「实施完成」都换成「追踪执行情况」。
+              这一行此刻要做的是看任务执行到哪了，状态推进由流程里的办理决定，
+              人工点一下只会让单据跑到流程前面（服务端 transition 同样拦）。
+            -->
+            <a-button
+              v-if="processDrivenWork(record)"
+              type="link"
+              size="small"
+              @click="openDetail(record)"
+            >
+              追踪执行情况
+            </a-button>
             <a-tooltip
-              v-if="primaryNoticeAction(record.status)"
+              v-else-if="primaryNoticeAction(record.status, noticeActionsOf(record))"
               :title="isOwner(record) ? undefined : ownerHint(record)"
             >
               <span>
@@ -88,9 +101,9 @@
                   type="link"
                   size="small"
                   :disabled="!isOwner(record)"
-                  @click="openTransition(record, primaryNoticeAction(record.status))"
+                  @click="openTransition(record, primaryNoticeAction(record.status, noticeActionsOf(record)))"
                 >
-                  {{ noticeActionLabel(primaryNoticeAction(record.status), approvalRequired) }}
+                  {{ noticeActionLabel(primaryNoticeAction(record.status, noticeActionsOf(record)), approvalRequired) }}
                 </a-button>
               </span>
             </a-tooltip>
@@ -107,9 +120,13 @@
               管理员通道：单据被卡住（审批在外部系统挂了 / 流程实例丢了 / 结论回写失败）时，
               直接把状态拨到它该在的位置。与「提交审批」这类正常动作分开放，
               并且只对租户管理员露出（服务端另有 403 兜底）。
+
+              流程还在跑的单不露这个入口：此时状态由流程驱动，人工改会和回调打架
+              （回调把状态拨回审批结论，单据状态与引擎里的事实对不上）。
+              processRunning 由列表接口回填；服务端 setStatusByAdmin 也按同一口径拦截。
             -->
             <a-button
-              v-if="isTenantAdmin"
+              v-if="isTenantAdmin && !record.processRunning"
               type="link"
               size="small"
               @click="openStatusForm(record)"
@@ -247,86 +264,19 @@
         提交流程：先把"这张单会走哪条流程、那条流程部署没部署"摆出来 —— 与「发起流程」弹框
         同一套层次（结论卡片 + 流程信息网格）。没部署就不给提交，而不是让人点完吃一次报错。
       -->
-      <template v-if="isApprovalSubmit">
-        <div class="ck-summary">
-          <div class="ck-summary__object">
-            <span class="ck-summary__name">{{ flow.record?.code || '' }}</span>
-            <span class="ck-summary__code">{{ flow.record?.name || '' }}</span>
-            <a-tag
-              v-if="flow.record?.status"
-              size="small"
-              :color="CHANGE_NOTICE_STATUS_COLOR[flow.record.status] || 'default'"
-            >
-              {{ CHANGE_NOTICE_STATUS_LABEL[flow.record.status] || flow.record.status }}
-            </a-tag>
-          </div>
-          <div class="ecn-flow-state" v-if="!approvalFlow.loading && approvalFlow.found">
-            <a-tag v-if="approvalFlow.deployedVersion" color="green" size="small">
-              已部署 v{{ approvalFlow.deployedVersion }}
-            </a-tag>
-            <a-tag v-else color="orange" size="small">尚未部署</a-tag>
-            <a-tag color="blue" size="small">
-              v{{ approvalFlow.latestVersion ?? '-' }}
-            </a-tag>
-          </div>
-        </div>
-
-        <a-alert
-          v-if="submitFlowBlocked"
-          type="warning"
-          show-icon
-          class="chg-flow-hint"
-          :message="submitFlowBlockReason"
-          :description="submitFlowBlockHint"
-        />
-        <a-alert
-          v-else
-          type="info"
-          show-icon
-          class="chg-flow-hint"
-          message="提交后立即发起审批流程：单据进入「审批中」，审批环节在「任务中心」办理，结论会自动回写到本单据"
-        />
-
-        <div class="ck-section" v-if="approvalFlow.loaded && !approvalFlow.loading && approvalFlow.key">
-          <div class="ck-section__title">流程信息</div>
-          <div class="ecn-info">
-            <div class="ecn-info__item">
-              <span class="ecn-info__label">流程名称</span>
-              <span class="ecn-info__value">{{ approvalFlow.name || '（未在流程清单里找到）' }}</span>
-            </div>
-            <div class="ecn-info__item">
-              <span class="ecn-info__label">流程 key</span>
-              <code class="ecn-info__value ecn-info__code">{{ approvalFlow.key }}</code>
-            </div>
-            <div class="ecn-info__item">
-              <span class="ecn-info__label">最新版本</span>
-              <span class="ecn-info__value ecn-info__value--tags">
-                <a-tag color="blue" size="small">v{{ approvalFlow.latestVersion ?? '-' }}</a-tag>
-                <span v-if="approvalFlow.latestCreatedAt" class="ecn-info__muted">
-                  {{ approvalFlow.latestCreatedAt }}
-                </span>
-              </span>
-            </div>
-            <div class="ecn-info__item">
-              <span class="ecn-info__label">部署状态</span>
-              <span class="ecn-info__value ecn-info__value--tags">
-                <a-tag v-if="approvalFlow.deployedVersion" color="green" size="small">
-                  已部署 v{{ approvalFlow.deployedVersion }}
-                </a-tag>
-                <a-tag v-else color="orange" size="small">尚未部署</a-tag>
-              </span>
-            </div>
-            <div v-if="approvalFlow.changeNote" class="ecn-info__item ecn-info__item--full">
-              <span class="ecn-info__label">变更说明</span>
-              <div class="ecn-info__value ecn-info__value--text">{{ approvalFlow.changeNote }}</div>
-            </div>
-            <div v-if="approvalFlow.description" class="ecn-info__item ecn-info__item--full">
-              <span class="ecn-info__label">流程说明</span>
-              <div class="ecn-info__value ecn-info__value--text">{{ approvalFlow.description }}</div>
-            </div>
-          </div>
-        </div>
-      </template>
+      <!-- 结论条 + 流程信息网格抽在 ChangeFlowInfoPanel（与 ECR「发起评审」共用同一套层次）：
+           两处拉起的是同一种东西，不能一边看得到版本与部署状态、另一边只有一句话 -->
+      <ChangeFlowInfoPanel
+        v-if="isApprovalSubmit"
+        :record="flow.record"
+        :status-label="CHANGE_NOTICE_STATUS_LABEL[flow.record?.status] || flow.record?.status || ''"
+        :status-color="CHANGE_NOTICE_STATUS_COLOR[flow.record?.status] || 'default'"
+        :flow="approvalFlow"
+        :blocked="submitFlowBlocked"
+        :block-reason="submitFlowBlockReason"
+        :block-hint="submitFlowBlockHint"
+        info-message="提交后立即发起审批流程：单据进入「审批中」，审批环节在「任务中心」办理，结论会自动回写到本单据"
+      />
 
       <a-alert
         v-else-if="flow.action === 'SUBMIT' && !approvalRequired"
@@ -466,13 +416,13 @@
               <span v-else class="chg-muted">未关联问题</span>
             </a-descriptions-item>
             <a-descriptions-item label="变更原因" :span="3">
-              <div class="chg-pre">{{ drawer.notice.reason || '—' }}</div>
+              <div class="chg-pre">{{ htmlToText(drawer.notice.reason) || '—' }}</div>
             </a-descriptions-item>
             <a-descriptions-item label="执行方案" :span="3">
-              <div class="chg-pre">{{ drawer.notice.proposal || '—' }}</div>
+              <div class="chg-pre">{{ htmlToText(drawer.notice.proposal) || '—' }}</div>
             </a-descriptions-item>
             <a-descriptions-item label="补充说明" :span="3">
-              <div class="chg-pre">{{ drawer.notice.description || '—' }}</div>
+              <div class="chg-pre">{{ htmlToText(drawer.notice.description) || '—' }}</div>
             </a-descriptions-item>
             <a-descriptions-item label="补充材料" :span="3">
               <a
@@ -487,9 +437,9 @@
             </a-descriptions-item>
           </a-descriptions>
 
-          <a-space v-if="availableNoticeActions(drawer.notice.status).length" class="chg-drawer-actions">
+          <a-space v-if="noticeActionsOf(drawer.notice).length" class="chg-drawer-actions">
             <a-tooltip
-              v-for="action in availableNoticeActions(drawer.notice.status)"
+              v-for="action in noticeActionsOf(drawer.notice)"
               :key="action"
               :title="isOwner(drawer.notice) ? undefined : ownerHint(drawer.notice)"
             >
@@ -507,18 +457,16 @@
             </a-tooltip>
           </a-space>
 
-          <!-- 受影响对象 -->
+          <!-- 受影响对象：详情页只读。
+               对象清单与"对象归哪张事项"都由流程决定（新建/编辑时的更改事项、审批通过后的
+               「变更任务确认与派发」办理页），详情页改动不同步流程变量 changeTaskList ——
+               真放开了，页面上的清单和实际派发出去的清单就会各说各话。 -->
           <a-divider orientation="left" class="chg-divider">
             受影响对象（{{ drawer.affectedObjects.length }}）
-            <a-button
-              v-if="noticeAffectedEditable(drawer.notice.status)"
-              type="link"
-              size="small"
-              @click="openAffectedForm"
-            >
-              + 添加
-            </a-button>
           </a-divider>
+          <div class="chg-hint">
+            这里只读：受影响对象与其归属事项，在「编辑通告」和「变更任务确认与派发」办理页调整。
+          </div>
           <a-empty v-if="!drawer.affectedObjects.length" description="尚未添加受影响对象" :image-style="{ height: '40px' }" />
           <a-table
             v-else
@@ -533,7 +481,7 @@
                 <a-tag>{{ ENTITY_TYPE_LABEL[record.entityType] || record.entityType }}</a-tag>
               </template>
               <template v-else-if="column.key === 'entity'">
-                <span>{{ record.entityCode || '—' }}</span>
+                <ChangeObjectLink :record="record" />
                 <span v-if="record.entityName" class="chg-muted"> · {{ record.entityName }}</span>
               </template>
               <template v-else-if="column.key === 'container'">
@@ -541,33 +489,16 @@
               </template>
               <template v-else-if="column.key === 'baseVersion'">
                 <span>{{ record.baseVersion }}</span>
-                <span v-if="record.resultVersion" class="chg-muted"> → {{ record.resultVersion }}</span>
+                <span v-if="record.currentResultVersion || record.resultVersion" class="chg-muted">
+                  → {{ record.currentResultVersion || record.resultVersion }}
+                </span>
               </template>
               <template v-else-if="column.key === 'task'">
-                <a-select
-                  v-if="taskAssignable(record)"
-                  :value="record.taskOid"
-                  size="small"
-                  allow-clear
-                  placeholder="待分配"
-                  :options="taskOptions"
-                  style="width: 100%"
-                  @change="(value) => handleAssignTask(record, value)"
-                />
-                <span v-else>{{ taskName(record.taskOid) }}</span>
+                <span :title="taskLabel(record.taskOid)">{{ taskLabel(record.taskOid) }}</span>
               </template>
               <template v-else-if="column.key === 'execute'">
                 <a-tag v-if="record.executedAt" color="green">已执行</a-tag>
                 <a-tag v-else color="default">待执行</a-tag>
-              </template>
-              <template v-else-if="column.key === 'op'">
-                <a-popconfirm
-                  v-if="noticeAffectedEditable(drawer.notice.status)"
-                  title="确定移除该受影响对象？"
-                  @confirm="handleRemoveAffected(record)"
-                >
-                  <a-button type="link" size="small" danger>移除</a-button>
-                </a-popconfirm>
               </template>
             </template>
           </a-table>
@@ -597,16 +528,34 @@
               </template>
               <template v-else-if="column.key === 'op'">
                 <a-space size="small">
+                  <!--
+                    任务已拉起子流程 = 执行由流程驱动：状态只能在流程里办，
+                    单据上不再给「开始处理 / 提交验收」这类直接改状态的按钮，
+                    换成「流程」入口（跟到实例详情看走到哪、谁在办）。
+                    没有子流程的任务（免审单）也要等通告进入「实施中」才给处理按钮：
+                    已批准就放开，会让人先把任务做完、通告还停在「已批准」。
+                  -->
                   <a-button
-                    v-for="action in availableTaskActions(record.status)"
-                    :key="action"
+                    v-if="record.processInstanceId"
                     type="link"
                     size="small"
-                    :disabled="taskRequiresOwner(action) && record.assignee !== currentUsername"
-                    @click="openTaskTransition(record, action)"
+                    @click="openProcessInstance(record.processInstanceId)"
                   >
-                    {{ CHANGE_TASK_ACTION_LABEL[action] }}
+                    流程
                   </a-button>
+                  <template v-else-if="tasksExecutable">
+                    <a-button
+                      v-for="action in availableTaskActions(record.status)"
+                      :key="action"
+                      type="link"
+                      size="small"
+                      :disabled="taskRequiresOwner(action) && record.assignee !== currentUsername"
+                      @click="openTaskTransition(record, action)"
+                    >
+                      {{ CHANGE_TASK_ACTION_LABEL[action] }}
+                    </a-button>
+                  </template>
+                  <span v-else class="chg-muted">待开始实施</span>
                 </a-space>
               </template>
             </template>
@@ -635,62 +584,6 @@
         </template>
       </a-spin>
     </a-drawer>
-
-    <!-- 添加受影响对象 -->
-    <a-modal
-      v-model:open="affectedForm.visible"
-      title="添加受影响对象"
-      width="600px"
-      centered
-      ok-text="添加"
-      cancel-text="取消"
-      :confirm-loading="affectedForm.saving"
-      @ok="handleAddAffected"
-    >
-      <a-alert
-        type="info"
-        show-icon
-        class="chg-flow-hint"
-        message="变更作用在具体版本上：必须指定被修订的那一版（如 A.2）。对象选择器在 M2 接入，当前手工填写。"
-      />
-      <a-form :model="affectedForm.form" layout="vertical">
-        <a-row :gutter="12">
-          <a-col :span="8">
-            <a-form-item label="对象类型" required>
-              <a-select v-model:value="affectedForm.form.entityType" :options="ENTITY_TYPE_OPTIONS" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="对象编码">
-              <a-input v-model:value="affectedForm.form.entityCode" placeholder="如 P-1001" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="8">
-            <a-form-item label="对象名称">
-              <a-input v-model:value="affectedForm.form.entityName" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item label="主对象 oid" required>
-          <a-input v-model:value="affectedForm.form.entityOid" placeholder="ck_part / ck_document / ck_eng_document 的 oid" />
-        </a-form-item>
-        <a-row :gutter="12">
-          <a-col :span="12">
-            <a-form-item label="受影响迭代 oid" required>
-              <a-input v-model:value="affectedForm.form.baseIterationOid" placeholder="具体版本的 oid" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="受影响版本" required>
-              <a-input v-model:value="affectedForm.form.baseVersion" placeholder="如 A.2" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item label="备注">
-          <a-input v-model:value="affectedForm.form.note" :maxlength="500" />
-        </a-form-item>
-      </a-form>
-    </a-modal>
 
     <!-- 新建任务 -->
     <a-modal
@@ -722,12 +615,12 @@
             placeholder="可选：输入编号或名称搜索零件 / 文档"
           />
         </a-form-item>
-        <!-- 收集：选一个零件，把它关联的文档 / 替代件一次带进来（BOM 结构不在范围内） -->
+        <!-- 收集：选一个零件，把它关联的文档 / 工程数据 / 替代件一次带进来（BOM 结构不在范围内） -->
         <div class="chg-collect-bar">
           <a-button size="small" :loading="taskForm.collecting" @click="collectRelatedObjects">
             收集关联对象
           </a-button>
-          <span class="chg-muted">把所选零件关联的文档、替代件一并加入本任务（可多次收集）</span>
+          <span class="chg-muted">把所选零件关联的文档、工程数据、替代件一并加入本任务（可多次收集）</span>
         </div>
         <div class="chg-hint">
           这里选的是这张任务要改的对象，不需要先在「基本属性」里选过；
@@ -764,9 +657,11 @@ import { PlusOutlined } from '@ant-design/icons-vue'
 import DataTable from '@/components/DataTable.vue'
 import DynamicForm from '@/components/DynamicForm.vue'
 import { ChangeAffectedObjectSelect } from '@/components/change/changeFieldWidgets'
+import { htmlToText } from '@/utils/html'
+import ChangeObjectLink from '@/components/change/ChangeObjectLink.vue'
+import ChangeFlowInfoPanel from './ChangeFlowInfoPanel.vue'
 import {
   addChangeAffectedByEntity,
-  addChangeAffectedObject,
   assignChangeAffectedTask,
   createChangeNotice,
   createChangeTask,
@@ -781,7 +676,6 @@ import {
   listChangeNotices,
   listProcessTemplates,
   listRelatedChangeObjects,
-  removeChangeAffectedObject,
   setChangeNoticeStatus,
   transitionChangeNotice,
   transitionChangeTask,
@@ -800,14 +694,12 @@ import {
   CHANGE_TYPE_LABEL,
   CUSTOMER_IMPACT_LABEL,
   ENTITY_TYPE_LABEL,
-  ENTITY_TYPE_OPTIONS,
   INVENTORY_IMPACT_LABEL,
   PRIORITY_LABEL,
   TASK_TYPE_LABEL,
   availableNoticeActions,
   availableTaskActions,
   noticeActionLabel,
-  noticeAffectedEditable,
   noticeEditable,
   noticeRequiresComment,
   primaryNoticeAction,
@@ -865,9 +757,8 @@ const affectedColumns = [
   // 所属容器：录入时快照，只用于展示与筛选（不跟随对象迁移更新）
   { title: '所属容器', key: 'container', width: 140 },
   { title: '受影响版本', key: 'baseVersion', width: 130 },
-  { title: '任务', key: 'task', width: 150 },
-  { title: '状态', key: 'execute', width: 90 },
-  { title: '操作', key: 'op', width: 80 }
+  { title: '任务', key: 'task', width: 180 },
+  { title: '状态', key: 'execute', width: 90 }
 ]
 
 const taskColumns = [
@@ -1041,7 +932,7 @@ const drawer = reactive({
   /** 补充材料的元信息（单据上只存 attachmentOid） */
   attachment: null
 })
-const affectedForm = reactive({ visible: false, saving: false, form: emptyAffected() })
+
 /**
  * source：'drawer' = 详情抽屉里直接建单（立即落库）；'modal' = 通告弹窗内规划（随保存一起落库）。
  *
@@ -1058,16 +949,44 @@ const taskForm = reactive({
 })
 const taskFlow = reactive({ visible: false, saving: false, oid: '', action: '', comment: '' })
 
+/**
+ * 抽屉 / 列表里的通告动作：流程在跑时不给「开始实施」「实施完成」。
+ *
+ * <p>实施进度由流程里的任务推进，人工点一下只会让单据状态跑到流程前面
+ * （流程还在确认清单 / 派发子任务，单据却已显示实施中 / 已完成）。服务端 transition
+ * 按同一口径拦（START_WORK / COMPLETE + 实例在跑 → 403）。
+ */
+function noticeActionsOf(record) {
+  const actions = availableNoticeActions(record?.status)
+  if (!record?.processRunning) return actions
+  return actions.filter((action) => action !== 'START_WORK' && action !== 'COMPLETE')
+}
+
+/**
+ * 流程驱动的实施：列表里换成「追踪执行情况」，不再露人工推进按钮。
+ *
+ * <p>与 {@link noticeActionsOf} 同一口径，只是列表要保留一个入口，别让操作列空着。
+ */
+function processDrivenWork(record) {
+  if (!record?.processRunning) return false
+  return ['START_WORK', 'COMPLETE'].includes(primaryNoticeAction(record.status))
+}
+
 const taskPlannable = computed(() => {
   const status = drawer.notice?.status
   return ['DRAFT', 'REJECTED', 'APPROVED', 'IN_WORK'].includes(status)
 })
 
-/** 更改事项下拉：本通告下的变更任务 */
-const taskOptions = computed(() => (drawer.tasks || []).map((t) => ({
-  value: t.oid,
-  label: `${t.code} ${t.name}${t.status === 'DRAFT' ? '（待生效）' : ''}`
-})))
+/**
+ * 更改事项的处理操作只在通告进入「实施中」后出现。
+ *
+ * <p>需要审批的单由审批流程派发任务并拉起任务子流程，动作在流程里办 ——
+ * 详情页对这种任务只给「流程」入口，压根不走这个开关。
+ * <p>免审单没有流程：任务在提交时被派发（DRAFT → OPEN），但通告还停在「已批准」，
+ * 得等责任人点了「开始实施」才允许开始处理 —— 否则任务先做完、通告状态还在后面追。
+ */
+const tasksExecutable = computed(() => drawer.notice?.status === 'IN_WORK')
+
 
 /**
  * 弹窗「更改事项」还能不能增删任务。
@@ -1113,9 +1032,20 @@ const noticeChosenOids = computed(() => {
   return [...chosen]
 })
 
-function taskAssignable(record) {
-  if (!record || record.executedAt) return false
-  return !['COMPLETED', 'CLOSED', 'CANCELLED'].includes(drawer.notice?.status)
+/**
+ * 该任务的对象范围是否已锁定 = 已进入流程。
+ *
+ * <p>判据与后端 {@code ChangeNoticeServiceImpl#isTaskScopeLocked} 一致：
+ * 拉起了子流程实例（办理人的待办范围在派发那一刻定死），或状态已过 OPEN（人已经在改）。
+ * <b>OPEN 且没有实例</b>不锁 —— 那是批准后补录的事项，还没派给任何人，
+ * 此时不让挂对象，这条事项就永远没有执行范围。
+ */
+function taskScopeLocked(taskOid) {
+  if (!taskOid) return false
+  const task = (drawer.tasks || []).find((item) => item.oid === taskOid)
+  if (!task) return false
+  if (task.processInstanceId) return true
+  return Boolean(task.status) && !['DRAFT', 'OPEN'].includes(task.status)
 }
 
 function emptyForm() {
@@ -1140,17 +1070,6 @@ function emptyForm() {
   }
 }
 
-function emptyAffected() {
-  return {
-    entityType: 'PART',
-    entityCode: '',
-    entityName: '',
-    entityOid: '',
-    baseIterationOid: '',
-    baseVersion: '',
-    note: ''
-  }
-}
 
 /** affectedOids：这张任务负责改哪些对象（不落库到任务，创建后逐条写回对象的 taskOid） */
 function emptyTask() {
@@ -1456,15 +1375,16 @@ watch(
       LOCKED_WHEN_DERIVED.forEach((name) => { applied[name] = modal.form[name] })
 
       // 变更原因：也按来源带入，但**不锁**——通告可以按自己的执行范围重述理由。
-      // 仍记进 applied，清来源时按它回滚（否则"清掉来源、原因还留着"的老问题会回来）
-      modal.form.reason = request.reason || ''
+      // 仍记进 applied，清来源时按它回滚（否则"清掉来源、原因还留着"的老问题会回来）。
+      // 三个字段在 ECR 上是富文本，带入前转纯文本（通告侧是 textarea，见 utils/html.js）
+      modal.form.reason = htmlToText(request.reason)
       applied.reason = modal.form.reason
 
       // 执行方案：以 ECR 的建议方案为起点，但允许在通告上改写（用户改过就不再覆盖）
       const proposalAuto = isBlank(modal.form.proposal)
         || modal.form.proposal === modal.applied?.proposal
       if (proposalAuto) {
-        modal.form.proposal = request.proposal || ''
+        modal.form.proposal = htmlToText(request.proposal)
         applied.proposal = modal.form.proposal
       }
 
@@ -1473,8 +1393,8 @@ watch(
       const descriptionAuto = isBlank(modal.form.description)
         || modal.form.description === modal.applied?.description
       if (descriptionAuto && request.description) {
-        modal.form.description = request.description
-        applied.description = request.description
+        modal.form.description = htmlToText(request.description)
+        applied.description = modal.form.description
       }
 
       // 计划完成 / 责任人：以来源请求为准（用户仍可再改）
@@ -1530,12 +1450,14 @@ async function openEdit(record) {
     certImpact: record.certImpact || undefined,
     customerImpact: record.customerImpact || undefined,
     inventoryImpact: record.inventoryImpact || undefined,
-    reason: record.reason || '',
-    proposal: record.proposal || '',
+    // 这三个字段在来源请求（ECR）上是富文本，库里存的是 <p>…</p>；通告上是纯文本输入框，
+    // 直接塞会看到标签。带入时转一次，用户在框里改完再保存，落库就是干净的纯文本
+    reason: htmlToText(record.reason),
+    proposal: htmlToText(record.proposal),
     planStart: record.planStart || null,
     planEnd: record.planEnd || null,
     owner: record.owner || undefined,
-    description: record.description || '',
+    description: htmlToText(record.description),
     // 补充材料：不回填 oid，编辑框会显示成"没传过"，用户也就无从替换旧附件
     attachmentOid: record.attachmentOid || undefined,
     issueOids: []
@@ -1871,63 +1793,6 @@ async function handleDelete(record) {
   }
 }
 
-function openAffectedForm() {
-  affectedForm.form = emptyAffected()
-  affectedForm.visible = true
-}
-
-async function handleAddAffected() {
-  const form = affectedForm.form
-  if (!form.entityOid.trim() || !form.baseIterationOid.trim() || !form.baseVersion.trim()) {
-    message.warning('必须填写主对象 oid、受影响迭代 oid 与版本')
-    return
-  }
-  affectedForm.saving = true
-  try {
-    const res = await addChangeAffectedObject(drawer.notice.oid, form)
-    if (res.code === 200) {
-      message.success('已添加')
-      affectedForm.visible = false
-      openDetail({ oid: drawer.notice.oid })
-    } else {
-      message.error(res.message || '添加失败')
-    }
-  } catch (e) {
-    message.error(e?.message || '添加失败')
-  } finally {
-    affectedForm.saving = false
-  }
-}
-
-async function handleRemoveAffected(record) {
-  try {
-    const res = await removeChangeAffectedObject(drawer.notice.oid, record.oid)
-    if (res.code === 200) {
-      message.success('已移除')
-      openDetail({ oid: drawer.notice.oid })
-    } else {
-      message.error(res.message || '移除失败')
-    }
-  } catch (e) {
-    message.error(e?.message || '移除失败')
-  }
-}
-
-/** 对象改派到某个更改事项；taskOid 为空 = 取消归属 */
-async function handleAssignTask(record, taskOid) {
-  try {
-    const res = await assignChangeAffectedTask(drawer.notice.oid, record.oid, taskOid)
-    if (res.code === 200) {
-      message.success(taskOid ? '已归入该更改事项' : '已取消归属')
-      openDetail({ oid: drawer.notice.oid })
-    } else {
-      message.error(res.message || '改派失败')
-    }
-  } catch (e) {
-    message.error(e?.message || '改派失败')
-  }
-}
-
 /** 详情抽屉里建任务：单据已存在，创建即落库 */
 function openTaskForm() {
   taskForm.source = 'drawer'
@@ -1949,7 +1814,7 @@ function openModalTaskForm() {
 }
 
 /**
- * 收集所选对象关联的其他对象（零件 → 关联文档 / 替代件），并入本任务的变更对象。
+ * 收集所选对象关联的其他对象（零件 → 关联文档 / 工程数据 / 替代件），并入本任务的变更对象。
  *
  * <p>口径见 {@code ChangeRequestService#relatedObjects}：BOM 结构不收集。
  * 收集只影响表单里的取值，落库仍走「保存」时的 addAffectedByEntity + 改派，
@@ -1958,7 +1823,7 @@ function openModalTaskForm() {
 async function collectRelatedObjects() {
   const selected = Array.isArray(taskForm.form.affectedOids) ? [...taskForm.form.affectedOids] : []
   if (!selected.length) {
-    message.info('先选一个零件，再收集它关联的文档 / 替代件')
+    message.info('先选一个零件，再收集它关联的文档 / 工程数据 / 替代件')
     return
   }
   taskForm.collecting = true
@@ -1976,7 +1841,7 @@ async function collectRelatedObjects() {
       message.info('没有新的关联对象可收集')
       return
     }
-    const RELATION_LABEL = { DOCUMENT: '关联文档', ALTERNATE: '替代件' }
+    const RELATION_LABEL = { DOCUMENT: '关联文档', ENG_DOCUMENT: '关联工程数据', ALTERNATE: '替代件' }
     // 控件只认自己搜过的候选：不把收集结果塞回 seedOptions，新对象会显示成裸 oid
     taskForm.seedScope = [
       ...(taskForm.seedScope || []),
@@ -1989,8 +1854,11 @@ async function collectRelatedObjects() {
     ]
     taskForm.form.affectedOids = [...selected, ...fresh.map((row) => row.oid)]
     const docs = fresh.filter((row) => row.relation === 'DOCUMENT').length
+    const engDocs = fresh.filter((row) => row.relation === 'ENG_DOCUMENT').length
     const alternates = fresh.filter((row) => row.relation === 'ALTERNATE').length
-    message.success(`收集到 ${fresh.length} 个关联对象（关联文档 ${docs}、替代件 ${alternates}）`)
+    message.success(
+      `收集到 ${fresh.length} 个关联对象（关联文档 ${docs}、工程数据 ${engDocs}、替代件 ${alternates}）`
+    )
   } catch (e) {
     message.error(e?.message || '收集失败')
   } finally {
@@ -2006,9 +1874,15 @@ function removeModalTask(record) {
   modal.tasks.splice(index, 1)
 }
 
-/** 能不能删：已派发 / 已开始的任务后端不允许删，别让按钮点得动再被打回 */
+/**
+ * 能不能删：已派发 / 已开始的任务后端不允许删，别让按钮点得动再被打回。
+ *
+ * <p>有子流程实例的一律不可删（后端同样拦）：删掉任务，流程实例的 businessKey
+ * 就指向一条不存在的记录，待办还在、单据没了。
+ */
 function canRemoveModalTask(record) {
   if (!modalTaskEditable.value) return false
+  if (record.processInstanceId) return false
   return record._local || ['DRAFT', 'OPEN'].includes(record.status)
 }
 
@@ -2091,10 +1965,12 @@ async function handleTaskFlow() {
   }
 }
 
-function taskName(taskOid) {
-  if (!taskOid) return '—'
-  const task = drawer.tasks.find((t) => t.oid === taskOid)
-  return task ? task.code : '—'
+/** 任务列的显示文案：与下拉选项同格式，锁定时也读得全（不再只露一个编号） */
+function taskLabel(taskOid) {
+  if (!taskOid) return '待分配'
+  const task = (drawer.tasks || []).find((t) => t.oid === taskOid)
+  if (!task) return '—'
+  return `${task.code} ${task.name}${taskScopeLocked(taskOid) ? '（已进入流程）' : '（待生效）'}`
 }
 
 function formatDateTime(value) {
@@ -2172,7 +2048,15 @@ defineExpose({ reload })
 .chg-flow-hint { margin-bottom: 12px; }
 .chg-pre { white-space: pre-wrap; word-break: break-word; }
 .chg-muted { color: #8c8c8c; }
+/* 任务列只读时：灰字 + 虚线下划线，暗示"有原因、可悬停" */
+.chg-task-locked { color: #8c8c8c; border-bottom: 1px dashed #d9d9d9; cursor: help; }
+/* 兜底：无论 AntD 版本/状态如何，箭头常驻、清除图标一律不出现在这一列
+   （清除图标与箭头同位置，看起来就像"没有下拉"） */
+.chg-task-select :deep(.ant-select-arrow) { opacity: 1 !important; }
+.chg-task-select :deep(.ant-select-clear) { display: none !important; }
 .chg-hint { color: #8c8c8c; font-size: 12px; margin-top: 6px; line-height: 1.6; }
+/* 只读原因：浅黄底，别让它看起来像又一条普通提示 */
+.chg-locked-hint { margin: 4px 0 10px; padding: 6px 10px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 4px; color: #ad6800; }
 .chg-collect-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -2px 0 8px; font-size: 12px; }
 .chg-act-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chg-act-flow { color: #8c8c8c; font-size: 12px; }
@@ -2190,50 +2074,5 @@ defineExpose({ reload })
   font-size: 12px;
 }
 
-/* 提交审批弹窗：单据结论条 +「流程信息」网格，视觉层次与「发起流程」弹框一致 */
-.ck-summary { margin-bottom: 12px; }
-.ecn-flow-state {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  white-space: nowrap;
-}
-.ecn-info {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  background: #f0f0f0;
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
-  overflow: hidden;
-}
-.ecn-info__item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  padding: 6px 10px;
-  background: #fff;
-}
-.ecn-info__item--full { grid-column: 1 / -1; }
-.ecn-info__label {
-  flex: 0 0 auto;
-  font-size: 12px;
-  line-height: 20px;
-  color: #8c8c8c;
-  white-space: nowrap;
-}
-.ecn-info__value {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 13px;
-  line-height: 20px;
-  color: rgba(0, 0, 0, 0.88);
-  word-break: break-word;
-}
-.ecn-info__value--tags { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.ecn-info__value--text { line-height: 1.65; white-space: pre-wrap; }
-.ecn-info__code { font-family: monospace; font-size: 12px; color: #595959; }
-.ecn-info__muted { font-size: 12px; color: #8c8c8c; }
+/* 「提交审批」弹窗的单据结论条 + 流程信息网格已抽到 ChangeFlowInfoPanel（与 ECR 共用） */
 </style>

@@ -46,6 +46,18 @@ import EcrImpactCountersignForm from './EcrImpactCountersignForm.vue'
 import EcrCcbDecisionForm from './EcrCcbDecisionForm.vue'
 import EcnReviewForm from './EcnReviewForm.vue'
 import EcnCountersignForm from './EcnCountersignForm.vue'
+// 变更任务链路的行业表单：Plan / Execute / ApproveSetup / Approval / Countersign / Summary 已实现。
+// 三张审批链路的表单共用 EcnTaskObjectsPanel（本任务修订对象只读面板），
+// 结论 / 选人区分别复用内置的 ApprovalOpinionForm / CountersignForm / SetupAssigneeForm，
+// 由外层组件转发 collect 与按钮文案 —— DSL 规则只有一份解释，不会两处各说各话。
+// 注意：forms.json 里声明了 component 名却建不出 .vue，Vite 会整块模块 500，
+// 所有任务的办理页都打不开，新增模板时 import 与 FORM_COMPONENT_VIEWS 必须同时加。
+import EcnTaskPlanForm from './EcnTaskPlanForm.vue'
+import EcnTaskExecuteForm from './EcnTaskExecuteForm.vue'
+import EcnTaskApproveSetupForm from './EcnTaskApproveSetupForm.vue'
+import EcnTaskApprovalForm from './EcnTaskApprovalForm.vue'
+import EcnTaskCountersignForm from './EcnTaskCountersignForm.vue'
+import EcnTaskSummaryForm from './EcnTaskSummaryForm.vue'
 import GenericApproveForm from './GenericApproveForm.vue'
 
 /** 内置模板：按 **code** 派发视图（code 就是渲染契约，随 platform-base 包装入每个租户） */
@@ -81,6 +93,13 @@ export const FORM_COMPONENT_VIEWS = {
   EcrCcbDecisionForm,
   EcnReviewForm,
   EcnCountersignForm,
+  // 与上方 import 同步
+  EcnTaskPlanForm,
+  EcnTaskExecuteForm,
+  EcnTaskApproveSetupForm,
+  EcnTaskApprovalForm,
+  EcnTaskCountersignForm,
+  EcnTaskSummaryForm,
 }
 
 /** 兜底模板：没有专属模板时用它（同意 / 驳回 + 意见） */

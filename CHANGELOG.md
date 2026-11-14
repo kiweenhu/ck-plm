@@ -1,5 +1,38 @@
 # 更新日志
 
+## [v0.3.5] - 2026-11-14
+
+**变更管理走向执行闭环** —— ECR → ECN → 变更任务执行 → 结果记录，全链路打通。
+
+### 变更管理（Change）
+
+- **变更前 / 变更后分表**：`ck_change_affected_object`（变更前，`base_iteration_oid` / `base_version`）与新增 `ck_change_result_object`（变更后，`result_iteration_oid` / `result_version`）。分开的理由：一个变更前对象执行后可能产出**多个**版本（拆件），甚至产出原本不在清单里的新件 —— 一对多塞进同一行的两组字段里无处可放
+- **内建服务 `change.executeTask`**：流程节点办完即自动执行修订，把变更前对象逐个修出新大版本。修订是节点办完的**业务结果**而非可选附加动作，交给引擎执行才能避免"任务提交了但对象没改"的空壳状态；**幂等**，流程重试 / 驳回重跑不会出第二个 B 版
+- **ECN 任务全流程表单**（7 个）：任务计划、审批设置、审批、会签、执行、变更对象面板、汇总确认
+- **变更对象关联与流程信息**：`ChangeObjectLink` 变更对象关联组件、`ChangeFlowInfoPanel` 变更流程信息面板
+- **流程处理器**：`ChangeExecuteTaskHandler`（执行修订）、`ChangeNoticeCompletionHandler`（变更通知完成）、`ChangeTaskCompletionHandler`（变更任务完成）
+
+### 生命周期模板
+
+- **STANDARD 定为「草稿 - 审核中 - 已发布」**：中间态 `WORKING` → `APPROVING`（复用字典已有状态码，不新造）。播种源 `lifecycles.json` 与 `LifecycleTemplateDef.createStandard()` 同步
+- ⚠️ **已装租户需执行增量 SQL** —— 安装器对已存在模板是 SKIP、不会覆盖，详见下方「生命周期模板」章节
+
+### 行业包
+
+- 新增 `design-approval` 流程（设计审批，BPMN + DSL）
+- `PackTenantResourceSync`：行业包租户资源同步
+
+### 其他改进
+
+- **Softtype**：生命周期状态选项（`LifecycleStateOptionsVO`）与实例能力接口调整
+- **Process**：`PlmServiceContext` / `ProcessTaskFormVO` / `ProcessService` 增强，支撑变更流程的表单与上下文传递
+- **Document / Part**：修订逻辑与变更结果对象对接
+- **IAM**：`TenantMapper` 调整
+- **前端**（52 个文件）：流程设计器（`node-schemas` / `compile` / `parse` / `ops` / `validate` / `presets`）、任务表单注册表、`useChangeDoc` 变更文档 composable、`html.js` 工具
+- **测试**：`ChangeFlowDeploymentTest` / `FlowableEngineSmokeTest` 等流程引擎测试同步更新
+
+---
+
 ## [v0.3.1] - 2026-11-07
 
 **v0.3.0 后续迭代** —— 演示环境上线后的首批修复与增强。
@@ -67,6 +100,85 @@
 方法论内容的**模板层**（七批，内容层到此完整）：**交付件（交付物）**、**阶段门（评审门）**、**评审模板**、**检查规则**、**问题类型**、**驾驶舱指标**与**驾驶舱布局**。行业包里的清单（智能硬件 IPD：46 项交付件 + 10 道门 + 8 份评审 + 11 条检查规则 + 7 类问题类型 + 11 项指标 + 3 个驾驶舱视角）现在真的会随包装进**企业一份**，并可在「业务配置 → 模板管理」里裁剪：改强制项、改完成条件、改决策选项、改参与者、改检查项、改条件与严重度、改要不要根因分析或复测、改指标的分层与取数依据、改驾驶舱的受众与分组件，或**停用**。停用而不删除 —— 重装行业包只会 SKIP，既不会把企业改过的值冲掉，也不会把停用的条目改回启用。
 
 > 此前这些内容只有包里那些 JSON：平台上既没有模板表；实例表 `ck_deliverable` 也**没有 `tenant_oid`**，且不在租户拦截器的共享名单里 —— 任何 MyBatis 语句都会因注入 `tenant_oid` 而报错，等于**物理不可访问**；门更是连表都没有。本轮补上两层的**模板**；**实例化（交付件实例 / 门实例）、完成与放行的自动判定、与流程节点产出的联动**留在后续版本（P2/P3/P4）。
+
+### 生命周期模板（Lifecycle Template）
+
+#### STANDARD 定为「草稿 - 审核中 - 已发布」：中间态 WORKING → APPROVING
+- 用户要求（2026-11-13）：*"将STANDARD生命周期模板修改成，草稿-审核中-已发布"*
+- 播种源 `platform-base/v1.0.0/lifecycles.json`：STANDARD 改为 `DRAFT / APPROVING / PUBLISHED`；升版 `DRAFT→APPROVING→PUBLISHED`，驳回 `APPROVING→DRAFT`、`PUBLISHED→APPROVING`。code 复用字典里的 `APPROVING`（审核中），**不新造状态码**
+- `LifecycleTemplateDef.createStandard()`（`/api/lifecycle-templates/{code}/domain` 与 javadoc 示例）同步；`IterationService` 示例注释同步
+- 已装租户**就地迁移**：安装器对已存在的模板是 SKIP，不会覆盖，必须跑下面的增量 SQL。只改 `STANDARD`，其它模板（DOC_REVIEW / 自定义模板）里的 `WORKING` 不动；业务对象按固化列 `lifecycle_template_iteration_oid` 限定在 STANDARD 上改 `status`
+- 实测（本地 4 租户）：模板状态行 4 行、流转规则 8 行、类型「状态→流程」绑定 0 行；对象迭代 `status='WORKING'` 0 行（与预扫一致）
+- 增量 SQL（幂等，可重复执行）：
+
+```sql
+BEGIN;
+-- ① 模板状态行：WORKING → APPROVING（仅 STANDARD；显示名改「审核中」）
+UPDATE ck_lifecycle_template_state s
+SET status_code = 'APPROVING', status_display_name = '审核中'
+FROM ck_lifecycle_template_iteration i, ck_lifecycle_template t
+WHERE s.iteration_oid = i.oid AND i.master_oid = t.oid
+  AND t.code = 'STANDARD' AND s.status_code = 'WORKING'
+  AND NOT EXISTS (SELECT 1 FROM ck_lifecycle_template_state x
+                  WHERE x.iteration_oid = s.iteration_oid AND x.status_code = 'APPROVING');
+
+-- ② 流转规则（前进 / 回退）
+UPDATE ck_lifecycle_template_transition tr
+SET from_status_code = 'APPROVING'
+FROM ck_lifecycle_template_iteration i, ck_lifecycle_template t
+WHERE tr.iteration_oid = i.oid AND i.master_oid = t.oid
+  AND t.code = 'STANDARD' AND tr.from_status_code = 'WORKING';
+
+UPDATE ck_lifecycle_template_transition tr
+SET to_status_code = 'APPROVING'
+FROM ck_lifecycle_template_iteration i, ck_lifecycle_template t
+WHERE tr.iteration_oid = i.oid AND i.master_oid = t.oid
+  AND t.code = 'STANDARD' AND tr.to_status_code = 'WORKING';
+
+-- ③ 类型「状态 → 流程」绑定
+UPDATE ck_type_lifecycle_state_process_link l
+SET status_code = 'APPROVING'
+FROM ck_lifecycle_template_iteration i, ck_lifecycle_template t
+WHERE l.lifecycle_template_iteration_oid = i.oid AND i.master_oid = t.oid
+  AND t.code = 'STANDARD' AND l.status_code = 'WORKING';
+
+-- ④ 业务对象迭代表（status 存 code；对象固化的是模板子版本，按子版本限定 STANDARD）
+UPDATE ck_part_iteration p SET status = 'APPROVING'
+FROM ck_lifecycle_template_iteration i, ck_lifecycle_template t
+WHERE p.lifecycle_template_iteration_oid = i.oid AND i.master_oid = t.oid
+  AND t.code = 'STANDARD' AND p.status = 'WORKING';
+
+UPDATE ck_document_iteration d SET status = 'APPROVING'
+FROM ck_lifecycle_template_iteration i, ck_lifecycle_template t
+WHERE d.lifecycle_template_iteration_oid = i.oid AND i.master_oid = t.oid
+  AND t.code = 'STANDARD' AND d.status = 'WORKING';
+
+UPDATE ck_eng_document_iteration e SET status = 'APPROVING'
+FROM ck_lifecycle_template_iteration i, ck_lifecycle_template t
+WHERE e.lifecycle_template_iteration_oid = i.oid AND i.master_oid = t.oid
+  AND t.code = 'STANDARD' AND e.status = 'WORKING';
+
+UPDATE ck_functional_iteration f SET status = 'APPROVING'
+FROM ck_lifecycle_template_iteration i, ck_lifecycle_template t
+WHERE f.lifecycle_template_iteration_oid = i.oid AND i.master_oid = t.oid
+  AND t.code = 'STANDARD' AND f.status = 'WORKING';
+
+-- ⑤ 模板描述跟随
+UPDATE ck_lifecycle_template
+SET description = 'DRAFT → APPROVING → PUBLISHED 三阶段标准流程（草稿 - 审核中 - 已发布）',
+    updated_at = now()
+WHERE code = 'STANDARD'
+  AND description IS DISTINCT FROM 'DRAFT → APPROVING → PUBLISHED 三阶段标准流程（草稿 - 审核中 - 已发布）';
+
+-- 校验：应为 0
+SELECT count(*) AS leftover_working
+FROM ck_lifecycle_template_state s
+JOIN ck_lifecycle_template_iteration i ON i.oid = s.iteration_oid
+JOIN ck_lifecycle_template t ON t.oid = i.master_oid
+WHERE t.code = 'STANDARD' AND s.status_code = 'WORKING';
+
+COMMIT;
+```
 
 ### 表单布局（Form Layout）
 

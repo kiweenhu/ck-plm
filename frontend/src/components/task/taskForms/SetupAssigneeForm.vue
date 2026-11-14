@@ -75,6 +75,8 @@ const slotOptions = reactive({})
 const slotLoading = reactive({})
 const comment = ref('')
 const loadError = ref('')
+/** 槽位是否已加载完（外层表单包住本组件时用它判断"能不能提交"，免得空槽位被当成"没选人"或直接放过） */
+const ready = ref(false)
 
 /**
  * 角色 code → 中文名。
@@ -203,9 +205,9 @@ function collect() {
 onMounted(() => {
   // 角色名与槽位并行取：名字只影响文案，晚到也只是先显示 code、随即替换成中文名
   loadRoleNames()
-  load()
+  load().finally(() => { ready.value = true })
 })
-defineExpose({ collect, submitText, successText, renderable })
+defineExpose({ collect, submitText, successText, renderable, ready })
 </script>
 
 <style scoped>

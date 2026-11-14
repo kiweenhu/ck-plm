@@ -21,6 +21,7 @@ import cn.ck.plm.change.entity.ChangeRequest;
 import cn.ck.plm.change.entity.ChangeRequestAffectedObject;
 import cn.ck.plm.change.entity.ChangeTask;
 import cn.ck.plm.change.flow.ChangeNoticeFlow;
+import cn.ck.plm.change.flow.ChangeTaskFlow;
 import cn.ck.plm.change.mapper.ChangeActivityMapper;
 import cn.ck.plm.change.mapper.ChangeAffectedObjectMapper;
 import cn.ck.plm.change.mapper.ChangeNoticeIssueMapper;
@@ -34,6 +35,7 @@ import cn.ck.plm.change.mapper.ChangeIssueLookupMapper;
 import cn.ck.plm.change.service.api.ChangeConfigService;
 import cn.ck.plm.change.service.api.ChangeNoticeService;
 import cn.ck.plm.change.service.api.ChangeTaskService;
+import cn.ck.plm.change.support.HtmlText;
 import cn.ck.plm.process.service.api.ProcessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,6 +79,14 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
     /** 受影响对象类型白名单（与 CheckoutProvider / ReviseProvider 同口径） */
     private static final Set<String> ENTITY_TYPES = new LinkedHashSet<>(List.of(
             "PART", "DOCUMENT", "ENG_DOCUMENT"));
+
+    /**
+     * 派发子流程要遍历的任务清单变量名。
+     *
+     * <p>三处必须一致：{@code change-notice} DSL 的 {@code sub_task.multiInstance.collection}、
+     * {@code ChangeRequestStatusHandler} 审批通过时写入的键名、以及本类的派发清单同步。
+     */
+    private static final String VAR_TASK_LIST = "changeTaskList";
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 200;
@@ -306,6 +316,22 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
         // 责任人闸门放在最前：非责任人不必看到"受影响对象未执行完"这类与他无关的门槛提示
         assertOwner(existing, normalized);
 
+        // 流程在跑：实施进度由流程里的任务推进，人工「开始实施」会和流程状态打架
+        // （流程还在确认清单 / 派发子任务，单据却已经显示实施中）
+        if (ChangeNoticeFlow.START_WORK.equals(normalized)
+                && processService.isInstanceRunning(existing.getProcessInstanceId())) {
+            throw new IllegalStateException(
+                    "变更流程正在运行，实施进度由流程里的任务推进，不能手工「开始实施」");
+        }
+
+        // 「实施完成」同理：流程驱动实施时，COMPLETED 只能由汇总确认节点（change.completeNotice）落，
+        // 那里有"受影响对象全部执行完"的门槛。人工点一下会和流程回调抢同一个状态列
+        if (ChangeNoticeFlow.COMPLETE.equals(normalized)
+                && processService.isInstanceRunning(existing.getProcessInstanceId())) {
+            throw new IllegalStateException(
+                    "变更流程正在运行，实施完成由流程里的汇总确认节点推进，不能手工「实施完成」");
+        }
+
         ChangeNotice target = copyOf(existing);
 
         if (ChangeNoticeFlow.START_APPROVAL.equals(normalized)) {
@@ -389,9 +415,58 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
             affectedMapper.releaseByNotice(oid);
             // 单据作废了，流程不能继续跑：留着实例会接着往下派任务，而它指向的单据已经取消。
             // 状态已先落库，回调看到 CANCELLED 会按幂等跳过，不会把单据改回审批结论。
+            // 只有草稿能走到这里（见 ChangeNoticeFlow），正常草稿本无实例；
+            // 这段是兜历史脏数据（管理员把单据拨回草稿却没清实例 id 之类）。
             terminateProcessQuietly(existing.getProcessInstanceId(), "变更通告已取消");
         }
         log.info("变更通告 {} 流转: {} -> {}（{}）", existing.getCode(), existing.getStatus(), to, normalized);
+        return mapper.selectByOid(oid);
+    }
+
+    @Override
+    @Transactional
+    public ChangeNotice completeByProcess(String oid, String comment) {
+        if (isBlank(oid)) throw new IllegalArgumentException("变更通告 oid 不能为空");
+        ChangeNotice existing = require(oid);
+
+        // 幂等：流程重试 / 重复回调，或单据已被人手工完成
+        if (ChangeNoticeFlow.COMPLETED.equals(existing.getStatus())) {
+            log.debug("变更通告 {} 已是已完成，汇总确认跳过", existing.getCode());
+            return existing;
+        }
+
+        String from = existing.getStatus();
+        if (!ChangeNoticeFlow.APPROVED.equals(from) && !ChangeNoticeFlow.IN_WORK.equals(from)) {
+            throw new IllegalStateException("变更通告当前状态为「" + ChangeNoticeFlow.label(from)
+                    + "」，不能标记实施完成（只有「已批准 / 实施中」可以）");
+        }
+
+        // 与人工「完成」同一道门槛：受影响对象必须全部执行完。
+        // 抛异常是刻意的 —— 节点失败、流程停在汇总节点，逼着先把对象执行完再确认。
+        int pending = affectedMapper.countPending(oid);
+        if (pending > 0) {
+            throw new IllegalStateException("还有 " + pending + " 个受影响对象未执行完毕，不能标记完成");
+        }
+
+        // 状态机没有 APPROVED → COMPLETED：先落「实施中」，时间线上能看出实施从什么时候开始
+        if (ChangeNoticeFlow.APPROVED.equals(from)) {
+            ChangeNotice started = copyOf(existing);
+            started.setStatus(ChangeNoticeFlow.IN_WORK);
+            mapper.update(started);
+            record(oid, ChangeNoticeFlow.START_WORK, from, ChangeNoticeFlow.IN_WORK,
+                    "审批通过，变更任务已全部派发，进入实施");
+        }
+
+        ChangeNotice target = copyOf(existing);
+        target.setStatus(ChangeNoticeFlow.COMPLETED);
+        target.setCompletedAt(LocalDateTime.now());
+        mapper.update(target);
+
+        record(oid, ChangeNoticeFlow.COMPLETE,
+                ChangeNoticeFlow.APPROVED.equals(from) ? ChangeNoticeFlow.IN_WORK : from,
+                ChangeNoticeFlow.COMPLETED,
+                isBlank(comment) ? "全部变更任务已完成，汇总确认通过" : comment.trim());
+        log.info("变更通告 {} 汇总确认: {} -> {}", existing.getCode(), from, ChangeNoticeFlow.COMPLETED);
         return mapper.selectByOid(oid);
     }
 
@@ -500,6 +575,14 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
         if (target.equals(existing.getStatus())) {
             throw new IllegalArgumentException("单据当前就是 " + target + "，不需要设置");
         }
+        // 流程在跑：状态由流程驱动。硬改成别的值，回调回来会把状态拨回审批结论，
+        // 在办任务也跟着悬空 —— 那时单据状态和引擎里的事实对不上，更难查。
+        // 真卡死了走「流程监控」终止实例，实例没了这条拦截自然放行。
+        if (processService.isInstanceRunning(existing.getProcessInstanceId())) {
+            throw new IllegalStateException("单据正在审批流程中（实例 "
+                    + existing.getProcessInstanceId() + "），状态由流程驱动，不能手工设置；"
+                    + "如流程确实已卡死，请先在「流程监控」里终止该流程实例");
+        }
 
         ChangeNotice patch = copyOf(existing);
         patch.setStatus(target);
@@ -535,22 +618,33 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
 
     @Override
     public ChangeNotice detail(String oid) {
-        return isBlank(oid) ? null : mapper.selectByOid(oid);
+        if (isBlank(oid)) return null;
+        ChangeNotice notice = mapper.selectByOid(oid);
+        if (notice != null) {
+            notice.setProcessRunning(processService.isInstanceRunning(notice.getProcessInstanceId()));
+        }
+        return notice;
     }
 
     @Override
     public Map<String, Object> detailBundle(String oid) {
         ChangeNotice notice = require(oid);
+        notice.setProcessRunning(processService.isInstanceRunning(notice.getProcessInstanceId()));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("notice", notice);
         result.put("request", isBlank(notice.getRequestOid())
                 ? null : requestMapper.selectByOid(notice.getRequestOid()));
-        result.put("affectedObjects", affectedMapper.selectByNotice(oid));
+        List<ChangeAffectedObject> affected = affectedMapper.selectByNotice(oid);
+        // 结果表里存的是修订那一刻的 B.1；执行人随后改出 B.2 时，"变更后"要跟着走
+        enrichCurrentResultVersion(affected);
+        result.put("affectedObjects", affected);
         // 来源请求的预估对象：ECN 建单时已默认带入执行清单，这里保留原样供对照（"预估 vs 执行"）
         result.put("requestAffectedObjects", isBlank(notice.getRequestOid())
                 ? List.of()
                 : requestAffectedMapper.selectByRequest(notice.getRequestOid(), tenantOid()));
-        result.put("tasks", taskMapper.selectByNotice(oid));
+        // 任务带上各自的子流程实例（byNotice 内部回填）：界面据此决定
+        // "能不能删 / 能不能手工开始处理 / 流程入口点哪"
+        result.put("tasks", taskService.byNotice(oid));
         // 关联问题：从 ECR 转来的通告会在这里看到带过来的那几条
         result.put("issues", noticeIssueMapper.selectIssues(oid, tenantOid()));
         result.put("activities", activityMapper.selectByOwner("NOTICE", oid));
@@ -573,6 +667,7 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
 
         List<ChangeNotice> rows = mapper.selectList(tenantOid(), normalizedStatus, normalizedRequest,
                 normalizedKeyword, size, offset);
+        markProcessRunning(rows);
         int total = mapper.countList(tenantOid(), normalizedStatus, normalizedRequest, normalizedKeyword);
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -603,7 +698,11 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
 
     @Override
     public List<ChangeAffectedObject> affectedObjects(String oid) {
-        return affectedMapper.selectByNotice(oid);
+        if (isBlank(oid)) return List.of();
+        List<ChangeAffectedObject> affected = affectedMapper.selectByNotice(oid);
+        // 与详情聚合同一口径：变更后显示该大版本的最新小版本（B.2），不是修订时的 B.1 快照
+        enrichCurrentResultVersion(affected);
+        return affected;
     }
 
     @Override
@@ -616,7 +715,15 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
             throw new IllegalArgumentException("不支持的对象类型：" + entityType
                     + "（仅 PART / DOCUMENT / ENG_DOCUMENT）");
         }
-        return affectedMapper.selectNoticesByEntity(type, entityOid.trim());
+        List<Map<String, Object>> rows = affectedMapper.selectNoticesByEntity(type, entityOid.trim());
+        // 对象详情页「变更情况」也要显示修订后大版本的最新小版本（B.2），不是当年的 B.1 快照
+        for (Map<String, Object> row : rows) {
+            String iterationOid = stringOf(row.get("resultIterationOid"));
+            if (isBlank(iterationOid)) continue;
+            String current = currentVersionOfRevision(type, iterationOid, tenantOid());
+            if (!isBlank(current)) row.put("currentResultVersion", current);
+        }
+        return rows;
     }
 
     // ==================== 受影响对象 ====================
@@ -626,7 +733,7 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
     public ChangeAffectedObject addAffected(String noticeOid, ChangeAffectedObject affected) {
         ChangeNotice notice = require(noticeOid);
         if (!ChangeNoticeFlow.isAffectedEditable(notice.getStatus())) {
-            throw new IllegalStateException("当前状态不允许修改受影响对象（仅草稿或已驳回状态可改）");
+            throw new IllegalStateException("当前状态不允许修改受影响对象（仅草稿、已驳回、已批准或实施中可改；审批中与终态不行）");
         }
         if (affected == null) throw new IllegalArgumentException("受影响对象不能为空");
 
@@ -657,7 +764,14 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
         affected.setNoticeOid(noticeOid);
         affected.setEntityType(entityType);
         // 归属的更改事项（= 变更任务）：必须属于同一张通告，否则"这个对象谁改"就串单了
-        affected.setTaskOid(normalizeTaskOid(noticeOid, affected.getTaskOid()));
+        String targetTask = normalizeTaskOid(noticeOid, affected.getTaskOid());
+        // 任务已进入流程（OPEN 且有实例 / 已开工）：执行范围在派发那一刻就定死了，
+        // 再往里塞对象，流程里的办理人就凭空多出一件要改的东西（前端置灰只是提示，这里才是底线）
+        if (isTaskScopeLocked(targetTask)) {
+            throw new IllegalStateException("更改事项已生效（任务已进入流程），不能再往里添加变更对象；"
+                    + "如需调整请先在「流程监控」里终止该任务流程");
+        }
+        affected.setTaskOid(targetTask);
         affected.setLocked(false);
         affected.setResultIterationOid(null);
         affected.setResultVersion(null);
@@ -678,7 +792,7 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
     public ChangeAffectedObject addAffectedByEntity(String noticeOid, String entityOid) {
         ChangeNotice notice = require(noticeOid);
         if (!ChangeNoticeFlow.isAffectedEditable(notice.getStatus())) {
-            throw new IllegalStateException("当前状态不允许修改受影响对象（仅草稿或已驳回状态可改）");
+            throw new IllegalStateException("当前状态不允许修改受影响对象（仅草稿、已驳回、已批准或实施中可改；审批中与终态不行）");
         }
         if (isBlank(entityOid)) {
             throw new IllegalArgumentException("必须选择变更对象");
@@ -743,6 +857,12 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
         if (target == null ? affected.getTaskOid() == null : target.equals(affected.getTaskOid())) {
             return affected;
         }
+        // 任一侧任务已进入流程：这条对象的归属就是流程的执行范围，换到别的任务（或取消归属）
+        // 等于让流程里的办理人对着另一批对象干活
+        if (isTaskScopeLocked(affected.getTaskOid()) || isTaskScopeLocked(target)) {
+            throw new IllegalStateException("变更任务已生效（已进入流程），不能再调整对象的归属；"
+                    + "如需调整请先在「流程监控」里终止该任务流程");
+        }
 
         affected.setTaskOid(target);
         affected.setUpdater(UserContext.get());
@@ -754,6 +874,58 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
                 "受影响对象 " + nullToEmpty(affected.getEntityCode()) + " 改派到 "
                         + (task == null ? "不归属任何更改事项" : task.getCode() + " " + task.getName()));
         return affectedMapper.selectByOid(affectedOid);
+    }
+
+    @Override
+    @Transactional
+    public int syncDispatchList(String noticeOid) {
+        ChangeNotice notice = require(noticeOid);
+        if (!ChangeNoticeFlow.isTaskPlannable(notice.getStatus())) {
+            throw new IllegalStateException("变更通告当前状态（" + notice.getStatus() + "）不允许调整更改事项");
+        }
+        if (isBlank(notice.getProcessInstanceId())) {
+            throw new IllegalStateException("这张变更通告没有在跑的审批流程，派发清单无需同步");
+        }
+        List<Map<String, Object>> plan = new ArrayList<>();
+        for (ChangeTask task : taskMapper.selectByNotice(noticeOid)) {
+            // 只收 OPEN：DRAFT 是"还没派发的提案"，提前拉起子流程会让人对着未生效的任务干活
+            if (!ChangeTaskFlow.OPEN.equals(task.getStatus())) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("oid", task.getOid());
+            // 允许为空（未指派责任人）：子流程照样起，任务中心里显示为"未指派"
+            item.put("assignee", task.getAssignee() == null ? "" : task.getAssignee());
+            plan.add(item);
+        }
+        // 空清单也照写：集合表达式解析不到会把节点回滚，审批人就只看到一句报错
+        processService.setInstanceVariable(notice.getProcessInstanceId(), VAR_TASK_LIST, plan);
+        log.info("变更通告 {} 派发清单已同步 {} 条", notice.getCode(), plan.size());
+        return plan.size();
+    }
+
+    /** 该变更任务是否已拉起子流程实例（businessKey = 任务 oid）；空 oid 视为没启动 */
+    private boolean hasTaskProcess(String taskOid) {
+        return !isBlank(taskOid)
+                && !processService.instanceIdsByBusinessKey(List.of(taskOid)).isEmpty();
+    }
+
+    /**
+     * 该任务的对象范围是否已锁定 —— "已进入流程"即锁定。
+     *
+     * <p>判据两条：拉起了子流程实例（办理人的待办范围在派发那一刻就定了），
+     * 或状态已过 {@code OPEN}（{@code IN_WORK} 起 = 人已经在改）。
+     *
+     * <p>唯独 <b>OPEN 且没有实例</b>不锁：那是通告批准后补录的事项，还没派给任何人，
+     * 此时不让挂对象，这条事项就永远没有执行范围。
+     */
+    private boolean isTaskScopeLocked(String taskOid) {
+        if (isBlank(taskOid)) return false;
+        if (hasTaskProcess(taskOid)) return true;
+        ChangeTask task = taskMapper.selectByOid(taskOid);
+        return task != null
+                && !ChangeTaskFlow.isDraft(task.getStatus())
+                && !ChangeTaskFlow.OPEN.equals(task.getStatus());
     }
 
     /** 任务必须属于同一张通告；空 = 待分配 */
@@ -771,12 +943,17 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
     public boolean removeAffected(String noticeOid, String affectedOid) {
         ChangeNotice notice = require(noticeOid);
         if (!ChangeNoticeFlow.isAffectedEditable(notice.getStatus())) {
-            throw new IllegalStateException("当前状态不允许修改受影响对象（仅草稿或已驳回状态可改）");
+            throw new IllegalStateException("当前状态不允许修改受影响对象（仅草稿、已驳回、已批准或实施中可改；审批中与终态不行）");
         }
         ChangeAffectedObject affected = affectedMapper.selectByOid(affectedOid);
         if (affected == null || !noticeOid.equals(affected.getNoticeOid())) return false;
         if (affected.getExecutedAt() != null) {
             throw new IllegalStateException("该对象已执行修订，不能移除");
+        }
+        // 归属的任务已进入流程：移除对象，流程里的办理人就少了一件要改的东西
+        if (isTaskScopeLocked(affected.getTaskOid())) {
+            throw new IllegalStateException("该对象归属的变更任务已生效（已进入流程），不能移除；"
+                    + "如需调整请先在「流程监控」里终止该任务流程");
         }
         affectedMapper.deleteByOid(affectedOid);
         record(noticeOid, "REMOVE_AFFECTED", null, null,
@@ -902,6 +1079,34 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
             snapshot = objectLookupMapper.selectEngDocumentSnapshot(entityOid, tenantOid);
         }
         return snapshot;
+    }
+
+    /**
+     * 修订产物所在大版本的最新小版本：结果表里是 B.1，执行人改完可能是 B.2 / B.3。
+     *
+     * <p>按"同一 master + 同一 revision"取最大迭代，而不是取对象全局 latest ——
+     * 万一对象后来又被下一张变更单修订成 C.1，那不是本次变更的产物。
+     */
+    private String currentVersionOfRevision(String entityType, String iterationOid, String tenantOid) {
+        if (isBlank(iterationOid)) return null;
+        String type = entityType == null ? "" : entityType.trim().toUpperCase();
+        return switch (type) {
+            case "PART" -> objectLookupMapper.selectPartVersionOfRevision(iterationOid, tenantOid);
+            case "DOCUMENT" -> objectLookupMapper.selectDocumentVersionOfRevision(iterationOid, tenantOid);
+            case "ENG_DOCUMENT" -> objectLookupMapper.selectEngDocumentVersionOfRevision(iterationOid, tenantOid);
+            default -> null;
+        };
+    }
+
+    /** 给详情里的受影响对象补上「变更后大版本的最新小版本」；查不到时回落结果表快照。 */
+    private void enrichCurrentResultVersion(List<ChangeAffectedObject> rows) {
+        if (rows == null || rows.isEmpty()) return;
+        String tenant = tenantOid();
+        for (ChangeAffectedObject row : rows) {
+            if (isBlank(row.getResultIterationOid())) continue;
+            String current = currentVersionOfRevision(row.getEntityType(), row.getResultIterationOid(), tenant);
+            row.setCurrentResultVersion(isBlank(current) ? row.getResultVersion() : current);
+        }
     }
 
     /** 指定类型取对象快照；类型不合法或查不到返回 null */
@@ -1093,6 +1298,27 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
      * 主事务回滚时它不该发生。afterCommit 里没有活动事务，{@code terminateInstance} 会自己
      * 开新事务；失败只记日志，不影响已经提交的状态变更。
      */
+    /**
+     * 批量回填「流程还在跑」标记 —— 一次查询，别在列表里逐行打引擎。
+     *
+     * <p>只给展示层用：前端据此决定「设置状态」是否露头。真正的拦截在
+     * {@link #setStatusByAdmin}，按钮藏没藏都拦得住。
+     */
+    private void markProcessRunning(List<ChangeNotice> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        Set<String> running = processService.runningInstanceIds(
+                rows.stream().map(ChangeNotice::getProcessInstanceId).toList());
+        for (ChangeNotice row : rows) {
+            // 草稿还没有流程实例（null）。runningInstanceIds 在没有实例时返回 Set.of()，
+            // 而 JDK 不可变集合的 contains(null) 直接抛 NPE —— 只要列表里全是草稿，
+            // 整个列表接口就 500（2026-11-09 变更通告页面加载失败就是这个）。
+            String instanceId = row.getProcessInstanceId();
+            row.setProcessRunning(!isBlank(instanceId) && running.contains(instanceId));
+        }
+    }
+
     private void terminateProcessQuietly(String instanceId, String reason) {
         if (isBlank(instanceId)) {
             return;
@@ -1182,7 +1408,12 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
     }
 
     private void normalizeBlanks(ChangeNotice notice) {
-        notice.setDescription(blankToNull(notice.getDescription()));
+        // 这三个字段在通告上是纯文本输入框，但来源请求（ECR）上它们是 rich-text：
+        // 派生带入 / 老数据里都可能是 <p>…</p>。写入侧统一转成纯文本（见 HtmlText），
+        // 否则标签会被当成正文一路传下去（导出、通知、审批意见里都会冒出来）。
+        notice.setReason(blankToNull(HtmlText.plain(notice.getReason())));
+        notice.setProposal(blankToNull(HtmlText.plain(notice.getProposal())));
+        notice.setDescription(blankToNull(HtmlText.plain(notice.getDescription())));
         // 定性信息：清空下拉时前端发的是空串，转 null —— 否则库里留下 ''，
         // "未评估"与"选了空值"分不出来，派生单的继承判断（isBlank）也会被空串混过去
         notice.setChangeType(blankToNull(notice.getChangeType()));
@@ -1191,8 +1422,6 @@ public class ChangeNoticeServiceImpl implements ChangeNoticeService {
         notice.setCertImpact(blankToNull(notice.getCertImpact()));
         notice.setCustomerImpact(blankToNull(notice.getCustomerImpact()));
         notice.setInventoryImpact(blankToNull(notice.getInventoryImpact()));
-        notice.setReason(blankToNull(notice.getReason()));
-        notice.setProposal(blankToNull(notice.getProposal()));
         notice.setAttachmentOid(blankToNull(notice.getAttachmentOid()));
         notice.setRequestOid(blankToNull(notice.getRequestOid()));
         // 所属容器：前端清空时发的是空串（product-select 的 patch 语义），必须转成 null，

@@ -72,5 +72,8 @@ backup-*.sql
 
 # ===== 临时文件 =====
 .tmp/
+.tmp-chrome/
 tmp_*.sql
 after-login.png
+*.log.bak
+frontend/vitest-out.txt

@@ -37,6 +37,15 @@ public class ChangeTask extends WithoutVersionEntity implements TenantEntity {
     /** 状态（见 ChangeTaskFlow） */
     private String status;
 
+    /**
+     * 对应的变更任务子流程实例 id（非持久化，详情查询时按 businessKey = 任务 oid 回填）。
+     *
+     * <p>任务表上没有这一列：实例由「变更任务自动分发」按 {@code businessKey=${task.oid}}
+     * 拉起，关联信息在流程侧。界面上要据此回答两件事 —— 能不能删、能不能手工改状态，
+     * 以及「流程跑到哪了」从哪进。
+     */
+    private transient String processInstanceId;
+
     /** 计划开始日期 */
     private LocalDate planStart;
 
@@ -53,6 +62,16 @@ public class ChangeTask extends WithoutVersionEntity implements TenantEntity {
      * 由 {@code selectMine} 的 JOIN 带出（与 ck_issue 的 gateLabel 同一做法）。
      */
     private String noticeCode;
+
+    /**
+     * 所属变更通告状态 —— <b>响应装配字段</b>，不入库。
+     *
+     * <p>任务能不能动手由通告决定：审批配置为「需要审批」的单，任务由流程派发并由
+     * 任务子流程推进（业务列表上不该再给直接改状态的按钮）；免审单没有流程，
+     * 要等通告进入「实施中」才由责任人手工推进。列表上只有 noticeCode 说明不了这件事，
+     * 由 {@code selectMine} 的 JOIN 带出。
+     */
+    private String noticeStatus;
 
     /** 租户 oid */
     private String tenantOid;
@@ -72,6 +91,9 @@ public class ChangeTask extends WithoutVersionEntity implements TenantEntity {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
+    public String getProcessInstanceId() { return processInstanceId; }
+    public void setProcessInstanceId(String processInstanceId) { this.processInstanceId = processInstanceId; }
+
     public LocalDate getPlanStart() { return planStart; }
     public void setPlanStart(LocalDate planStart) { this.planStart = planStart; }
 
@@ -83,6 +105,9 @@ public class ChangeTask extends WithoutVersionEntity implements TenantEntity {
 
     public String getNoticeCode() { return noticeCode; }
     public void setNoticeCode(String noticeCode) { this.noticeCode = noticeCode; }
+
+    public String getNoticeStatus() { return noticeStatus; }
+    public void setNoticeStatus(String noticeStatus) { this.noticeStatus = noticeStatus; }
 
     @Override
     public String getTenantOid() { return tenantOid; }

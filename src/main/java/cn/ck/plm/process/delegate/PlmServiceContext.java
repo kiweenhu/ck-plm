@@ -99,6 +99,17 @@ public class PlmServiceContext {
     }
 
     /**
+     * 写流程变量（处理器把业务结果交给下游节点时用）。
+     *
+     * <p>典型场景：审批通过时把派发清单写进流程变量，下游多实例子流程的集合表达式
+     * {@code ${changeTaskList}} 直接从流程作用域取值 —— 集合解析不到会抛异常，
+     * 把本节点刚落库的业务状态一起回滚，所以这类变量必须在节点返回前写好。
+     */
+    public void setVariable(String name, Object value) {
+        execution.setVariable(name, value);
+    }
+
+    /**
      * 流程实例所属租户（引擎的 tenantId）。
      *
      * <p>为什么要显式取它：出站调用要按"哪个租户的目标系统"去注册表里找，

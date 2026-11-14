@@ -157,6 +157,7 @@ import {
   feedbackStatusMeta as statusMeta,
   feedbackTime as formatTime
 } from '@/utils/feedback'
+import { sanitizeHtml } from '@/utils/html'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -189,49 +190,7 @@ const columns = [
   { title: '操作', key: 'action', width: 110, fixed: 'right' }
 ]
 
-/**
- * 正文是租户用户提交的富文本（可能带 base64 截图），直接 v-html 等于让任意租户
- * 往平台管理员的浏览器里塞脚本。这里按白名单过滤：只留排版标签与安全属性，
- * script / iframe / on* 事件 / style 一律去掉。
- */
-const ALLOWED_TAGS = new Set([
-  'P', 'BR', 'DIV', 'SPAN', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'DEL', 'SUB', 'SUP',
-  'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
-  'A', 'IMG', 'CODE', 'PRE', 'HR', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD'
-])
-const SAFE_ATTRS = new Set(['alt', 'title', 'width', 'height'])
-
-function sanitizeHtml(html) {
-  if (!html) return ''
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-  const walk = (node) => {
-    Array.from(node.children).forEach((el) => {
-      const tag = el.tagName
-      if (!ALLOWED_TAGS.has(tag)) {
-        // 不认识的标签整块丢掉（含 script / style / iframe 里的内容）
-        el.remove()
-        return
-      }
-      Array.from(el.attributes).forEach((attr) => {
-        const name = attr.name.toLowerCase()
-        const value = attr.value || ''
-        const safeHref = tag === 'A' && name === 'href' && /^(https?:|mailto:|\/)/i.test(value)
-        const safeSrc = tag === 'IMG' && name === 'src' && /^(https?:|data:image\/|\/)/i.test(value)
-        if (!safeHref && !safeSrc && !SAFE_ATTRS.has(name)) {
-          el.removeAttribute(attr.name)
-        }
-      })
-      if (tag === 'A' && el.getAttribute('href')) {
-        el.setAttribute('target', '_blank')
-        el.setAttribute('rel', 'noopener noreferrer')
-      }
-      walk(el)
-    })
-  }
-  walk(doc.body)
-  return doc.body.innerHTML
-}
-
+/** 正文是租户提交的富文本（可能带 base64 截图），渲染前统一走共享白名单消毒 */
 const safeContent = computed(() => sanitizeHtml(detail.value?.content))
 
 const fetchList = async () => {

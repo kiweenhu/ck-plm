@@ -226,6 +226,25 @@ public class ChangeNoticeController {
         }
     }
 
+    /**
+     * 按当前更改事项重写派发清单变量（{@code changeTaskList}）。
+     *
+     * <p>「变更任务确认与派发」节点的办理页在提交前调它：清单在页面里增删改（已落库），
+     * 紧接着的多实例子流程读的是流程变量 —— 不同步就会按审批那一刻的旧清单派发。
+     *
+     * @return 写进清单的事项条数
+     */
+    @PostMapping("/{oid}/dispatch-list")
+    public ApiResponse<Integer> syncDispatchList(@PathVariable String oid) {
+        try {
+            return ApiResponse.ok(service.syncDispatchList(oid));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
+        } catch (IllegalStateException e) {
+            return ApiResponse.fail(403, e.getMessage());
+        }
+    }
+
     @DeleteMapping("/{oid}/affected-objects/{affectedOid}")
     public ApiResponse<Boolean> removeAffected(@PathVariable String oid,
                                                @PathVariable String affectedOid) {

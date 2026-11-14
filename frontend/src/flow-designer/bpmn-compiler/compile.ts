@@ -161,6 +161,8 @@ function emitNode(node: FlowNode, ctx: Ctx): string {
       // 业务上是独立类型，技术上与审批节点共用同一发射器（产物仍是 userTask + 多实例）
       return emitApproval(node as CountersignNode, ctx)
     case NodeType.SET_ASSIGNEE:
+    case NodeType.CHANGE_TASK_SETUP:
+      // 同一件事的两种业务外观：产物形状一致，差别只在默认节点表单
       return emitSetAssignee(node as SetAssigneeNode, ctx)
     case NodeType.TASK:
       return emitTask(node as TaskNode, ctx)
@@ -173,12 +175,13 @@ function emitNode(node: FlowNode, ctx: Ctx): string {
     case NodeType.TIMER:
       return emitTimer(node as TimerNode, ctx)
     case NodeType.EXCLUSIVE_GATEWAY:
-      return `<exclusiveGateway ${baseAttrs(node, ctx)}${defaultBranchAttr(node.id, ctx)}${ctxAttr(CKPLM_ATTR.ADVANCED, (node as ExclusiveGatewayNode).advanced)}/>`
+      // 条件写在出边上（condition.mode 决定字段选择器 / 表达式），网关自身没有属性
+      return `<exclusiveGateway ${baseAttrs(node, ctx)}${defaultBranchAttr(node.id, ctx)}/>`
     case NodeType.PARALLEL_GATEWAY:
       // 并行网关是按定义无条件全走，BPMN 不允许 default 属性
       return `<parallelGateway ${baseAttrs(node, ctx)}/>`
     case NodeType.INCLUSIVE_GATEWAY:
-      return `<inclusiveGateway ${baseAttrs(node, ctx)}${defaultBranchAttr(node.id, ctx)}${ctxAttr(CKPLM_ATTR.ADVANCED, (node as InclusiveGatewayNode).advanced)}/>`
+      return `<inclusiveGateway ${baseAttrs(node, ctx)}${defaultBranchAttr(node.id, ctx)}/>`
     default:
       ctx.warnings.push(`未知节点类型，已跳过: ${(node as FlowNode).type}`)
       return ''

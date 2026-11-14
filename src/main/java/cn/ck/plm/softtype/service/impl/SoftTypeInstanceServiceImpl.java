@@ -114,6 +114,13 @@ public class SoftTypeInstanceServiceImpl implements SoftTypeInstanceService {
     }
 
     @Override
+    public void resetLifecycleTemplate(String typeDefinitionCode, String oid, String entityVersion,
+                                       String targetTemplateIterationOid) {
+        capabilityOfType(typeDefinitionCode)
+                .rebindLifecycleInstance(requireOid(oid), entityVersion, targetTemplateIterationOid);
+    }
+
+    @Override
     public String lifecycleTemplateIteration(String typeDefinitionCode, String oid, String entityVersion) {
         SoftTypeInstanceCapability capability = capabilityOfType(typeDefinitionCode);
         try {

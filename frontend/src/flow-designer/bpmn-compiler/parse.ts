@@ -24,6 +24,7 @@ import {
   OverdueAction,
   PassRuleMode,
   RejectTarget,
+  CHANGE_TASK_SETUP_FORM_CODE,
   SETUP_ASSIGNEE_FORM_CODE,
   TimerMode,
   defaultNodeSize,
@@ -301,8 +302,24 @@ function toNode(
       }
       return node
     }
+    case NodeType.CHANGE_TASK_SETUP:
+      // 变更任务行业变体：产物形状与设置审批人一致，只是缺 formKey 时补的是**它自己的**
+      // 默认表单（内置那张「设置流程参与者」是给设置审批人的）
+      return {
+        id,
+        type: NodeType.CHANGE_TASK_SETUP,
+        name,
+        assignee: readAssignee(tag),
+        commentRequired: readCkplmJson(tag, CKPLM_ATTR.COMMENT_REQUIRED) === true ? true : undefined,
+        deadline: readCkplmJson(tag, CKPLM_ATTR.DEADLINE),
+        binding: readCkplmJson(tag, CKPLM_ATTR.BINDING),
+        formRef:
+          readCkplm(tag, CKPLM_ATTR.FORM_REF) ??
+          tag.attrs[`${FLOWABLE_PREFIX}:formKey`] ??
+          CHANGE_TASK_SETUP_FORM_CODE,
+      }
     case NodeType.SET_ASSIGNEE:
-      // 设置审批人：人员清单不入 DSL（由下游活动的 SETUP 策略表达），故只读自身属性
+      // 设置审批人：人员清单不入 DSL（由下游活动的人员策略表达），故只读自身属性
       return {
         id,
         type: NodeType.SET_ASSIGNEE,
@@ -311,7 +328,7 @@ function toNode(
         commentRequired: readCkplmJson(tag, CKPLM_ATTR.COMMENT_REQUIRED) === true ? true : undefined,
         deadline: readCkplmJson(tag, CKPLM_ATTR.DEADLINE),
         binding: readCkplmJson(tag, CKPLM_ATTR.BINDING),
-        // 内置固定表单：产物里没写 formKey 也要补上（否则往返一次就丢了这个契约）
+        // 默认表单：产物里没写 formKey 也要补上（否则往返一次就丢了这个契约）
         formRef:
           readCkplm(tag, CKPLM_ATTR.FORM_REF) ??
           tag.attrs[`${FLOWABLE_PREFIX}:formKey`] ??
@@ -375,11 +392,11 @@ function toNode(
       }
     }
     case NodeType.EXCLUSIVE_GATEWAY:
-      return { id, type: NodeType.EXCLUSIVE_GATEWAY, name, advanced: readCkplmJson(tag, CKPLM_ATTR.ADVANCED) === true ? true : undefined }
+      return { id, type: NodeType.EXCLUSIVE_GATEWAY, name }
     case NodeType.PARALLEL_GATEWAY:
       return { id, type: NodeType.PARALLEL_GATEWAY, name }
     case NodeType.INCLUSIVE_GATEWAY:
-      return { id, type: NodeType.INCLUSIVE_GATEWAY, name, advanced: readCkplmJson(tag, CKPLM_ATTR.ADVANCED) === true ? true : undefined }
+      return { id, type: NodeType.INCLUSIVE_GATEWAY, name }
     default:
       unsupported.push({ tag: tag.name, id, name, reason: `无法映射为 DSL 节点类型: ${type}` })
       return null

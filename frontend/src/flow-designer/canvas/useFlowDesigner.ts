@@ -11,6 +11,7 @@
 import { computed, ref } from 'vue'
 import {
   ALL_NODE_TYPES,
+  CHANGE_TASK_SETUP_FORM_CODE,
   NodeType,
   SETUP_ASSIGNEE_FORM_CODE,
   addEdge,
@@ -425,9 +426,18 @@ function structuralDefaultOf(type: NodeTypeT, id: string): FlowNode {
         name: '设置审批人',
         // 执行人默认就是发起人本人（流程 owner）—— 这正是这个活动的业务定位
         assignee: { strategy: 'INITIATOR' },
-        // 表单是内置固定的（设置流程参与者）：这里就给上，面板里也只读不可改
+        // 默认表单（设置流程参与者）：显式写进 DSL，面板里可换成其它"会挑人"的表单
         formRef: SETUP_ASSIGNEE_FORM_CODE,
         // 无 reject：设置活动不产生审批结论
+      }
+    case NodeType.CHANGE_TASK_SETUP:
+      return {
+        id,
+        type,
+        name: '变更任务结果审批设置参与者',
+        // 与设置审批人同一职责（发起人指定下游人员），差别只有默认表单
+        assignee: { strategy: 'INITIATOR' },
+        formRef: CHANGE_TASK_SETUP_FORM_CODE,
       }
     case NodeType.COUNTERSIGN_APPROVAL:
       return {

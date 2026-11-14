@@ -57,12 +57,12 @@ public class LifecycleTemplateDef {
     private static LifecycleTemplateDef createStandard() {
         LifecycleTemplateDef def = new LifecycleTemplateDef("Standard");
         def.addStatus(new LifecycleStatus("DRAFT", "Draft"));
-        def.addStatus(new LifecycleStatus("WORKING", "In Work"));
+        def.addStatus(new LifecycleStatus("APPROVING", "Under Review"));
         def.addStatus(new LifecycleStatus("PUBLISHED", "Released"));
-        def.addTransition("DRAFT", "WORKING");
-        def.addTransition("WORKING", "PUBLISHED");
-        def.addRejection("WORKING", "DRAFT");
-        def.addRejection("PUBLISHED", "WORKING");
+        def.addTransition("DRAFT", "APPROVING");
+        def.addTransition("APPROVING", "PUBLISHED");
+        def.addRejection("APPROVING", "DRAFT");
+        def.addRejection("PUBLISHED", "APPROVING");
         return def;
     }
 

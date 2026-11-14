@@ -75,17 +75,19 @@ describe('节点库目录', () => {
     expect(missingStyle, `缺少外观规格: ${missingStyle.join(', ')}`).toEqual([])
   })
 
-  it('「人工」分组：设置审批人 → 审批节点 → 会签审批 → 办理节点', () => {
+  it('「人工」分组：设置审批人 → 变更任务结果审批设置参与者 → 审批 → 会签 → 办理', () => {
     const human = presetGroups().find((g) => g.group === '人工')
     expect(human).toBeDefined()
     expect(human!.items.map(presetLabel)).toEqual([
       '设置审批人',
+      '变更任务结果审批设置参与者',
       '审批节点',
       '会签审批',
       '办理节点',
     ])
     expect(human!.items.map((p) => p.type)).toEqual([
       NodeType.SET_ASSIGNEE,
+      NodeType.CHANGE_TASK_SETUP,
       NodeType.APPROVAL,
       NodeType.COUNTERSIGN_APPROVAL,
       NodeType.TASK,

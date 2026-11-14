@@ -89,6 +89,16 @@ describe('生命周期模板 → 状态选项', () => {
     expect(options.map((o) => o.value)).toEqual(['DRAFT', 'IN_WORK', 'RELEASED'])
   })
 
+  it('同名不同码的状态在下拉里带上编码，选错模板的状态能被认出来', () => {
+    const options = lifecycleStateOptions([
+      template(stateRef('APPROVING', '评审中'), stateRef('REVIEWING', '评审中')),
+    ])
+    expect(options.map((o) => o.label)).toEqual([
+      '评审中（APPROVING）',
+      '评审中（REVIEWING）',
+    ])
+  })
+
   it('没有状态 / 结构异常时不抛错，返回已认出的部分', () => {
     expect(lifecycleStateOptions([{ oid: 'tpl-1' }, null, 'x'])).toEqual([])
     expect(lifecycleStateOptions([template(stateRef('DRAFT', '草稿'))])).toHaveLength(1)

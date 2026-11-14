@@ -59,6 +59,23 @@ public interface ChangeNoticeService {
      */
     ChangeNotice setStatusByAdmin(String oid, String status, String reason);
 
+    /**
+     * <b>汇总确认通过</b>：把通告推到「已完成」（COMPLETED）。
+     *
+     * <p>与 {@link #transition} 的差别只有一处 —— 不看操作人是不是责任人：这一步由流程的
+     * 汇总节点触发，办理人是通告责任人，但引擎线程里的 {@code UserContext} 不保证对得上，
+     * 用 transition 会莫名其妙被 owner 闸门拦住。
+     *
+     * <p>状态机里 {@code APPROVED} 不能直达 {@code COMPLETED}（必须先 {@code IN_WORK}），
+     * 所以这里补一条「开始实施」的留痕再完成 —— 时间线上能看出实施是什么时候开始的。
+     *
+     * <p>门槛与人工「完成」完全一致：还有未执行的受影响对象就抛异常，流程停在汇总节点，
+     * 逼着先把对象执行完再确认。
+     *
+     * <p>幂等：已是 COMPLETED 时直接返回。
+     */
+    ChangeNotice completeByProcess(String oid, String comment);
+
     ChangeNotice detail(String oid);
 
     /** 详情聚合：{@code { notice, request, affectedObjects, tasks, activities }} */
@@ -112,6 +129,17 @@ public interface ChangeNoticeService {
      * 但已执行修订的对象不再允许改派 —— 结果已经落库，再换人只会让责任无处追溯。
      */
     ChangeAffectedObject assignAffectedTask(String noticeOid, String affectedOid, String taskOid);
+
+    /**
+     * 按当前更改事项清单重写派发变量 {@code changeTaskList}。
+     *
+     * <p>「变更任务确认与派发」节点允许增删改更改事项（库里的任务才是真相），而紧跟其后的
+     * 多实例子流程按流程变量派发 —— 不在节点完成前同步一次，改了清单也只会派出审批那一刻的旧集合。
+     *
+     * @return 写进清单的任务条数
+     * @throws IllegalStateException 通告状态不允许规划任务，或没有在跑的流程实例
+     */
+    int syncDispatchList(String noticeOid);
 
     /** 移除受影响对象（仅未提交前） */
     boolean removeAffected(String noticeOid, String affectedOid);

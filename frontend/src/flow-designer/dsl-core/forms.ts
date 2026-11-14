@@ -27,7 +27,13 @@
  * <p>放在契约层（而不是 app 层）是因为三处都要读它：设计器面板、编译器、运行期。
  */
 
-import { ApprovalMode, NodeType, NODE_TYPE_LABEL, type NodeType as NodeTypeT } from './constants'
+import {
+  ApprovalMode,
+  NodeType,
+  NODE_TYPE_LABEL,
+  SETUP_NODE_TYPES,
+  type NodeType as NodeTypeT,
+} from './constants'
 
 export interface TaskFormTemplate {
   /** 注册码：写入 DSL 的 `formRef`，并编译为 `flowable:formKey` */
@@ -50,8 +56,40 @@ export interface TaskFormTemplate {
   nodeTypes?: NodeTypeT[]
 }
 
-/** 「设置流程参与者」—— 「设置审批人」活动固定使用的内置表单 */
+/** 「设置流程参与者」—— 「设置审批人」活动的默认内置表单 */
 export const SETUP_ASSIGNEE_FORM_CODE = 'CKPLM_SETUP_ASSIGNEE'
+
+/**
+ * 「变更任务审批设置参与者」—— 「变更任务结果审批设置参与者」活动的默认表单。
+ *
+ * <p>行业表单（随 platform-base 包播种，component = {@code EcnTaskApproveSetupForm}）：
+ * 挑人之前先把本变更任务修订过的对象与新版本摆出来。它同样写
+ * {@code ckplmSetupAssignees_*}，因此能替换内置那张（见 {@link SETUP_CAPABLE_COMPONENTS}）。
+ */
+export const CHANGE_TASK_SETUP_FORM_CODE = 'change-task-approve-setup'
+
+/**
+ * 能"为下游活动挑人"的渲染器白名单（{@code component} 名 / 内置 code）。
+ *
+ * <p>「设置审批人」节点换成行业表单后，运行期必须仍然写出
+ * {@code ckplmSetupAssignees_{nodeId}} 变量 —— 换上一张不会挑人的表单（比如审批意见），
+ * 编译期照样把下游活动的承办人指向那个变量，运行期却没人写它：下游任务建出来没有办理人，
+ * 流程停在那里且没有报错。所以"能不能换"这件事必须有判据，见
+ * {@code validate.ts} 的 {@link IssueCode.SETUP_FORM_INVALID}。
+ */
+export const SETUP_CAPABLE_COMPONENTS: string[] = [
+  SETUP_ASSIGNEE_FORM_CODE,
+  CHANGE_TASK_SETUP_FORM_CODE,
+  'EcnTaskApproveSetupForm',
+]
+
+/** 该表单是否能给下游活动挑人（code 命中内置，或模板声明的 component 在白名单里） */
+export function isSetupFormCode(code?: string): boolean {
+  if (!code) return false
+  if (SETUP_CAPABLE_COMPONENTS.includes(code)) return true
+  const component = findFormTemplate(code)?.component
+  return !!component && SETUP_CAPABLE_COMPONENTS.includes(component)
+}
 
 /** 「审批意见」—— 审批活动未指定其它表单时使用的内置默认表单 */
 export const APPROVAL_OPINION_FORM_CODE = 'CKPLM_APPROVAL_OPINION'
@@ -81,9 +119,12 @@ export const TASK_FORM_TEMPLATES: TaskFormTemplate[] = [
     code: SETUP_ASSIGNEE_FORM_CODE,
     label: '设置流程参与者',
     description:
-      '内置固定表单：列出下游所有审批 / 会签 / 办理活动，由发起人在各自角色成员中挑人',
+      '内置表单（设置审批人节点的默认）：列出下游所有审批 / 会签 / 办理活动，由发起人在各自角色成员中挑人',
     builtin: true,
-    fixed: true,
+    // 默认而非固定（2026-11-09）：变更任务流程需要在"挑人"之前先看到本任务修订了哪些对象，
+    // 用的是行业表单「变更任务审批设置参与者」。固定住就永远换不上那张表。
+    // 能换的前提是换上去的仍然会挑人 —— 校验见 SETUP_FORM_INVALID。
+    fixed: false,
     component: SETUP_ASSIGNEE_FORM_CODE,
     nodeTypes: [NodeType.SET_ASSIGNEE],
   },
@@ -154,11 +195,28 @@ export function allTaskFormTemplates(): TaskFormTemplate[] {
   return [...TASK_FORM_TEMPLATES, ...externalTemplates.filter((item) => !builtinCodes.has(item.code))]
 }
 
-/** 某节点类型可选的表单模板（含企业自定义） */
+/**
+ * 某节点类型可选的表单模板（含企业自定义）。
+ *
+ * <p><b>设置参与者类互相兼容</b>：内置「设置流程参与者」与行业「变更任务审批设置参与者」
+ * 是同一件事的两种写法，数据里常常只标注了其中一种（`SET_ASSIGNEE`）。
+ * 若严格按 `nodeTypes.includes(CHANGE_TASK_SETUP)` 过滤，新节点类型的下拉会空掉，
+ * 面板只能把 formRef 的英文 code 直接摊在框里（2026-11-09 实际踩到）。
+ */
 export function formTemplatesFor(nodeType?: NodeTypeT): TaskFormTemplate[] {
-  return allTaskFormTemplates().filter(
-    (template) => !template.nodeTypes || (nodeType !== undefined && template.nodeTypes.includes(nodeType)),
-  )
+  return allTaskFormTemplates().filter((template) => {
+    if (!template.nodeTypes) {
+      return true
+    }
+    if (nodeType === undefined) {
+      return false
+    }
+    if (template.nodeTypes.includes(nodeType)) {
+      return true
+    }
+    return SETUP_NODE_TYPES.includes(nodeType)
+      && template.nodeTypes.some((type) => SETUP_NODE_TYPES.includes(type))
+  })
 }
 
 export function findFormTemplate(code?: string): TaskFormTemplate | undefined {
@@ -170,6 +228,11 @@ export function findFormTemplate(code?: string): TaskFormTemplate | undefined {
  *
  * <p>「固定」= 面板预填 + 只读：这类活动的表单由代码生成，不存在"换一个"的余地，
  * 让使用者去选反而可能选错（运行期取不到表单）。
+ *
+ * <p><b>2026-11-09 起目前没有固定表单</b>：原先只有「设置审批人」固定为内置
+ * 「设置流程参与者」，现在它降为默认 —— 变更任务流程要换成一张"先看修订产物、再挑人"的
+ * 行业表单。函数保留：下一个"真不能换"的表单登记成 {@code fixed: true} 时，
+ * 面板、编译、运行期三处仍会自动生效。
  */
 export function fixedFormCodeOf(nodeType: NodeTypeT): string | undefined {
   const template = TASK_FORM_TEMPLATES.find(
@@ -224,6 +287,15 @@ export function defaultFormCodeOfNode(node?: { type?: NodeTypeT; approvalMode?: 
   const fixed = fixedFormCodeOfNode(node)
   if (fixed) {
     return fixed
+  }
+  // 「设置审批人」：默认内置「设置流程参与者」。虽然不再是 fixed（可换行业表单），
+  // 但**绝不能不指定** —— 落到运行期兜底表单，这个节点就选不了人，下游任务没有承办人
+  if (node?.type === NodeType.SET_ASSIGNEE) {
+    return SETUP_ASSIGNEE_FORM_CODE
+  }
+  // 变更任务结果审批设置参与者：默认就是行业那张（挑人前先看修订产物）
+  if (node?.type === NodeType.CHANGE_TASK_SETUP) {
+    return CHANGE_TASK_SETUP_FORM_CODE
   }
   // 会签类（专门节点 / 审批+会签模式）：默认内置「会签」（显示通过规则与各人办理情况），
   // 但**可被节点显式 formRef 换掉** —— 行业会签表要能带上自己的业务信息

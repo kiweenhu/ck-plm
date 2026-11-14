@@ -16,13 +16,13 @@
         <a-descriptions-item label="责任人">{{ request.owner || '—' }}</a-descriptions-item>
         <a-descriptions-item label="期望完成">{{ request.dueDate || '—' }}</a-descriptions-item>
         <a-descriptions-item label="变更原因" :span="2">
-          <div class="esp-pre">{{ request.reason || '—' }}</div>
+          <div class="esp-pre esp-rich" v-html="richRequest.reason"></div>
         </a-descriptions-item>
         <a-descriptions-item label="建议方案" :span="2">
-          <div class="esp-pre">{{ request.proposal || '—' }}</div>
+          <div class="esp-pre esp-rich" v-html="richRequest.proposal"></div>
         </a-descriptions-item>
         <a-descriptions-item v-if="request.description" label="补充说明" :span="2">
-          <div class="esp-pre">{{ request.description }}</div>
+          <div class="esp-pre esp-rich" v-html="richRequest.description"></div>
         </a-descriptions-item>
         <a-descriptions-item label="发起时的影响初判" :span="2">
           <a-space size="large" wrap>
@@ -56,7 +56,7 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'target'">
-            <span class="esp-code">{{ record.entityCode }}</span>
+            <ChangeObjectLink :record="record" class="esp-code" />
             {{ record.entityName }}
           </template>
           <template v-else-if="column.key === 'container'">
@@ -83,6 +83,8 @@ import {
   INVENTORY_IMPACT_LABEL,
   PRIORITY_LABEL
 } from '@/utils/changeFlow'
+import { sanitizeHtml } from '@/utils/html'
+import ChangeObjectLink from '@/components/change/ChangeObjectLink.vue'
 
 /**
  * 变更请求的只读摘要 —— 会签类表单共用的那一块（影响分析会签 / CCB 决策会签）。
@@ -109,6 +111,19 @@ const objectColumns = [
   { key: 'container', title: '所属', dataIndex: 'containerName', width: 180 },
   { key: 'note', title: '备注', dataIndex: 'note', width: 200 }
 ]
+
+/**
+ * 三段正文在 ECR 上是富文本控件，落库存 HTML。这里只读展示，渲染前统一消毒
+ * （内容来自租户提交），空值给占位符。
+ */
+const richRequest = computed(() => {
+  const pick = (v) => sanitizeHtml(v) || '—'
+  return {
+    reason: pick(request.value?.reason),
+    proposal: pick(request.value?.proposal),
+    description: sanitizeHtml(request.value?.description)
+  }
+})
 
 const requestOid = computed(() => {
   const value = props.form?.variables?.requestOid
@@ -192,6 +207,12 @@ defineExpose({ reload: load })
   white-space: pre-wrap;
   line-height: 1.6;
 }
+
+/* 富文本正文：段落自带外边距，首尾留白会把卡片撑高 */
+.esp-rich :deep(p) { margin: 0 0 6px; }
+.esp-rich :deep(p:last-child) { margin-bottom: 0; }
+.esp-rich :deep(ul), .esp-rich :deep(ol) { margin: 0 0 6px; padding-left: 20px; }
+.esp-rich :deep(img) { max-width: 100%; height: auto; }
 
 .esp-code {
   margin-right: 6px;

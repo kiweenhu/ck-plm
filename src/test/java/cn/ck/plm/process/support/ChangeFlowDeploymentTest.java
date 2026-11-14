@@ -9,6 +9,7 @@ package cn.ck.plm.process.support;
 
 import org.flowable.engine.ProcessEngine;
 import org.flowable.engine.TaskService;
+import org.flowable.engine.delegate.JavaDelegate;
 import org.flowable.engine.repository.Deployment;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
@@ -46,7 +47,10 @@ class ChangeFlowDeploymentTest {
 
     @BeforeAll
     static void startEngine() {
-        engine = FlowableEngineSmokeTest.newEngine("change_flows");
+        // 自动服务节点（change.setRequestStatus）统一委托到 ${plmServiceDelegate}：
+        // 桩件什么都不做，本用例验的是流程结构（审批链 + 1:M 派发），不是服务实现。
+        engine = FlowableEngineSmokeTest.newEngine("change_flows",
+                Map.of("plmServiceDelegate", (JavaDelegate) execution -> { }));
     }
 
     @AfterAll
@@ -85,22 +89,26 @@ class ChangeFlowDeploymentTest {
 
         Map<String, Object> vars = new HashMap<>();
         vars.put("initiator", "starter");
+        // 运行期由 change.setRequestStatus（ChangeRequestStatusHandler）在批准时写入
+        // 同一结构的清单；这里直接给值，本用例只验引擎侧的多实例语义。
         vars.put("changeTaskList", List.of(taskA, taskB));
 
         ProcessInstance notice = engine.getRuntimeService()
                 .startProcessInstanceByKey("change-notice", "notice-1", vars);
         assertNotNull(notice, "通告流程应能发起");
 
-        // ① 设置审批人：办完把审批人写进该活动的专属变量
+        // ① 设置审批人：一次性把后面三个审批环节的人员都指定好（与表单「设置审批人」同口径）
         Task setup = singleTask(notice.getId(), "setup_1");
         assertEquals("starter", setup.getAssignee(), "「设置审批人」由发起人办理");
-        engine.getTaskService().complete(setup.getId(),
-                Map.of("ckplmSetupAssignees_approve_1", "approver_1"));
+        engine.getTaskService().complete(setup.getId(), Map.of(
+                "ckplmSetupAssignees_assess_1", "assessor_1",
+                "ckplmSetupAssignees_approve_1", "approver_1",
+                "ckplmSetupAssignees_final_1", "finalizer_1"));
 
-        // ② 审批通过
-        Task approve = singleTask(notice.getId(), "approve_1");
-        assertEquals("approver_1", approve.getAssignee(), "审批人应取「设置审批人」写入的变量");
-        engine.getTaskService().complete(approve.getId(), Map.of("approved", true));
+        // ② 影响面评审 → 变更审批 → 变更管理员终审：逐关通过
+        completeApproval(notice.getId(), "assess_1", "assessor_1");
+        completeApproval(notice.getId(), "approve_1", "approver_1");
+        completeApproval(notice.getId(), "final_1", "finalizer_1");
 
         // ③ 任务子流程 1:M：两个实例、两个任务、各自的办理人
         TaskService taskService = engine.getTaskService();
@@ -131,12 +139,69 @@ class ChangeFlowDeploymentTest {
         assertTrue(Boolean.TRUE.equals(approved), "审批通过后 approved 变量应为 true");
     }
 
+    /**
+     * 派生流程（ECR → ECN）的快速通道：单关审批通过后同样按清单 1:M 派发。
+     *
+     * <p>两条 ECN 流程的审批链不同，但派发节点是同一份配置（同一个 callActivity 契约）。
+     * 这里只走快速路径：标准 / 重大要过会签，人员集合与票数聚合属于另一层语义。
+     */
+    @Test
+    void runsDerivedNoticeQuickPathAndDispatchesTasks() {
+        deployAll();
+        engine.getRepositoryService().createDeployment()
+                .addString("change-notice-derived.bpmn20.xml", readBpmn("change-notice-derived"))
+                .deploy();
+
+        Map<String, Object> taskC = new HashMap<>();
+        taskC.put("oid", "task-c");
+        taskC.put("assignee", "carol");
+        Map<String, Object> taskD = new HashMap<>();
+        taskD.put("oid", "task-d");
+        taskD.put("assignee", "dave");
+
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("initiator", "starter");
+        // 快速 = QUICK 才走 setup_quick；缺省边是"标准 / 重大"
+        vars.put("changeLevel", "QUICK");
+        vars.put("changeTaskList", List.of(taskC, taskD));
+
+        ProcessInstance notice = engine.getRuntimeService()
+                .startProcessInstanceByKey("change-notice-derived", "notice-derived-1", vars);
+
+        Task setup = singleTask(notice.getId(), "setup_quick");
+        engine.getTaskService().complete(setup.getId(),
+                Map.of("ckplmSetupAssignees_approve_quick", "quick-approver"));
+        completeApproval(notice.getId(), "approve_quick", "quick-approver");
+
+        TaskService taskService = engine.getTaskService();
+        List<Task> taskNodes = taskService.createTaskQuery().taskDefinitionKey("task_1").list();
+        Map<String, String> assigneeByBusinessKey = new HashMap<>();
+        for (Task task : taskNodes) {
+            String businessKey = engine.getRuntimeService().createProcessInstanceQuery()
+                    .processInstanceId(task.getProcessInstanceId())
+                    .singleResult()
+                    .getBusinessKey();
+            assigneeByBusinessKey.put(businessKey, task.getAssignee());
+        }
+        assertEquals("carol", assigneeByBusinessKey.get("task-c"), "task-c 应传给 carol");
+        assertEquals("dave", assigneeByBusinessKey.get("task-d"), "task-d 应传给 dave");
+    }
+
     private void deployAll() {
         for (String key : KEYS) {
             engine.getRepositoryService().createDeployment()
                     .addString(key + ".bpmn20.xml", readBpmn(key))
                     .deploy();
         }
+    }
+
+    /** 办掉一个审批节点：先确认落到指定的人，再投通过票（分支条件读 approved） */
+    private void completeApproval(String instanceId, String taskDefinitionKey, String assignee) {
+        Task task = singleTask(instanceId, taskDefinitionKey);
+        assertNotNull(task, taskDefinitionKey + " 应已创建");
+        assertEquals(assignee, task.getAssignee(),
+                taskDefinitionKey + " 的审批人应取「设置审批人」写入的变量");
+        engine.getTaskService().complete(task.getId(), Map.of("approved", true));
     }
 
     private Task singleTask(String instanceId, String taskDefinitionKey) {

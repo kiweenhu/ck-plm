@@ -21,9 +21,16 @@
         <a-card size="small" class="lwc-card" title="服务连接">
           <template #extra>
             <a-space :size="8">
-              <a-tag :color="form.enabled ? 'green' : 'default'">
-                {{ form.enabled ? '已启用' : '未启用' }}
-              </a-tag>
+              <!-- 「已启用」只是开关值，不是服务状态：这里显示实际探测 CADForge /healthz 的结果 -->
+              <a-tooltip>
+                <template #title>
+                  <div class="lwc-conn-hint">{{ connectionHint }}</div>
+                </template>
+                <a-tag :color="connectionView.color" class="lwc-conn-tag" @click="refreshConnection">
+                  <ReloadOutlined :spin="connectionProbing" />
+                  {{ connectionView.text }}
+                </a-tag>
+              </a-tooltip>
               <a-button size="small" :loading="testing" :disabled="!form.baseUrl" @click="testConnection">
                 <ApiOutlined /> 测试连接
               </a-button>
@@ -156,7 +163,7 @@
         <a-button v-if="canEdit" type="primary" :loading="saving" @click="save">
           <SaveOutlined /> 保存并生效
         </a-button>
-        <a-button :loading="loading" @click="load">重新读取</a-button>
+        <a-button :loading="loading || connectionProbing" @click="reload">重新读取</a-button>
         <span v-if="cfg.updatedAt" class="lwc-footer-meta">
           最后更新 {{ formatTime(cfg.updatedAt) }}<template v-if="cfg.updater"> · {{ cfg.updater }}</template>
         </span>
@@ -223,9 +230,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { ApiOutlined, SaveOutlined } from '@ant-design/icons-vue'
+import { ApiOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getCadForgeConfig, updateCadForgeConfig, testCadForgeConnection } from '@/api'
 
@@ -238,6 +245,11 @@ const testing = ref(false)
 const cfg = ref({})
 const testVisible = ref(false)
 const testResult = ref(null)
+
+// 「与 CADForge 的连接状态」来自一次真实 /healthz 探测；配置里的 enabled 只是开关，不能冒充连通性
+const connection = ref(null)
+const connectionProbing = ref(false)
+const connectionCheckedAt = ref('')
 
 // watchdogIntervalMs 在库里是毫秒，表单按秒填：120000 比"两分钟"更不容易填错数量级
 const defaultForm = () => ({
@@ -256,6 +268,35 @@ const defaultForm = () => ({
   watchdogBatchSize: 50,
 })
 const form = ref(defaultForm())
+
+/** 状态标签：连通 / 不通 / mock 引擎（没 OCCT 会转出演示几何，要单独警示）/ 检测中 */
+const connectionView = computed(() => {
+  const r = connection.value
+  if (!r) return { text: connectionProbing.value ? '检测中…' : '未检测', color: 'blue' }
+  if (!r.baseUrl) return { text: '未配置地址', color: 'default' }
+  if (!r.ok) return { text: '连接失败', color: 'red' }
+  if (/^mock/i.test(String(r.engine || ''))) return { text: '已连接（mock 引擎）', color: 'orange' }
+  return { text: '已连接', color: 'green' }
+})
+
+/** 悬停说明：探测的是已生效配置，顺带交代开关状态与最近探测时间，避免把开关当成连通性 */
+const connectionHint = computed(() => {
+  const r = connection.value
+  const lines = []
+  if (!r) {
+    lines.push('正在探测 CADForge /healthz…')
+  } else {
+    lines.push(`探测地址：${r.baseUrl || '未配置'}`)
+    if (r.engine) lines.push(`转换引擎：${r.engine}`)
+    if (r.latencyMs != null) lines.push(`耗时：${r.latencyMs} ms`)
+    if (r.error) lines.push(`原因：${r.error}`)
+  }
+  lines.push(`轻量化转换：${form.value.enabled ? '已启用' : '已关闭'}（开关与连通性是两件事）`)
+  lines.push('探测使用已保存并生效的配置；改了地址请先保存')
+  if (connectionCheckedAt.value) lines.push(`最近探测：${connectionCheckedAt.value}`)
+  lines.push('点击标签可重新探测')
+  return lines.join('\n')
+})
 
 // healthz 的 engine 可能是 mock / mock-xxx / occt / occt-7.7.2：按前缀判，别只盯等于 'mock'
 const isMockEngine = computed(() => /^mock/i.test(String(testResult.value?.engine || '')))
@@ -327,6 +368,8 @@ async function save() {
     if (res.code === 200) {
       message.success('已保存，配置立即生效')
       await load()
+      // 地址/超时可能刚变过：立刻按新生效的配置重探一次，别让状态标签停在旧地址上
+      await refreshConnection()
     } else {
       message.error(res.message || '保存失败')
     }
@@ -337,22 +380,63 @@ async function save() {
   }
 }
 
+/**
+ * 一次连接探测。复用 /cad-forge/config/test：后端只 GET 一次转换器的 /healthz，
+ * 不写库、不发任务，所以页面加载与定时刷新拿它当「连接状态」读是安全的。
+ */
+async function probeConnection() {
+  try {
+    const res = await testCadForgeConnection()
+    return res?.code === 200
+      ? (res.data || { ok: false, error: '转换器没有返回内容' })
+      : { ok: false, error: res?.message || '测试失败' }
+  } catch {
+    return { ok: false, error: '请求失败，请检查后端日志' }
+  }
+}
+
+function markChecked() {
+  connectionCheckedAt.value = new Date().toLocaleString('zh-CN', { hour12: false })
+}
+
+/** 静默刷新状态标签（点标签、进页面、保存后、定时轮询都走这里） */
+async function refreshConnection() {
+  if (connectionProbing.value) return
+  if (!form.value.baseUrl) {
+    connection.value = { ok: false, error: '未配置转换器地址' }
+    markChecked()
+    return
+  }
+  connectionProbing.value = true
+  try {
+    connection.value = await probeConnection()
+  } finally {
+    markChecked()
+    connectionProbing.value = false
+  }
+}
+
 async function testConnection() {
   testing.value = true
+  connectionProbing.value = true
   testResult.value = null
   testVisible.value = true
   try {
-    const res = await testCadForgeConnection()
-    if (res.code === 200) {
-      testResult.value = res.data || { ok: false, error: '转换器没有返回内容' }
-    } else {
-      testResult.value = { ok: false, error: res.message || '测试失败' }
-    }
-  } catch {
-    testResult.value = { ok: false, error: '请求失败，请检查后端日志' }
+    const data = await probeConnection()
+    testResult.value = data
+    // 手动测试与状态标签共用这一次探测，不重复打 /healthz
+    connection.value = data
   } finally {
+    markChecked()
     testing.value = false
+    connectionProbing.value = false
   }
+}
+
+/** 「重新读取」：配置与连接状态一起刷新，避免两处信息不同步 */
+async function reload() {
+  await load()
+  await refreshConnection()
 }
 
 function formatTime(str) {
@@ -360,7 +444,16 @@ function formatTime(str) {
   return String(str).replace('T', ' ').substring(0, 19)
 }
 
-onMounted(load)
+/** 进页面先探测一次，之后每 30s 静默复探：转换器挂了/被拉起，状态标签要跟着变 */
+let statusTimer = null
+onMounted(async () => {
+  await load()
+  await refreshConnection()
+  statusTimer = setInterval(refreshConnection, 30_000)
+})
+onUnmounted(() => {
+  if (statusTimer) clearInterval(statusTimer)
+})
 </script>
 
 <style scoped>
@@ -381,6 +474,17 @@ onMounted(load)
 
 .lwc-alert {
   margin-bottom: 16px;
+}
+
+/* 状态标签可点（= 重新探测）；提示里的多行说明保留换行 */
+.lwc-conn-tag {
+  cursor: pointer;
+  user-select: none;
+}
+
+.lwc-conn-hint {
+  white-space: pre-line;
+  line-height: 1.7;
 }
 
 .lwc-card {

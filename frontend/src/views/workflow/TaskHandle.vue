@@ -74,7 +74,7 @@
           <template v-else-if="context">
             <!-- ① 通用信息：业务实体 / 流程 / 当前任务（渲染架构的固定部分）
                  实体编码/名称由本页统一回查后下传：页头与这里必须显示同一个名字 -->
-            <TaskContextView :context="context" :entity-infos="entityInfos" />
+            <TaskContextView :context="context" :entity-infos="entityInfos" :change-doc="changeDoc" />
 
             <!-- ② 任务表单：按 formKey 派发到模板（见 components/task/taskForms） -->
             <a-card size="small" class="th-card" :title="formCardTitle">
@@ -110,6 +110,7 @@ import { effectiveFormCode, hasOwnTaskForm, taskFormLabel } from '@/components/t
 // 不先注入就会显示成兜底文案「审批处理」—— 见 form-templates.ts 的 ensureFormTemplates
 import { ensureFormTemplates } from '@/flow-designer/app/form-templates'
 import { useEntityInfo } from '@/composables/useEntityInfo'
+import { useChangeDoc } from '@/composables/useChangeDoc'
 import {
   entityHeadline, entityCodeText, entityVersionText, flowTaskText,
 } from '@/utils/taskHeader'
@@ -167,6 +168,11 @@ function openNodeDetail(activity) {
 
 /** 实体编码/名称由本页统一回查一次，页头与「通用信息」共用（见 composables/useEntityInfo） */
 const { infos: entityInfos } = useEntityInfo(context)
+/**
+ * 变更单据（ECR / ECN / 变更任务）：它们没有实体关联行，entities 恒为空 ——
+ * 不补这一层，「业务实体」会一直显示"该流程未关联业务实体"，而实际上办的就是那张单。
+ */
+const { doc: changeDoc } = useChangeDoc(context)
 
 const entities = computed(() => context.value?.entities || [])
 /** 页头只讲第一个实体；多实体时补一句"等 N 个"，完整清单在「通用信息」里 */

@@ -8,12 +8,14 @@
 package cn.ck.plm.change.controller;
 
 import cn.ck.plm.base.util.UserContext;
+import cn.ck.plm.change.entity.ChangeAffectedObject;
 import cn.ck.plm.change.entity.ChangeTask;
 import cn.ck.plm.change.service.api.ChangeTaskService;
 import cn.ck.plm.iam.dto.ApiResponse;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -27,6 +29,7 @@ import java.util.Map;
  * POST   /api/plm/change-tasks                   新建（编号 ECT-####；审批前建的是 DRAFT 清单，审批后直接 OPEN）
  * PUT    /api/plm/change-tasks/{oid}             编辑（patch 语义；已完成不可编辑）
  * POST   /api/plm/change-tasks/{oid}/transition  状态流转 { action, comment }
+ * POST   /api/plm/change-tasks/{oid}/execute     执行修订（受影响对象批量出新大版本）{ affectedOids }
  * POST   /api/plm/change-tasks/by-notice/{oid}/dispatch  派发该通告下全部草稿任务
  * DELETE /api/plm/change-tasks/{oid}             删除（仅草稿 / 未开始）
  * </pre>
@@ -132,6 +135,35 @@ public class ChangeTaskController {
         Map<String, String> params = body == null ? Map.of() : body;
         try {
             return ApiResponse.ok(service.transition(oid, params.get("action"), params.get("comment")));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
+        } catch (IllegalStateException e) {
+            return ApiResponse.fail(403, e.getMessage());
+        }
+    }
+
+    /**
+     * 执行变更任务：把任务下的受影响对象自动修订出新大版本，并回填修订产物。
+     *
+     * <p>body：{@code { "affectedOids": ["..."] }}，省略 = 任务下全部未执行的行。
+     * 「执行变更任务」节点表单里那一下「执行变更」就是它 —— 与「提交办理」分开：
+     * 先让执行人看清"修订后变成哪一版"，再提交流程。
+     */
+    @PostMapping("/{oid}/execute")
+    public ApiResponse<List<ChangeAffectedObject>> execute(@PathVariable String oid,
+                                                           @RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> params = body == null ? Map.of() : body;
+        List<String> affectedOids = new java.util.ArrayList<>();
+        Object raw = params.get("affectedOids");
+        if (raw instanceof List<?> list) {
+            for (Object item : list) {
+                if (item != null && !item.toString().trim().isEmpty()) {
+                    affectedOids.add(item.toString().trim());
+                }
+            }
+        }
+        try {
+            return ApiResponse.ok(service.execute(oid, affectedOids));
         } catch (IllegalArgumentException e) {
             return ApiResponse.fail(400, e.getMessage());
         } catch (IllegalStateException e) {

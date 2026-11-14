@@ -103,6 +103,15 @@ public class ChangeNotice extends WithoutVersionEntity implements TenantEntity {
     /** 绑定的流程实例 id（Flowable） */
     private String processInstanceId;
 
+    /**
+     * 该流程实例是否还在引擎里运行（非持久化，列表/详情查询时回填）。
+     *
+     * <p>为什么要这个字段：{@code processInstanceId} 一旦写入就基本不清（审批结束也留着），
+     * 光看它分不清"流程还在跑"和"跑完了"。而状态能不能人工改完全取决于这一点 ——
+     * 流程在跑时状态由流程驱动，管理员「设置状态」必须挡住（服务端也照此拦截）。
+     */
+    private transient Boolean processRunning;
+
     /** 审批通过时间 */
     private LocalDateTime approvedAt;
 
@@ -173,6 +182,9 @@ public class ChangeNotice extends WithoutVersionEntity implements TenantEntity {
 
     public String getProcessInstanceId() { return processInstanceId; }
     public void setProcessInstanceId(String processInstanceId) { this.processInstanceId = processInstanceId; }
+
+    public Boolean getProcessRunning() { return processRunning; }
+    public void setProcessRunning(Boolean processRunning) { this.processRunning = processRunning; }
 
     public LocalDateTime getApprovedAt() { return approvedAt; }
     public void setApprovedAt(LocalDateTime approvedAt) { this.approvedAt = approvedAt; }

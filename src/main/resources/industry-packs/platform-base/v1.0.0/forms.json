@@ -63,6 +63,60 @@
       "builtin": false,
       "sortOrder": 70,
       "description": "行业表单（component 指向前端 EcnCountersignForm）：在变更通告全貌之上按专业确认「这一段怎么改」—— 专业 / 需协调的方面 / 实施说明 / 结论；结论写入流程变量（按任务分键）与会签意见"
+    },
+    {
+      "code": "change-notice-task-plan",
+      "name": "变更任务确认与派发",
+      "nodeTypes": "TASK",
+      "component": "EcnTaskPlanForm",
+      "builtin": false,
+      "sortOrder": 80,
+      "description": "行业表单（component 指向前端 EcnTaskPlanForm）：审批通过后、派发子流程前，由变更管理员确认更改事项清单 —— 新增 / 编辑 / 删除任务（标题、类型、责任人、计划、说明），提交时把清单写成流程变量 changeTaskList，供「变更任务自动分发」子流程按 1:M 拉起实例"
+    },
+    {
+      "code": "change-task-execute",
+      "name": "执行变更任务",
+      "nodeTypes": "TASK",
+      "component": "EcnTaskExecuteForm",
+      "builtin": false,
+      "sortOrder": 90,
+      "description": "行业表单（component 指向前端 EcnTaskExecuteForm）：变更任务子流程的办理节点 —— 展示变更通告摘要、任务说明与本任务关联的变更对象（变更前 → 变更后、执行状态）；「获取变更权限」逐个检出本任务的对象（加锁 + 工作副本），执行人随后到零件 / 文档 / 工程数据里修改并检入，新大版本由下游「执行变更修订」节点统一产出"
+    },
+    {
+      "code": "change-task-approve-setup",
+      "name": "变更任务审批设置参与者",
+      "nodeTypes": "SET_ASSIGNEE,CHANGE_TASK_SETUP",
+      "component": "EcnTaskApproveSetupForm",
+      "builtin": false,
+      "sortOrder": 95,
+      "description": "行业表单（component 指向前端 EcnTaskApproveSetupForm）：挂在「设置审批人」节点上 —— 上半屏展示本变更任务已修订的对象与新版本（审批人据此判断该派给谁审），下半屏列出下游审批 / 会签 / 办理活动并逐个挑人，提交时写入 ckplmSetupAssignees_{节点id} 变量"
+    },
+    {
+      "code": "change-task-approval",
+      "name": "变更任务执行结果审批",
+      "nodeTypes": "APPROVAL",
+      "component": "EcnTaskApprovalForm",
+      "builtin": false,
+      "sortOrder": 96,
+      "description": "行业表单（component 指向前端 EcnTaskApprovalForm）：变更任务流程的审批节点 —— 只读展示本任务修订的对象与新版本（被修订版本 → 修订后版本），下方给出同意 / 驳回与审批意见；驳回目标与意见必填仍按 DSL 节点声明解释"
+    },
+    {
+      "code": "change-task-countersign",
+      "name": "变更任务执行结果会签",
+      "nodeTypes": "COUNTERSIGN_APPROVAL",
+      "component": "EcnTaskCountersignForm",
+      "builtin": false,
+      "sortOrder": 97,
+      "description": "行业表单（component 指向前端 EcnTaskCountersignForm）：变更任务流程的会签节点 —— 只读展示本任务修订的对象与新版本，并列出会签进度（谁同意 / 驳回、规则），本人只给结论与意见；聚合规则按 DSL 节点声明解释"
+    },
+    {
+      "code": "change-notice-task-summary",
+      "name": "变更结果汇总确认",
+      "nodeTypes": "TASK",
+      "component": "EcnTaskSummaryForm",
+      "builtin": false,
+      "sortOrder": 98,
+      "description": "行业表单（component 指向前端 EcnTaskSummaryForm）：变更通告在「派发变更任务」子流程之后、结束之前的汇总节点 —— 只读展示通告全貌、受影响对象执行状态与全部更改事项的状态/完成时间；提交前先校验任务是否都已完成、对象是否都已执行（真正的门槛在后端 ChangeNoticeService#completeByProcess），确认通过后由 change.completeNotice 把通告落「已完成」"
     }
   ]
 }

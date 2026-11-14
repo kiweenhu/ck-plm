@@ -1,0 +1,230 @@
+{
+  "key": "design-approval",
+  "name": "设计审批流程",
+  "displayName": "结构件设计 / 工程数据审批流程",
+  "category": "设计管理",
+  "description": "结构件设计与工程数据的通用审批流程：发起人指定本次参与人 → 对象进入「工作中」→ 领导审批 → 设计会签（全票通过）→ 通过置「已发布」，驳回置「草稿」。适用对象是绑 STANDARD 生命周期的受控对象 —— 结构件 STRUCTURAL（宿主 PART）与工程数据 ENG_DOCUMENT（宿主 ENG_DOCUMENT），两者的状态码一致（DRAFT / WORKING / PUBLISHED），故同一份流程可同时服务设计与工程数据。状态迁移严格落在 STANDARD 模板既有的 DRAFT → WORKING → PUBLISHED 与 WORKING → DRAFT 之内，不自造 APPROVING：模板里没有的状态即使写进节点也会被生命周期服务判为非法迁移。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "design-approval",
+      "name": "设计审批流程",
+      "displayName": "结构件设计 / 工程数据审批流程",
+      "category": "设计管理",
+      "description": "结构件设计与工程数据审批：设置参与者 → 进入工作中 → 领导审批 → 设计会签 → 通过发布 / 驳回退回草稿。",
+      "notifications": {
+        "channel": "CK_PLM"
+      }
+    },
+    "variables": [],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：发起设计审批",
+        "description": "由设计人或工程数据负责人发起；流程关联的业务实体（结构件 / 工程数据，可多选）即本次审批的对象集合",
+        "type": "START",
+        "initiator": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "setup_1",
+        "name": "设置参与者",
+        "description": "发起人指定本次审批的参与人：领导审批人与会签成员。未指定时按下游节点的静态配置兜底（领导审批取发起人上级，会签取工程评审岗）",
+        "type": "SET_ASSIGNEE",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "service_working",
+        "name": "进入审批：工作中",
+        "description": "对象生命周期状态置为「工作中」（WORKING）：一进审批就离开草稿，审批人在对象上看到的是「工作中」而不是还停在草稿",
+        "type": "SERVICE",
+        "serviceRef": "object.setLifecycleState",
+        "params": {
+          "state": "WORKING"
+        }
+      },
+      {
+        "id": "approve_leader",
+        "name": "领导审批",
+        "description": "部门 / 项目负责人对设计结果把关：结构方案的工艺可行性、工程数据的完整性与准确性。单人审批，意见必填",
+        "type": "APPROVAL",
+        "assignee": {
+          "strategy": "INITIATOR_LEADER"
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true
+      },
+      {
+        "id": "countersign_design",
+        "name": "设计会签",
+        "description": "工程评审组集体会签：结构、系统、质量三方各出一人，全员通过方为通过（一票驳回即退回草稿）。默认阵容取通用工程评审岗，实际会签人以上一步「设置参与者」的指定为准",
+        "type": "COUNTERSIGN_APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "SYSTEM_ENGINEER",
+            "QUALITY_ENGINEER",
+            "PROJECT_MANAGER"
+          ]
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100,
+          "abstain": "IGNORE"
+        },
+        "commentRequired": true
+      },
+      {
+        "id": "service_published",
+        "name": "审批通过：发布",
+        "description": "对象生命周期状态置为「已发布」（PUBLISHED）：结构件可投产、工程数据可作为正式设计依据被引用",
+        "type": "SERVICE",
+        "serviceRef": "object.setLifecycleState",
+        "params": {
+          "state": "PUBLISHED"
+        }
+      },
+      {
+        "id": "service_draft",
+        "name": "审批驳回：退回草稿",
+        "description": "对象生命周期状态退回「草稿」（DRAFT）：退回后需修改设计并重新发起，不保留本次审批中的临时状态",
+        "type": "SERVICE",
+        "serviceRef": "object.setLifecycleState",
+        "params": {
+          "state": "DRAFT"
+        }
+      },
+      {
+        "id": "end_pass",
+        "name": "结束：设计已发布",
+        "type": "END"
+      },
+      {
+        "id": "end_reject",
+        "name": "结束：已退回草稿",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "source": "start_1",
+        "target": "setup_1",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e1",
+        "source": "setup_1",
+        "target": "service_working",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "service_working",
+        "target": "approve_leader",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e3",
+        "source": "approve_leader",
+        "target": "countersign_design",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e4",
+        "source": "approve_leader",
+        "target": "service_draft",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e5",
+        "source": "countersign_design",
+        "target": "service_published",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e6",
+        "source": "countersign_design",
+        "target": "service_draft",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT",
+        "anchor": {
+          "target": "bottom"
+        },
+        "waypoints": [
+          {
+            "x": 623,
+            "y": 368
+          }
+        ]
+      },
+      {
+        "id": "e7",
+        "source": "service_published",
+        "target": "end_pass",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e8",
+        "source": "service_draft",
+        "target": "end_reject",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom-3"
+        }
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": {
+          "x": 276,
+          "y": -8
+        },
+        "setup_1": {
+          "x": 220,
+          "y": 66
+        },
+        "service_working": {
+          "x": 220,
+          "y": 156
+        },
+        "approve_leader": {
+          "x": 220,
+          "y": 246
+        },
+        "countersign_design": {
+          "x": 220,
+          "y": 346
+        },
+        "service_published": {
+          "x": 220,
+          "y": 439
+        },
+        "service_draft": {
+          "x": 552,
+          "y": 246
+        },
+        "end_pass": {
+          "x": 276,
+          "y": 536
+        },
+        "end_reject": {
+          "x": 644,
+          "y": 446
+        }
+      }
+    }
+  }
+}

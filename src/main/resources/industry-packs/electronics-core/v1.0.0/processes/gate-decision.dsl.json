@@ -29,11 +29,11 @@
         "id": "n_apply",
         "name": "决策申请与自检结果",
         "description": "填写门码（gates.json 的 code，如 TR3 / ADCP）与自动检查结果（交付物完成率、未关闭阻断问题数、认证齐套、供应确认），并附决策材料",
-        "formRef": "gate-decision-apply",
         "type": "TASK",
         "assignee": {
           "strategy": "INITIATOR"
-        }
+        },
+        "formRef": "gate-decision-apply"
       },
       {
         "id": "set_assignee",
@@ -49,7 +49,6 @@
         "id": "n_material",
         "name": "材料齐备性核对",
         "description": "核对本门要求的交付物与证据是否齐备（缺失项退回补齐后再排决策会）",
-        "formRef": "gate-decision-material",
         "type": "APPROVAL",
         "assignee": {
           "strategy": "ROLE",
@@ -58,7 +57,8 @@
           ]
         },
         "approvalMode": "SINGLE",
-        "commentRequired": true
+        "commentRequired": true,
+        "formRef": "gate-decision-material"
       },
       {
         "id": "n_meeting",
@@ -77,21 +77,21 @@
           "mode": "PERCENT",
           "percent": 100
         },
-        "formRef": "gate-decision-meeting",
-        "commentRequired": true
+        "commentRequired": true,
+        "formRef": "gate-decision-meeting"
       },
       {
         "id": "n_record",
         "name": "结论留痕",
         "description": "登记决策（GO / HOLD / TERMINATE）与决策依据、业务风险、技术风险、供应风险、附加条件",
-        "formRef": "gate-decision-record",
         "type": "TASK",
         "assignee": {
           "strategy": "ROLE",
           "roleCodes": [
             "PROJECT_MANAGER"
           ]
-        }
+        },
+        "formRef": "gate-decision-record"
       },
       {
         "id": "n_end",
@@ -139,13 +139,48 @@
     ],
     "layout": {
       "nodes": {
-        "start_1": { "x": 296, "y": 52, "width": 30, "height": 30 },
-        "n_apply": { "x": 240, "y": 150, "width": 180, "height": 70 },
-        "set_assignee": { "x": 240, "y": 270, "width": 180, "height": 70 },
-        "n_material": { "x": 240, "y": 390, "width": 180, "height": 70 },
-        "n_meeting": { "x": 240, "y": 510, "width": 180, "height": 70 },
-        "n_record": { "x": 240, "y": 630, "width": 180, "height": 70 },
-        "n_end": { "x": 296, "y": 750, "width": 30, "height": 30 }
+        "start_1": {
+          "x": 296,
+          "y": 52,
+          "width": 30,
+          "height": 30
+        },
+        "n_apply": {
+          "x": 240,
+          "y": 150,
+          "width": 180,
+          "height": 70
+        },
+        "set_assignee": {
+          "x": 240,
+          "y": 270,
+          "width": 180,
+          "height": 70
+        },
+        "n_material": {
+          "x": 240,
+          "y": 390,
+          "width": 180,
+          "height": 70
+        },
+        "n_meeting": {
+          "x": 240,
+          "y": 510,
+          "width": 180,
+          "height": 70
+        },
+        "n_record": {
+          "x": 240,
+          "y": 630,
+          "width": 180,
+          "height": 70
+        },
+        "n_end": {
+          "x": 296,
+          "y": 750,
+          "width": 30,
+          "height": 30
+        }
       }
     }
   }

@@ -475,10 +475,17 @@ export interface ServiceNode extends NodeBase {
   expression?: string
 }
 
+/**
+ * 条件分支。
+ *
+ * <p>这里刻意<b>没有</b>「表达式模式」开关：条件怎么写由<b>出边</b>的
+ * {@code condition.mode}（字段选择器 / 表达式）决定 —— 一条分支一套条件，
+ * 同一个网关的不同出边可以一条用字段、一条用表达式。早期在节点上放过一个
+ * {@code advanced} 开关，它只被原样写进 {@code ckplm:advanced}、不影响任何编译结果，
+ * 属于"看不见却不起作用"的死配置，已移除。
+ */
 export interface ExclusiveGatewayNode extends NodeBase {
   type: 'EXCLUSIVE_GATEWAY'
-  /** 是否启用高级表达式模式（默认字段选择器） */
-  advanced?: boolean
 }
 
 export interface ParallelGatewayNode extends NodeBase {
@@ -487,7 +494,6 @@ export interface ParallelGatewayNode extends NodeBase {
 
 export interface InclusiveGatewayNode extends NodeBase {
   type: 'INCLUSIVE_GATEWAY'
-  advanced?: boolean
 }
 
 export interface NotifyNode extends NodeBase {
@@ -583,12 +589,24 @@ export interface SetAssigneeNode extends NodeBase {
   formRef?: string
 }
 
+/**
+ * 变更任务结果审批设置参与者（2026-11-09）。
+ *
+ * <p>与 {@link SetAssigneeNode} <b>同构</b>：同一件事（给下游人工活动定人），
+ * 只是默认表单换成行业那张「变更任务审批设置参与者」（挑人前先展示本任务修订产物）。
+ * 用 `Omit` 表达而不是复制字段 —— 两边一旦分叉，"哪些字段生效"就会各说各话。
+ */
+export interface ChangeTaskSetupNode extends Omit<SetAssigneeNode, 'type'> {
+  type: 'CHANGE_TASK_SETUP'
+}
+
 export type FlowNode =
   | StartNode
   | EndNode
   | ApprovalNode
   | CountersignNode
   | SetAssigneeNode
+  | ChangeTaskSetupNode
   | TaskNode
   | ServiceNode
   | ExclusiveGatewayNode
@@ -648,6 +666,16 @@ const flowNodeSchema: z.ZodType<FlowNode> = z.discriminatedUnion('type', [
     binding: objectBindingSchema.optional(),
     formRef: z.string().optional(),
   }),
+  // 变更任务结果审批设置参与者：结构与设置审批人一致（同一件事，只是默认表单不同）
+  z.object({
+    ...nodeBase,
+    type: z.literal(NodeType.CHANGE_TASK_SETUP),
+    assignee: assigneeSchema,
+    commentRequired: z.boolean().optional(),
+    deadline: deadlineSchema.optional(),
+    binding: objectBindingSchema.optional(),
+    formRef: z.string().optional(),
+  }),
   z.object({
     ...nodeBase,
     type: z.literal(NodeType.TASK),
@@ -667,17 +695,10 @@ const flowNodeSchema: z.ZodType<FlowNode> = z.discriminatedUnion('type', [
     params: z.record(z.string()).optional(),
     expression: z.string().optional(),
   }),
-  z.object({
-    ...nodeBase,
-    type: z.literal(NodeType.EXCLUSIVE_GATEWAY),
-    advanced: z.boolean().optional(),
-  }),
+  // 未声明的键会被 zod 丢弃：老模板里遗留的 advanced 在加载时自然清掉
+  z.object({ ...nodeBase, type: z.literal(NodeType.EXCLUSIVE_GATEWAY) }),
   z.object({ ...nodeBase, type: z.literal(NodeType.PARALLEL_GATEWAY) }),
-  z.object({
-    ...nodeBase,
-    type: z.literal(NodeType.INCLUSIVE_GATEWAY),
-    advanced: z.boolean().optional(),
-  }),
+  z.object({ ...nodeBase, type: z.literal(NodeType.INCLUSIVE_GATEWAY) }),
   z.object({
     ...nodeBase,
     type: z.literal(NodeType.NOTIFY),

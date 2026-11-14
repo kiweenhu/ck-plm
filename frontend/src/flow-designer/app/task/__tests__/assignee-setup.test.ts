@@ -337,6 +337,20 @@ describe('设计期校验', () => {
     expect(issue).toBeUndefined()
   })
 
+  it('设置活动之前的活动承办人来自流程变量 → 不报（变量已装人，轮不到设置活动指派）', () => {
+    // 变更任务（ECT）子流程的形态：「执行变更任务」的办理人是 taskAssignee（父流程派发时写入）。
+    // 若还按"非发起人即报错"，这类流程里加任何设置活动都存不了盘（2026-11-08 反馈）。
+    const dsl = flow()
+    const patched: FlowDsl = {
+      ...dsl,
+      nodes: dsl.nodes.map((n) => (n.id === 'pre_1'
+        ? { ...n, assignee: { strategy: AssigneeStrategy.VARIABLE, variableName: 'taskAssignee' } }
+        : n)),
+    }
+    const issue = validateDsl(patched).issues.find((i) => i.code === IssueCode.SETUP_NOT_FIRST)
+    expect(issue).toBeUndefined()
+  })
+
   it('多个设置活动且互相不重叠 → 提醒（只是多设了几个，不构成冲突）', () => {
     const dsl = flow()
     const extra = {
@@ -349,6 +363,90 @@ describe('设计期校验', () => {
     const withTwo: FlowDsl = { ...dsl, nodes: [...dsl.nodes, extra] } as FlowDsl
     const issue = validateDsl(withTwo).issues.find((i) => i.code === IssueCode.SETUP_MULTIPLE)
     expect(issue?.level).toBe(IssueLevel.WARNING)
+  })
+
+  it('两个设置活动分处排他网关的两条分支 → 不算冲突（运行期只会走其中一条）', () => {
+    const base = createEmptyDsl({ key: 'setup_branch', name: '分支设置' })
+    const dsl: FlowDsl = {
+      ...base,
+      variables: [
+        { name: 'changeLevel', label: '变更分级', type: 'STRING', visible: true, readonly: false },
+      ],
+      nodes: [
+        { id: 'start_1', type: NodeType.START, name: '开始', initiator: { strategy: AssigneeStrategy.INITIATOR } },
+        { id: 'gw_1', type: NodeType.EXCLUSIVE_GATEWAY, name: '按分级分流' },
+        {
+          id: 'set_quick',
+          type: NodeType.SET_ASSIGNEE,
+          name: '设置快速通道审批人',
+          assignee: { strategy: AssigneeStrategy.INITIATOR },
+        },
+        {
+          id: 'appr_quick',
+          type: NodeType.APPROVAL,
+          name: '快速审批',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['ENG'] },
+          approvalMode: ApprovalMode.SINGLE,
+        },
+        {
+          id: 'set_multi',
+          type: NodeType.SET_ASSIGNEE,
+          name: '设置标准/重大审批人',
+          assignee: { strategy: AssigneeStrategy.INITIATOR },
+        },
+        {
+          id: 'appr_multi',
+          type: NodeType.APPROVAL,
+          name: '标准审批',
+          assignee: { strategy: AssigneeStrategy.ROLE, roleCodes: ['QA'] },
+          approvalMode: ApprovalMode.SINGLE,
+        },
+        // 两条分支汇聚后的同一个办理节点：它会被两个设置活动"同时覆盖"，但两者互斥
+        {
+          id: 'task_confirm',
+          type: NodeType.TASK,
+          name: '变更任务确认与派发',
+          assignee: { strategy: AssigneeStrategy.INITIATOR },
+        },
+        { id: 'end_1', type: NodeType.END, name: '结束' },
+      ],
+      edges: [
+        { id: 'e1', kind: EdgeKind.NORMAL, source: 'start_1', target: 'gw_1' },
+        {
+          id: 'e2',
+          kind: EdgeKind.CONDITION,
+          source: 'gw_1',
+          target: 'set_quick',
+          condition: {
+            mode: 'FIELD',
+            fieldKey: 'changeLevel',
+            operator: 'EQ',
+            value: 'QUICK',
+            valueType: 'STRING',
+          },
+        },
+        { id: 'e3', kind: EdgeKind.DEFAULT, source: 'gw_1', target: 'set_multi' },
+        { id: 'e4', kind: EdgeKind.NORMAL, source: 'set_quick', target: 'appr_quick' },
+        { id: 'e5', kind: EdgeKind.NORMAL, source: 'appr_quick', target: 'task_confirm' },
+        { id: 'e6', kind: EdgeKind.NORMAL, source: 'set_multi', target: 'appr_multi' },
+        { id: 'e7', kind: EdgeKind.NORMAL, source: 'appr_multi', target: 'task_confirm' },
+        { id: 'e8', kind: EdgeKind.NORMAL, source: 'task_confirm', target: 'end_1' },
+      ],
+    } as FlowDsl
+
+    const report = validateDsl(dsl)
+    // 排他分支 → 不判撞车，不能拦保存
+    expect(
+      report.issues.find(
+        (i) => i.code === IssueCode.SETUP_MULTIPLE && i.level === IssueLevel.ERROR,
+      ),
+    ).toBeUndefined()
+    // 仍然提示"多设了几个"，只是不是错误
+    expect(
+      report.issues.find(
+        (i) => i.code === IssueCode.SETUP_MULTIPLE && i.level === IssueLevel.WARNING,
+      ),
+    ).toBeDefined()
   })
 
   it('两个设置活动覆盖同一个活动 → 错误（后执行者会静默覆盖先执行者，且拦保存）', () => {
@@ -403,8 +501,12 @@ describe('设计期校验', () => {
 })
 
 describe('表单模板注册表', () => {
-  it('「设置审批人」固定使用内置的「设置流程参与者」；审批意见是默认而非固定', () => {
-    expect(fixedFormCodeOf(NodeType.SET_ASSIGNEE)).toBe(SETUP_ASSIGNEE_FORM_CODE)
+  it('「设置审批人」默认用内置「设置流程参与者」，但可换成能挑人的行业表单', () => {
+    // 2026-11-09：由"固定"降为"默认" —— 变更任务流程要换成同时展示修订产物的行业表单。
+    // 不可换时行业表永远配不上（编译层会把 formRef 静默覆盖回内置那张）。
+    expect(fixedFormCodeOf(NodeType.SET_ASSIGNEE)).toBeUndefined()
+    // 但"默认"必须存在：不指定就会落到通用兜底表单，这个节点就选不了人
+    expect(defaultFormCodeOfNode({ type: NodeType.SET_ASSIGNEE })).toBe(SETUP_ASSIGNEE_FORM_CODE)
     expect(formTemplatesFor(NodeType.SET_ASSIGNEE).map((t) => t.code)).toEqual([
       SETUP_ASSIGNEE_FORM_CODE,
     ])
@@ -413,8 +515,42 @@ describe('表单模板注册表', () => {
       APPROVAL_OPINION_FORM_CODE,
     ])
     expect(defaultFormCodeOfNode({ type: NodeType.APPROVAL })).toBe(APPROVAL_OPINION_FORM_CODE)
-    // 固定 vs 默认的分界：设置审批人不可替换，审批没有"固定表单"（企业可以换自己的）
     expect(fixedFormCodeOf(NodeType.APPROVAL)).toBeUndefined()
+  })
+
+  it('设置活动换成不会挑人的表单 → 错误（下游承办人变量没人写）', () => {
+    const dsl = flow()
+    const patched: FlowDsl = {
+      ...dsl,
+      nodes: dsl.nodes.map((n) => (n.id === 'set_1' ? { ...n, formRef: APPROVAL_OPINION_FORM_CODE } : n)),
+    }
+    const issue = validateDsl(patched).issues.find((i) => i.code === IssueCode.SETUP_FORM_INVALID)
+    expect(issue).toBeDefined()
+    expect(issue?.level).toBe(IssueLevel.ERROR)
+    expect(issue?.nodeId).toBe('set_1')
+  })
+
+  it('设置活动换成行业「挑人」表单 → 不报（它同样写 ckplmSetupAssignees_*）', () => {
+    registerTaskFormTemplates([
+      {
+        code: 'change-task-approve-setup', label: '变更任务审批设置参与者', description: '',
+        builtin: false, fixed: false, component: 'EcnTaskApproveSetupForm',
+        nodeTypes: [NodeType.SET_ASSIGNEE],
+      },
+    ])
+    try {
+      const dsl = flow()
+      const patched: FlowDsl = {
+        ...dsl,
+        nodes: dsl.nodes.map((n) => (n.id === 'set_1' ? { ...n, formRef: 'change-task-approve-setup' } : n)),
+      }
+      expect(validateDsl(patched).issues.find((i) => i.code === IssueCode.SETUP_FORM_INVALID))
+        .toBeUndefined()
+      // 编译产物跟着节点走：formKey 是行业那张，不是被覆盖回内置
+      expect(compileToBpmnXml(patched).xml).toContain('formKey="change-task-approve-setup"')
+    } finally {
+      registerTaskFormTemplates([])
+    }
   })
 
   it('同一节点类型可以挂多张模板（含企业自定义），下拉里都能选到', () => {

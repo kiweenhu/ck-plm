@@ -18,8 +18,10 @@ import cn.ck.plm.process.dto.ProcessTaskFormVO;
 import cn.ck.plm.process.dto.ProcessTaskStatsVO;
 import cn.ck.plm.process.dto.ProcessTaskVO;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 工作流服务契约 —— 基于 Flowable 7 流程引擎，服务于前端「任务中心」与「流程监控」。
@@ -207,6 +209,46 @@ public interface ProcessService {
      * @throws IllegalArgumentException 实例不存在或不属于当前租户
      */
     List<ProcessActivityFormVO> findActivityForm(String instanceId, String activityId);
+
+    /**
+     * 这批实例 id 里，还有哪些在引擎里跑着（{@code running} / {@code suspended}）。
+     *
+     * <p>给业务单据回答一个问题：<b>状态还能不能人工改</b>。流程在跑时状态由流程驱动，
+     * 管理员「设置状态」必须挡住；流程已结束（或实例历史已被清理）则放行 —— 那才是
+     * 运维纠错要处理的场景。
+     *
+     * <p>查不到的一律不算运行中：id 为空、实例已结束、id 来自别处，都不该让业务单据
+     * 永久失去人工纠错入口。
+     */
+    Set<String> runningInstanceIds(Collection<String> instanceIds);
+
+    /**
+     * 按 businessKey 批量取流程实例 id（新 → 旧，同一业务对象只给最新那一轮的）。
+     *
+     * <p>变更任务的子流程用 {@code businessKey = 任务 oid} 关联（任务表上没有实例字段），
+     * 「这条任务的流程跑起来没有、跑到哪了」只能这么查。
+     *
+     * <p>同一业务对象可能有多轮实例（驳回重提）：按开始时间倒序，取最新的一个。
+     */
+    Map<String, String> instanceIdsByBusinessKey(Collection<String> businessKeys);
+
+    /** 单个实例是否还在跑（{@link #runningInstanceIds} 的便捷版） */
+    default boolean isInstanceRunning(String instanceId) {
+        return instanceId != null
+                && !instanceId.isBlank()
+                && runningInstanceIds(List.of(instanceId)).contains(instanceId);
+    }
+
+    /**
+     * 改写流程实例级变量。
+     *
+     * <p>用场景：业务侧在"消费该变量的节点还没走到"之前修正清单 —— 变更通告的
+     * 「变更任务确认与派发」节点允许调整更改事项，而下游多实例子流程的集合表达式
+     * {@code ${changeTaskList}} 读的是实例变量，不跟着改就会派发审批那一刻的旧清单。
+     *
+     * @throws IllegalArgumentException 实例不存在、已结束或不属于当前租户
+     */
+    void setInstanceVariable(String instanceId, String name, Object value);
 
     /** 挂起流程实例 */
     void suspendInstance(String instanceId);

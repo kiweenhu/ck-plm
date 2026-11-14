@@ -181,15 +181,60 @@
     ],
     "layout": {
       "nodes": {
-        "start_1": { "x": 296, "y": 40, "width": 30, "height": 30 },
-        "n_apply": { "x": 240, "y": 150, "width": 180, "height": 70 },
-        "set_assignee": { "x": 240, "y": 270, "width": 180, "height": 70 },
-        "n_check": { "x": 240, "y": 390, "width": 180, "height": 70 },
-        "n_issue": { "x": 240, "y": 510, "width": 180, "height": 70 },
-        "n_fix": { "x": 240, "y": 630, "width": 180, "height": 70 },
-        "n_reverify": { "x": 240, "y": 750, "width": 180, "height": 70 },
-        "n_verdict": { "x": 240, "y": 870, "width": 180, "height": 70 },
-        "n_end": { "x": 296, "y": 990, "width": 30, "height": 30 }
+        "start_1": {
+          "x": 296,
+          "y": 40,
+          "width": 30,
+          "height": 30
+        },
+        "n_apply": {
+          "x": 240,
+          "y": 150,
+          "width": 180,
+          "height": 70
+        },
+        "set_assignee": {
+          "x": 240,
+          "y": 270,
+          "width": 180,
+          "height": 70
+        },
+        "n_check": {
+          "x": 240,
+          "y": 390,
+          "width": 180,
+          "height": 70
+        },
+        "n_issue": {
+          "x": 240,
+          "y": 510,
+          "width": 180,
+          "height": 70
+        },
+        "n_fix": {
+          "x": 240,
+          "y": 630,
+          "width": 180,
+          "height": 70
+        },
+        "n_reverify": {
+          "x": 240,
+          "y": 750,
+          "width": 180,
+          "height": 70
+        },
+        "n_verdict": {
+          "x": 240,
+          "y": 870,
+          "width": 180,
+          "height": 70
+        },
+        "n_end": {
+          "x": 296,
+          "y": 990,
+          "width": 30,
+          "height": 30
+        }
       }
     }
   }

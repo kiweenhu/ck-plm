@@ -12,10 +12,22 @@
   <process id="change-task" name="变更任务流程" isExecutable="true" ckplm:variables="[{&quot;name&quot;:&quot;taskAssignee&quot;,&quot;label&quot;:&quot;任务办理人&quot;,&quot;type&quot;:&quot;STRING&quot;,&quot;visible&quot;:true,&quot;readonly&quot;:false}]">
     <documentation>变更任务（ECT）流程：任务下达 → 执行变更任务 → 完成。办理人取自流程变量 taskAssignee。</documentation>
     <startEvent id="start_1" name="开始：任务下达" ckplm:nodeType="START" flowable:initiator="initiator" ckplm:initiator="{&quot;strategy&quot;:&quot;INITIATOR&quot;}"/>
-    <userTask id="task_1" name="执行变更任务" ckplm:nodeType="TASK" flowable:assignee="${taskAssignee}" ckplm:assignee="{&quot;strategy&quot;:&quot;VARIABLE&quot;,&quot;variableName&quot;:&quot;taskAssignee&quot;}"/>
+    <userTask id="task_1" name="执行变更任务" ckplm:nodeType="TASK" flowable:assignee="${taskAssignee}" ckplm:assignee="{&quot;strategy&quot;:&quot;VARIABLE&quot;,&quot;variableName&quot;:&quot;taskAssignee&quot;}" flowable:formKey="change-task-execute" ckplm:formRef="change-task-execute"/>
     <endEvent id="end_1" name="结束：任务完成" ckplm:nodeType="END"/>
+    <userTask id="set_assignee_dw129e" name="变更结果提交审批" ckplm:nodeType="SET_ASSIGNEE" flowable:assignee="${taskAssignee}" ckplm:assignee="{&quot;strategy&quot;:&quot;VARIABLE&quot;,&quot;variableName&quot;:&quot;taskAssignee&quot;}" flowable:formKey="change-task-approve-setup" ckplm:formRef="change-task-approve-setup"/>
+    <userTask id="countersign_approval_g8tm23" name="会签审批" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;PRODUCT_MANAGER&quot;,&quot;QUALITY_ENGINEER&quot;,&quot;HARDWARE_LEAD&quot;]}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;PERCENT&quot;,&quot;percent&quot;:100,&quot;abstain&quot;:&quot;IGNORE&quot;}" flowable:formKey="change-task-countersign" ckplm:formRef="change-task-countersign">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_countersign_approval_g8tm23}" flowable:elementVariable="ckplmApprover"><completionCondition>${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 100 || ckplmVetoed}</completionCondition></multiInstanceLoopCharacteristics></userTask>
+    <userTask id="approval_87zopm" name="领导审批" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_approval_87zopm}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;COMPANY_LEADER&quot;]}" ckplm:approvalMode="&quot;SINGLE&quot;" flowable:formKey="change-task-approval" ckplm:formRef="change-task-approval"/>
+    <serviceTask id="service_kyhaza" name="任务结项" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="change.completeTask">  <extensionElements><flowable:field name="serviceId"><flowable:string>change.completeTask</flowable:string></flowable:field></extensionElements></serviceTask>
+    <serviceTask id="service_i1hxoq" name="修订后的对象：评审中" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="object.setLifecycleState" ckplm:serviceParams="{&quot;state&quot;:&quot;REVIEWING&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>object.setLifecycleState</flowable:string></flowable:field><flowable:field name="state"><flowable:string>REVIEWING</flowable:string></flowable:field></extensionElements></serviceTask>
+    <serviceTask id="service_z3oh5k" name="修订后的对象：已发布" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="object.setLifecycleState" ckplm:serviceParams="{&quot;state&quot;:&quot;PUBLISHED&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>object.setLifecycleState</flowable:string></flowable:field><flowable:field name="state"><flowable:string>PUBLISHED</flowable:string></flowable:field></extensionElements></serviceTask>
     <sequenceFlow id="e1" sourceRef="start_1" targetRef="task_1"/>
-    <sequenceFlow id="e2" sourceRef="task_1" targetRef="end_1"/>
+    <sequenceFlow id="flow_1" sourceRef="task_1" targetRef="set_assignee_dw129e"/>
+    <sequenceFlow id="flow_3" sourceRef="approval_87zopm" targetRef="countersign_approval_g8tm23"/>
+    <sequenceFlow id="flow_5" sourceRef="service_kyhaza" targetRef="end_1"/>
+    <sequenceFlow id="flow_2" sourceRef="set_assignee_dw129e" targetRef="service_i1hxoq"/>
+    <sequenceFlow id="flow_6" sourceRef="service_i1hxoq" targetRef="approval_87zopm"/>
+    <sequenceFlow id="flow_4" sourceRef="countersign_approval_g8tm23" targetRef="service_z3oh5k"/>
+    <sequenceFlow id="flow_7" sourceRef="service_z3oh5k" targetRef="service_kyhaza"/>
   </process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="change-task">
@@ -23,18 +35,60 @@
       <omgdc:Bounds x="296" y="-8" width="30" height="30"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_task_1" bpmnElement="task_1">
-      <omgdc:Bounds x="240" y="66" width="142" height="44"/>
+      <omgdc:Bounds x="240" y="58" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_end_1" bpmnElement="end_1">
-      <omgdc:Bounds x="296" y="156" width="30" height="30"/>
+      <omgdc:Bounds x="296" y="588" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_set_assignee_dw129e" bpmnElement="set_assignee_dw129e">
+      <omgdc:Bounds x="240" y="132" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_countersign_approval_g8tm23" bpmnElement="countersign_approval_g8tm23">
+      <omgdc:Bounds x="240" y="364" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_approval_87zopm" bpmnElement="approval_87zopm">
+      <omgdc:Bounds x="240" y="289" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_service_kyhaza" bpmnElement="service_kyhaza">
+      <omgdc:Bounds x="240" y="516" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_service_i1hxoq" bpmnElement="service_i1hxoq">
+      <omgdc:Bounds x="240" y="209" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_service_z3oh5k" bpmnElement="service_z3oh5k">
+      <omgdc:Bounds x="240" y="436" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNEdge id="Edge_e1" bpmnElement="e1">
       <omgdi:waypoint x="311" y="22"/>
-      <omgdi:waypoint x="311" y="66"/>
+      <omgdi:waypoint x="311" y="58"/>
     </bpmndi:BPMNEdge>
-    <bpmndi:BPMNEdge id="Edge_e2" bpmnElement="e2">
-      <omgdi:waypoint x="311" y="110"/>
-      <omgdi:waypoint x="311" y="156"/>
+    <bpmndi:BPMNEdge id="Edge_flow_1" bpmnElement="flow_1">
+      <omgdi:waypoint x="311" y="102"/>
+      <omgdi:waypoint x="311" y="132"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_3" bpmnElement="flow_3">
+      <omgdi:waypoint x="311" y="333"/>
+      <omgdi:waypoint x="311" y="364"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_5" bpmnElement="flow_5">
+      <omgdi:waypoint x="311" y="560"/>
+      <omgdi:waypoint x="311" y="588"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_2" bpmnElement="flow_2">
+      <omgdi:waypoint x="311" y="176"/>
+      <omgdi:waypoint x="311" y="209"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_6" bpmnElement="flow_6">
+      <omgdi:waypoint x="311" y="253"/>
+      <omgdi:waypoint x="311" y="289"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_4" bpmnElement="flow_4">
+      <omgdi:waypoint x="311" y="408"/>
+      <omgdi:waypoint x="311" y="436"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_flow_7" bpmnElement="flow_7">
+      <omgdi:waypoint x="311" y="480"/>
+      <omgdi:waypoint x="311" y="516"/>
     </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

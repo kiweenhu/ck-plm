@@ -104,6 +104,19 @@ public interface SoftTypeInstanceService {
                              String migrateToTemplateIterationOid);
 
     /**
+     * 只把对象绑定的生命周期模板<b>重置到最新子版本</b>，不额外做一次状态迁移。
+     *
+     * <p>用于行操作「设置生命周期状态 → 重置生命周期模板到最新版本」：模板改版后，
+     * 已存在的对象仍固着旧子版本，按旧版的规则判定 / 走流程。重置后状态按 code 保留，
+     * 最新版没有当前状态则落到最新版的初始状态（与 {@code rebindLifecycle} 同一规则）。
+     *
+     * @param entityVersion              大版本（如 A）；为空表示当前最新大版本
+     * @param targetTemplateIterationOid 目标模板子版本 oid（通常是业务配置里的最新版）
+     */
+    void resetLifecycleTemplate(String typeDefinitionCode, String oid, String entityVersion,
+                                String targetTemplateIterationOid);
+
+    /**
      * 对象当前<b>绑定</b>的生命周期模板子版本 oid —— 与业务配置里的模板做一致性判断用。
      *
      * <p>宿主不支持 / 对象未绑定 / 读取失败时返回 null（调用方按"无绑定信息"处理，不阻断设置）。

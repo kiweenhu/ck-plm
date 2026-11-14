@@ -18,6 +18,9 @@ import {
   NodeType,
   SERVICE_CHECKIN,
   SERVICE_CHECKOUT,
+  SERVICE_COMPLETE_NOTICE,
+  SERVICE_COMPLETE_TASK,
+  SERVICE_EXECUTE_TASK,
   SERVICE_PROMOTE,
   SERVICE_PUBLISH_TO_SYSTEM,
   SERVICE_REST_CALL,
@@ -122,6 +125,29 @@ export const SET_ATTRIBUTE_PRESET_ID = `service.${SERVICE_SET_ATTRIBUTE}`
 export const SET_ATTRIBUTE_PRESET_LABEL =
   serviceById(SERVICE_SET_ATTRIBUTE)?.label ?? '更新对象属性'
 
+/**
+ * 变更单据类两个入口（变更任务结项 / 变更通告实施完成）。
+ *
+ * <p>为什么值得从节点库里直接拖：这两个服务按流程 businessKey 定位
+ * {@code ck_change_task} / {@code ck_change_notice}，而「设置状态」够不着这两张独立主表 ——
+ * 选错的话画布上看不出差别，要跑到节点才报错。给独立入口，拖出来就已是正确的服务。
+ *
+ * <p>与对象动作四件套不同，它们<b>不</b>标 {@code hideFromServiceList}：这两类节点多半是
+ * 在已有流程里"改造出来"的（把某个通用服务换成它），下拉里还能选到比只能拖更顺手。
+ */
+export const EXECUTE_TASK_PRESET_ID = `service.${SERVICE_EXECUTE_TASK}`
+export const EXECUTE_TASK_PRESET_LABEL = serviceById(SERVICE_EXECUTE_TASK)?.label ?? '执行变更修订'
+export const EXECUTE_TASK_NODE_NAME = '执行变更修订'
+
+export const COMPLETE_TASK_PRESET_ID = `service.${SERVICE_COMPLETE_TASK}`
+export const COMPLETE_TASK_PRESET_LABEL = serviceById(SERVICE_COMPLETE_TASK)?.label ?? '变更任务结项'
+export const COMPLETE_TASK_NODE_NAME = '任务结项'
+
+export const COMPLETE_NOTICE_PRESET_ID = `service.${SERVICE_COMPLETE_NOTICE}`
+export const COMPLETE_NOTICE_PRESET_LABEL =
+  serviceById(SERVICE_COMPLETE_NOTICE)?.label ?? '变更通告实施完成'
+export const COMPLETE_NOTICE_NODE_NAME = '实施完成'
+
 /** 节点库全部条目（顺序即分组内的展示顺序） */
 export const NODE_PRESETS: NodePreset[] = [
   // 事件
@@ -206,6 +232,32 @@ export const NODE_PRESETS: NodePreset[] = [
     label: REST_CALL_PRESET_LABEL,
     group: '自动化',
     prefill: { name: REST_CALL_NODE_NAME, serviceRef: SERVICE_REST_CALL },
+  },
+  {
+    // 执行变更修订：变更任务流程里「执行变更任务」之后紧跟的自动节点。
+    // 拖出来即选好服务 —— 与「修订对象」形似，但按任务范围执行、产物写进变更结果表。
+    id: EXECUTE_TASK_PRESET_ID,
+    type: NodeType.SERVICE,
+    label: EXECUTE_TASK_PRESET_LABEL,
+    group: '自动化',
+    prefill: { name: EXECUTE_TASK_NODE_NAME, serviceRef: SERVICE_EXECUTE_TASK },
+  },
+  {
+    // 变更任务结项：变更任务子流程尾部，把任务单推到「已完成」。
+    // 拖出来即选好服务 —— 与「设置状态」长得像但对象不同（独立主表 ck_change_task）。
+    id: COMPLETE_TASK_PRESET_ID,
+    type: NodeType.SERVICE,
+    label: COMPLETE_TASK_PRESET_LABEL,
+    group: '自动化',
+    prefill: { name: COMPLETE_TASK_NODE_NAME, serviceRef: SERVICE_COMPLETE_TASK },
+  },
+  {
+    // 变更通告实施完成：汇总确认通过后落「已完成」
+    id: COMPLETE_NOTICE_PRESET_ID,
+    type: NodeType.SERVICE,
+    label: COMPLETE_NOTICE_PRESET_LABEL,
+    group: '自动化',
+    prefill: { name: COMPLETE_NOTICE_NODE_NAME, serviceRef: SERVICE_COMPLETE_NOTICE },
   },
   { type: NodeType.NOTIFY, group: '自动化' },
   { type: NodeType.SUB_PROCESS, group: '自动化' },

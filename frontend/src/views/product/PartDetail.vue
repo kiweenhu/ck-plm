@@ -1128,7 +1128,9 @@
                 <a-tag color="blue" size="small">{{ record.baseVersion || '-' }}</a-tag>
               </template>
               <template v-else-if="column.key === 'resultVersion'">
-                <a-tag v-if="record.resultVersion" color="green" size="small">{{ record.resultVersion }}</a-tag>
+                <a-tag v-if="record.currentResultVersion || record.resultVersion" color="green" size="small">
+                  {{ record.currentResultVersion || record.resultVersion }}
+                </a-tag>
                 <span v-else style="color:#bfbfbf">未执行</span>
               </template>
               <template v-else-if="column.key === 'executedAt'">

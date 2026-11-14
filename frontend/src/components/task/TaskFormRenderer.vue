@@ -82,7 +82,15 @@ watch(() => props.form, () => { forceFallback.value = false })
 
 async function submit() {
   if (submitting.value) return
-  const collected = formRef.value?.collect?.() || { ok: true, payload: {} }
+  let collected
+  try {
+    // collect 允许返回 Promise：有的模板要在 completeTask 之前先把数据同步到流程变量
+    // （「变更任务确认与派发」得先写回 changeTaskList，否则下游按旧清单派发）
+    collected = (await formRef.value?.collect?.()) || { ok: true, payload: {} }
+  } catch (e) {
+    message.error(e?.message || '表单校验失败')
+    return
+  }
   if (!collected.ok) {
     message.warning(collected.message || '表单填写有误')
     return

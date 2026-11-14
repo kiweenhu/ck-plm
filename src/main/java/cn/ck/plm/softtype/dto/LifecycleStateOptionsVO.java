@@ -37,8 +37,25 @@ public class LifecycleStateOptionsVO {
     private String configuredTemplateCode;
     private String configuredTemplateName;
 
+    /** 业务配置模板的最新子版本 oid / 版本号（如 A.5）—— 「重置到最新版本」的目标 */
+    private String configuredTemplateIterationOid;
+    private String configuredTemplateVersion;
+
+    /** 对象当前绑定的模板子版本 oid / 版本号（如 A.2）；未绑定时为 null */
+    private String boundTemplateIterationOid;
+    private String boundTemplateVersion;
+
     /** 两者不是同一个模板：界面弹出「迁移到新模板 / 保留旧模板」的选择 */
     private boolean templateChanged;
+
+    /**
+     * 对象绑的是<b>同一模板的旧子版本</b>（模板 code 相同，只是没跟上最新版）。
+     *
+     * <p>与 {@link #templateChanged} 的区别：后者也可能是"业务配置换了另一个模板"。
+     * 这种情况不需要迁移到别的模板，只需要把绑定换到同一模板的最新子版本 ——
+     * 界面据此给出「重置生命周期模板到最新版本」这一项，而不是让人误以为要换模板。
+     */
+    private boolean templateVersionOutdated;
 
     /**
      * 对象<b>没有可用的模板绑定</b>（历史对象从未写入；或原模板 / 子版本已被删除），
@@ -191,12 +208,52 @@ public class LifecycleStateOptionsVO {
         this.configuredTemplateName = configuredTemplateName;
     }
 
+    public String getConfiguredTemplateIterationOid() {
+        return configuredTemplateIterationOid;
+    }
+
+    public void setConfiguredTemplateIterationOid(String configuredTemplateIterationOid) {
+        this.configuredTemplateIterationOid = configuredTemplateIterationOid;
+    }
+
+    public String getConfiguredTemplateVersion() {
+        return configuredTemplateVersion;
+    }
+
+    public void setConfiguredTemplateVersion(String configuredTemplateVersion) {
+        this.configuredTemplateVersion = configuredTemplateVersion;
+    }
+
+    public String getBoundTemplateIterationOid() {
+        return boundTemplateIterationOid;
+    }
+
+    public void setBoundTemplateIterationOid(String boundTemplateIterationOid) {
+        this.boundTemplateIterationOid = boundTemplateIterationOid;
+    }
+
+    public String getBoundTemplateVersion() {
+        return boundTemplateVersion;
+    }
+
+    public void setBoundTemplateVersion(String boundTemplateVersion) {
+        this.boundTemplateVersion = boundTemplateVersion;
+    }
+
     public boolean isTemplateChanged() {
         return templateChanged;
     }
 
     public void setTemplateChanged(boolean templateChanged) {
         this.templateChanged = templateChanged;
+    }
+
+    public boolean isTemplateVersionOutdated() {
+        return templateVersionOutdated;
+    }
+
+    public void setTemplateVersionOutdated(boolean templateVersionOutdated) {
+        this.templateVersionOutdated = templateVersionOutdated;
     }
 
     public boolean isTemplateBindRequired() {

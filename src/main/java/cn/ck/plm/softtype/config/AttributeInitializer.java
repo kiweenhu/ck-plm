@@ -143,10 +143,10 @@ public class AttributeInitializer implements CommandLineRunner {
      */
     private static final Set<String> SKIP_FIELDS = new LinkedHashSet<>(Arrays.asList(
             "oid", "tenantOid",
-            // 以下五个是变更单据的**传输字段**（不落库、无对应列）：注册成属性只会让
+            // 以下六个是变更单据的**传输字段**（不落库、无对应列）：注册成属性只会让
             // 页面设计器的字段池里多出几个"拖进布局也存不下"的假字段
-            // （noticeCode 是变更任务的"所属通告编号"，由查询 JOIN 带出）
-            "productName", "issueOids", "affectedObjectOids", "affectedObjects", "noticeCode"));
+            // （noticeCode / noticeStatus 是变更任务的"所属通告编号 / 状态"，由查询 JOIN 带出）
+            "productName", "issueOids", "affectedObjectOids", "affectedObjects", "noticeCode", "noticeStatus"));
 
     private static final Map<String, FieldMeta> FIELD_META = new LinkedHashMap<>();
     static {

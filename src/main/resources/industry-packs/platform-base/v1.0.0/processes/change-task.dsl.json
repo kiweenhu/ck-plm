@@ -30,8 +30,8 @@
       {
         "id": "start_1",
         "name": "开始：任务下达",
-        "type": "START",
         "description": "由变更通告派发时拉起（子流程），业务标识 = 变更任务 oid；任务办理人由 taskAssignee 变量带入",
+        "type": "START",
         "initiator": {
           "strategy": "INITIATOR"
         }
@@ -44,12 +44,79 @@
         "assignee": {
           "strategy": "VARIABLE",
           "variableName": "taskAssignee"
-        }
+        },
+        "formRef": "change-task-execute"
       },
       {
         "id": "end_1",
         "name": "结束：任务完成",
         "type": "END"
+      },
+      {
+        "id": "set_assignee_dw129e",
+        "name": "变更结果提交审批",
+        "type": "SET_ASSIGNEE",
+        "assignee": {
+          "strategy": "VARIABLE",
+          "variableName": "taskAssignee"
+        },
+        "formRef": "change-task-approve-setup"
+      },
+      {
+        "id": "countersign_approval_g8tm23",
+        "name": "会签审批",
+        "type": "COUNTERSIGN_APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "PRODUCT_MANAGER",
+            "QUALITY_ENGINEER",
+            "HARDWARE_LEAD"
+          ]
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100,
+          "abstain": "IGNORE"
+        },
+        "formRef": "change-task-countersign"
+      },
+      {
+        "id": "approval_87zopm",
+        "name": "领导审批",
+        "type": "APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "COMPANY_LEADER"
+          ]
+        },
+        "approvalMode": "SINGLE",
+        "formRef": "change-task-approval"
+      },
+      {
+        "id": "service_kyhaza",
+        "name": "任务结项",
+        "type": "SERVICE",
+        "serviceRef": "change.completeTask"
+      },
+      {
+        "id": "service_i1hxoq",
+        "name": "修订后的对象：评审中",
+        "type": "SERVICE",
+        "serviceRef": "object.setLifecycleState",
+        "params": {
+          "state": "REVIEWING"
+        }
+      },
+      {
+        "id": "service_z3oh5k",
+        "name": "修订后的对象：已发布",
+        "type": "SERVICE",
+        "serviceRef": "object.setLifecycleState",
+        "params": {
+          "state": "PUBLISHED"
+        }
       }
     ],
     "edges": [
@@ -60,17 +127,126 @@
         "kind": "NORMAL"
       },
       {
-        "id": "e2",
+        "id": "flow_1",
         "source": "task_1",
+        "target": "set_assignee_dw129e",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom",
+          "target": "top"
+        }
+      },
+      {
+        "id": "flow_3",
+        "source": "approval_87zopm",
+        "target": "countersign_approval_g8tm23",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom",
+          "target": "top"
+        }
+      },
+      {
+        "id": "flow_5",
+        "source": "service_kyhaza",
         "target": "end_1",
-        "kind": "NORMAL"
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom",
+          "target": "top"
+        }
+      },
+      {
+        "id": "flow_2",
+        "source": "set_assignee_dw129e",
+        "target": "service_i1hxoq",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom",
+          "target": "top"
+        }
+      },
+      {
+        "id": "flow_6",
+        "source": "service_i1hxoq",
+        "target": "approval_87zopm",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom",
+          "target": "top"
+        }
+      },
+      {
+        "id": "flow_4",
+        "source": "countersign_approval_g8tm23",
+        "target": "service_z3oh5k",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom",
+          "target": "top"
+        }
+      },
+      {
+        "id": "flow_7",
+        "source": "service_z3oh5k",
+        "target": "service_kyhaza",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom",
+          "target": "top"
+        }
       }
     ],
     "layout": {
       "nodes": {
-        "start_1": { "x": 296, "y": -8 },
-        "task_1": { "x": 240, "y": 66 },
-        "end_1": { "x": 296, "y": 156 }
+        "start_1": {
+          "x": 296,
+          "y": -8
+        },
+        "task_1": {
+          "x": 240,
+          "y": 58
+        },
+        "end_1": {
+          "x": 296,
+          "y": 588
+        },
+        "set_assignee_dw129e": {
+          "x": 240,
+          "y": 132,
+          "width": 142,
+          "height": 44
+        },
+        "countersign_approval_g8tm23": {
+          "x": 240,
+          "y": 364,
+          "width": 142,
+          "height": 44
+        },
+        "approval_87zopm": {
+          "x": 240,
+          "y": 289,
+          "width": 142,
+          "height": 44
+        },
+        "service_kyhaza": {
+          "x": 240,
+          "y": 516,
+          "width": 142,
+          "height": 44
+        },
+        "service_i1hxoq": {
+          "x": 240,
+          "y": 209,
+          "width": 142,
+          "height": 44
+        },
+        "service_z3oh5k": {
+          "x": 240,
+          "y": 436,
+          "width": 142,
+          "height": 44
+        }
       }
     }
   }

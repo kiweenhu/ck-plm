@@ -10,6 +10,7 @@ import cn.ck.plm.change.entity.ChangeActivity;
 import cn.ck.plm.change.entity.ChangeNotice;
 import cn.ck.plm.change.entity.ChangeRequest;
 import cn.ck.plm.change.entity.ChangeRequestAffectedObject;
+import cn.ck.plm.change.entity.ChangeTask;
 
 import java.util.List;
 import java.util.Map;
@@ -87,11 +88,13 @@ public interface ChangeRequestService {
     /**
      * 收集所选对象关联的其他对象（变更任务挑对象时的"收集"动作）。
      *
-     * <p>当前口径（2026-11-03 与业务确认）：只对<b>零件</b>生效，收集
-     * <b>关联文档</b>（{@code ck_doc_part_link} 的 DESCRIBES + REFERENCE）与
+     * <p>当前口径：只对<b>零件</b>生效，收集
+     * <b>关联文档</b>（{@code ck_doc_part_link} 的 DESCRIBES + REFERENCE）、
+     * <b>关联工程数据</b>（{@code ck_eng_doc_part_link}，2026-11-10 补）与
      * <b>替代件</b>（{@code ck_part_alternate_link}，双向）。BOM 结构不在收集范围内。
      *
-     * <p>返回字段在候选的基础上多一个 {@code relation}（DOCUMENT / ALTERNATE），
+     * <p>返回字段在候选的基础上多一个 {@code relation}
+     * （{@code DOCUMENT} / {@code ENG_DOCUMENT} / {@code ALTERNATE}），
      * 替代件另带 {@code alternateType}；按 oid 去重，入参里的对象自身不会出现在结果中。
      */
     List<Map<String, Object>> relatedObjects(List<String> entityOids);
@@ -102,6 +105,15 @@ public interface ChangeRequestService {
      * <p>只用于详情展示与"关闭前还差什么"的说明；关闭门槛由 {@link #transition} 拦截。
      */
     List<ChangeNotice> childNotices(String oid);
+
+    /**
+     * 这些变更通告下的变更任务（ECT），按通告分组顺序展开。
+     *
+     * <p>ECR 详情要回答"这件事到底派给谁改了、改到哪一步"：只有通告列表时，
+     * 用户还得再点进每一张通告才能看到任务。返回的每行带 {@code noticeOid}，
+     * 前端据此标出任务属于哪张通告；{@code processInstanceId} 由 {@code byNotice} 回填。
+     */
+    List<ChangeTask> childTasks(String oid);
 
     /** 列表（筛选均可空；分页）—— 返回 { rows, total, page, pageSize } */
     Map<String, Object> list(String status, String keyword, int page, int pageSize);

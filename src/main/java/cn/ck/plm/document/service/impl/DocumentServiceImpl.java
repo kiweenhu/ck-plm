@@ -389,6 +389,23 @@ public class DocumentServiceImpl implements DocumentService, SoftTypeInstanceCap
         return resolveVersion(oid, entityVersion).getLifecycleTemplateIterationOid();
     }
 
+    @Override
+    @Transactional
+    public void rebindLifecycleInstance(String oid, String entityVersion, String targetTemplateIterationOid) {
+        Document document = documentMapper.selectByOid(oid);
+        if (document == null) {
+            throw new IllegalArgumentException("文档不存在: " + oid);
+        }
+        DocumentIteration iter = resolveVersion(oid, entityVersion);
+        // 只换模板版本：状态由 rebindLifecycle 按 code 映射（新版没有同 code 就落到新版初始状态）
+        lifecycleTemplateService.rebindLifecycle(iter, targetTemplateIterationOid);
+        iter.setUpdatedAt(LocalDateTime.now());
+        iterationMapper.update(iter);
+        log.info("重置生命周期模板: documentOid={}, version={}.{}, templateIteration={}, status={}", oid,
+                iter.getRevision(), iter.getIteration(), iter.getLifecycleTemplateIterationOid(),
+                iter.getStatus() != null ? iter.getStatus().getCode() : null);
+    }
+
     /**
      * 取「该大版本当前的最新小版本」—— 流程针对的是大版本，落到具体版本时统一按这个口径解析。
      *

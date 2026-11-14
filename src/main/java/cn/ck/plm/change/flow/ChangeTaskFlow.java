@@ -73,6 +73,15 @@ public final class ChangeTaskFlow {
     /** 验收退回：SUBMITTED → IN_WORK（需 comment） */
     public static final String RETURN = "RETURN";
 
+    /**
+     * 执行修订（时间线动作名）。
+     *
+     * <p><b>不进 {@link #RULES}</b>：它不是一次状态迁移，而是"对任务下的对象自动修订"这个副作用；
+     * 任务状态顺带从 OPEN 推进到 IN_WORK（= 开始处理），但那由服务层自己写，
+     * 放进状态机会让"谁能执行"和"状态能不能变"混成一件事。
+     */
+    public static final String EXECUTE = "EXECUTE";
+
     private static final Map<String, Map<String, String>> RULES = new LinkedHashMap<>();
 
     private static final Map<String, String> LABELS = new LinkedHashMap<>();
@@ -85,6 +94,7 @@ public final class ChangeTaskFlow {
         LABELS.put(SUBMIT, "提交验收");
         LABELS.put(PASS, "验收通过");
         LABELS.put(RETURN, "验收退回");
+        LABELS.put(EXECUTE, "执行修订");
 
         rule(DISPATCH, DRAFT, OPEN);
         rule(START, OPEN, IN_WORK);

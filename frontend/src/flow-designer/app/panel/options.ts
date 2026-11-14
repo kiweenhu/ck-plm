@@ -197,7 +197,13 @@ export function lifecycleStateOptions(templates: unknown[]): OptionItem[] {
     for (const state of states) {
       const option = lifecycleStateOption(state)
       if (option && !byCode.has(option.value)) {
-        byCode.set(option.value, option)
+        // 不同模板可能给不同 code 起同一个显示名（如 APPROVING 与 REVIEWING 都叫「评审中」）。
+        // DSL 里存的是 code，下拉只显示名字时设计者分不清选的是哪一个：选到别的模板的状态，
+        // 运行期才会报「目标状态不在该对象的生命周期模板内」。带上 code 才能在配置时认出来。
+        const label = option.label === option.value
+          ? option.label
+          : `${option.label}（${option.value}）`
+        byCode.set(option.value, { value: option.value, label })
       }
     }
   }

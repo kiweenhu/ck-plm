@@ -3294,13 +3294,18 @@ CREATE INDEX IF NOT EXISTS idx_change_task_notice ON ck_change_task (notice_oid,
 CREATE INDEX IF NOT EXISTS idx_change_task_assignee ON ck_change_task (tenant_oid, assignee, status);
 
 -- ============================================================================
--- 受影响对象（变更的核心表）
---   · base_iteration_oid = 被修订的那一版（A.2）；result_iteration_oid = 修订产物（B.1）
+-- 变更对象（变更前）—— 2026-11-09 起与「变更后」分表存放
+--
+--   表1 本表：一条 = "要把哪个对象的哪一版改掉"（变更前）。只有 base_*，不存结果。
+--   表2 ck_change_result_object：一条 = 执行产出的一个版本（变更后）。
+--       一对一就是一条；拆分出新件就多条指向同一个 affected_oid；新建件 affected_oid 也指向这里
+--       （change_kind = NEW，base_* 为空语义按业务约定）。
+--
 --   · locked：变更占用 —— 同一主对象同时只能被一个未完成的变更持有
 --     锁必须建在 (entity_type, entity_oid) 而不是迭代上：修订是主对象级的大版本跃迁，
 --     两个变更分别盯 A.1 / A.2 同样会争抢 B 这个大版本号（ck_part_iteration 无
 --     (master_oid, revision, iteration) 唯一约束）
---   · executed_at 非空即视为已执行 —— 变更执行必须幂等（重复提交不产生第二个 B 版）
+--   · "是否已执行"不再是本表的列：有结果行 = 已执行（见 countPending 的 NOT EXISTS）
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS ck_change_affected_object (
     oid                  CHAR(36)      PRIMARY KEY,
@@ -3312,10 +3317,6 @@ CREATE TABLE IF NOT EXISTS ck_change_affected_object (
     entity_name          VARCHAR(200),                    -- 名称快照
     base_iteration_oid   CHAR(36)      NOT NULL,          -- 受影响版本（被执行的那一版）
     base_version         VARCHAR(20)   NOT NULL,          -- A.2
-    result_iteration_oid CHAR(36),                        -- 修订产物（B.1）；执行后回填
-    result_version       VARCHAR(20),
-    executed_at          TIMESTAMP,
-    executed_by          VARCHAR(100),
     locked               BOOLEAN       NOT NULL DEFAULT FALSE,
     note                 VARCHAR(500),
     tenant_oid           CHAR(36),
@@ -3329,6 +3330,12 @@ CREATE TABLE IF NOT EXISTS ck_change_affected_object (
         REFERENCES ck_change_task (oid) ON DELETE SET NULL
 );
 
+-- 存量库：结果列搬到 ck_change_result_object（历史数据按约定直接清空，这里只改结构）
+ALTER TABLE ck_change_affected_object DROP COLUMN IF EXISTS result_iteration_oid;
+ALTER TABLE ck_change_affected_object DROP COLUMN IF EXISTS result_version;
+ALTER TABLE ck_change_affected_object DROP COLUMN IF EXISTS executed_at;
+ALTER TABLE ck_change_affected_object DROP COLUMN IF EXISTS executed_by;
+
 -- 一个 ECN 里同一个对象只出现一次
 CREATE UNIQUE INDEX IF NOT EXISTS uk_change_affected_object
     ON ck_change_affected_object (notice_oid, entity_type, entity_oid);
@@ -3338,6 +3345,46 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_change_affected_lock
 CREATE INDEX IF NOT EXISTS idx_change_affected_notice ON ck_change_affected_object (notice_oid);
 CREATE INDEX IF NOT EXISTS idx_change_affected_task   ON ck_change_affected_object (task_oid);
 CREATE INDEX IF NOT EXISTS idx_change_affected_entity ON ck_change_affected_object (entity_type, entity_oid);
+
+-- ============================================================================
+-- 变更结果（变更后）—— 执行修订的产物
+--   · affected_oid：指回"变更前"那一行。一对一 = 1 行；一拆多 = 多行指向同一行
+--   · notice_oid / task_oid / entity_* 冗余：汇总与反查免 join
+--   · 幂等由 uk_change_result (affected_oid, result_iteration_oid) 兜底：
+--     同一版重复写只会冲突，不会产生第二条"变更后"
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ck_change_result_object (
+    oid                  CHAR(36)      PRIMARY KEY,
+    affected_oid         CHAR(36)      NOT NULL,          -- 变更前那一行（ck_change_affected_object.oid）
+    notice_oid           CHAR(36)      NOT NULL,
+    task_oid             CHAR(36),
+    entity_type          VARCHAR(30)   NOT NULL,
+    entity_oid           CHAR(36)      NOT NULL,
+    entity_code          VARCHAR(100),
+    entity_name          VARCHAR(200),
+    source_iteration_oid CHAR(36),                        -- 从哪一版改的（= 变更前的 base_iteration_oid）
+    source_version       VARCHAR(20),
+    result_iteration_oid CHAR(36)      NOT NULL,          -- 修订产物（B.1）
+    result_version       VARCHAR(20),
+    change_kind          VARCHAR(20)   NOT NULL DEFAULT 'REVISE',   -- REVISE / SPLIT / NEW
+    executed_at          TIMESTAMP,
+    executed_by          VARCHAR(100),
+    tenant_oid           CHAR(36),
+    creator              VARCHAR(100),
+    created_at           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater              VARCHAR(100),
+    updated_at           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_change_result_affected FOREIGN KEY (affected_oid)
+        REFERENCES ck_change_affected_object (oid) ON DELETE CASCADE,
+    CONSTRAINT fk_change_result_notice FOREIGN KEY (notice_oid)
+        REFERENCES ck_change_notice (oid) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_change_result
+    ON ck_change_result_object (affected_oid, result_iteration_oid);
+CREATE INDEX IF NOT EXISTS idx_change_result_notice ON ck_change_result_object (notice_oid);
+CREATE INDEX IF NOT EXISTS idx_change_result_task   ON ck_change_result_object (task_oid);
+CREATE INDEX IF NOT EXISTS idx_change_result_entity ON ck_change_result_object (entity_type, entity_oid);
 
 -- 所属容器快照（录入时写入，只用于展示 / 按产品筛选 / 审计追溯）
 --   · 不存 container_type：容器 oid 已能唯一定位，类型靠三张容器表 join 推出

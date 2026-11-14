@@ -45,7 +45,7 @@ import java.util.function.Supplier;
  * POST   /api/softtype-instances/{oid}/new-view-version 新建视图版本
  * GET    /api/softtype-instances/{oid}/iterations      历史版本
  * GET    /api/softtype-instances/{oid}/lifecycle-states 可设置的生命周期状态候选（含可达性）
- * POST   /api/softtype-instances/{oid}/lifecycle-state  设置状态（INITIAL 退回初始 / SPECIFIED 指定）
+ * POST   /api/softtype-instances/{oid}/lifecycle-state  设置状态（INITIAL 退回初始 / SPECIFIED 指定 / RESET_TEMPLATE 重置模板到最新版）
  *
  * GET    /api/softtype-instances/capabilities?typeDefinitionCode=…  支持的操作集合（前端菜单依据）
  * GET    /api/softtype-instances/host?typeDefinitionCode=…          路由诊断
@@ -239,6 +239,7 @@ public class SoftTypeInstanceController {
      * POST /api/softtype-instances/{oid}/lifecycle-state
      * { "typeDefinitionCode": "ELECTRONIC", "mode": "INITIAL" }                       // 退回模板初始状态
      * { "typeDefinitionCode": "ELECTRONIC", "mode": "SPECIFIED", "targetStateCode": "WORKING" }
+     * { "typeDefinitionCode": "ELECTRONIC", "mode": "RESET_TEMPLATE" }                // 只把模板重置到最新版
      * </pre>
      *
      * <p>两种模式都按模板执行：指定状态要求当前状态能<b>一步</b>迁到目标；退回初始状态则
@@ -258,10 +259,42 @@ public class SoftTypeInstanceController {
         String typeDefinitionCode = typeCode(body);
         String mode = str(body, "mode");
         boolean initial = "INITIAL".equalsIgnoreCase(mode);
+        boolean resetTemplate = "RESET_TEMPLATE".equalsIgnoreCase(mode);
         String targetStateCode = str(body, "targetStateCode");
-        if (!initial && targetStateCode == null) {
+        if (!initial && !resetTemplate && targetStateCode == null) {
             return ApiResponse.fail(400, "请选择要设置的目标状态");
         }
+        String entityVersion = str(body, "entityVersion");
+        String blocked = runtimeBlockedReason(oid, typeDefinitionCode);
+        if (blocked != null) {
+            return ApiResponse.fail(409, blocked);
+        }
+
+        // 「重置生命周期模板」：只把对象绑定换到业务配置的最新子版本，状态由映射规则定
+        if (resetTemplate) {
+            String configured = typeLifecycleStateService.configuredTemplateIteration(typeDefinitionCode);
+            if (configured == null) {
+                return ApiResponse.fail(400, "类型「" + typeDefinitionCode
+                        + "」在业务配置里没有绑定生命周期模板，无法重置");
+            }
+            String bound;
+            try {
+                bound = softTypeInstanceService.lifecycleTemplateIteration(
+                        typeDefinitionCode, oid, entityVersion);
+            } catch (RuntimeException e) {
+                // 读不到绑定按"未绑定"处理：下面会照常写一次最新版本，而不是直接失败
+                log.warn("读取对象绑定的生命周期模板失败，按未绑定处理: oid={}, type={}, error={}",
+                        oid, typeDefinitionCode, e.getMessage());
+                bound = null;
+            }
+            if (configured.equals(bound)) {
+                return ApiResponse.fail(400, "对象已绑定生命周期模板的最新版本，无需重置");
+            }
+            final String targetIteration = configured;
+            return execVoid(() -> softTypeInstanceService.resetLifecycleTemplate(
+                    typeDefinitionCode, oid, entityVersion, targetIteration), "重置生命周期模板失败");
+        }
+
         boolean migrate = Boolean.TRUE.equals(body.get("migrateTemplate"))
                 || "MIGRATE".equalsIgnoreCase(str(body, "templateChoice"));
         String migrateTo = null;
@@ -277,18 +310,14 @@ public class SoftTypeInstanceController {
             // 先在同一次事务里切过去，再按新模板设置状态 —— 不再提供"保留旧模板"。
             migrateTo = resolveConfiguredMigration(typeDefinitionCode, oid);
         }
-        String blocked = runtimeBlockedReason(oid, typeDefinitionCode);
-        if (blocked != null) {
-            return ApiResponse.fail(409, blocked);
-        }
         final String migrateToIteration = migrateTo;
         return execVoid(() -> {
             if (initial) {
                 softTypeInstanceService.resetLifecycleState(
-                        typeDefinitionCode, oid, str(body, "entityVersion"), migrateToIteration);
+                        typeDefinitionCode, oid, entityVersion, migrateToIteration);
             } else {
                 softTypeInstanceService.setLifecycleState(
-                        typeDefinitionCode, oid, str(body, "entityVersion"), targetStateCode,
+                        typeDefinitionCode, oid, entityVersion, targetStateCode,
                         migrateToIteration);
             }
         }, "设置生命周期状态失败");

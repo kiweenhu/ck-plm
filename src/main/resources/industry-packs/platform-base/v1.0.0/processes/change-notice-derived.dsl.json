@@ -22,8 +22,8 @@
       {
         "id": "start_1",
         "name": "开始：发起变更通告",
-        "type": "START",
         "description": "由变更通告（ECN）的「提交审批」拉起（businessKey = 通告 oid）；单据带来源请求时 process 变量 fromRequest = true、requestCode = 来源 ECR 编号，changeLevel 继承来源 ECR 的分级 —— 与变更请求流程同口径，分级决定审签路径",
+        "type": "START",
         "initiator": {
           "strategy": "INITIATOR"
         }
@@ -31,8 +31,8 @@
       {
         "id": "set_approving",
         "name": "进入审批：审批中",
-        "type": "SERVICE",
         "description": "单据状态置为「审批中」（APPROVING）：流程一拉起就落到这个状态，审批人在单据上看到的是「审批中」而不是还停在草稿",
+        "type": "SERVICE",
         "serviceRef": "change.setRequestStatus",
         "params": {
           "status": "APPROVING"
@@ -41,14 +41,14 @@
       {
         "id": "gw_level",
         "name": "按来源变更分级分流",
-        "type": "EXCLUSIVE_GATEWAY",
-        "description": "与变更请求同一条判据：快速变更只需单人批实施方案，标准与重大都要先过跨职能会签（重大再加 CCB 决策）。分级在 ECR 上一锤定音，派生单只继承不改"
+        "description": "与变更请求同一条判据：快速变更只需单人批实施方案，标准与重大都要先过跨职能会签（重大再加 CCB 决策）。分级在 ECR 上一锤定音，派生单只继承不改",
+        "type": "EXCLUSIVE_GATEWAY"
       },
       {
         "id": "setup_quick",
         "name": "设置快速通道审批人",
-        "type": "SET_ASSIGNEE",
         "description": "快速变更只有这一个审批环节，发起人在此指定批实施方案的人",
+        "type": "SET_ASSIGNEE",
         "assignee": {
           "strategy": "INITIATOR"
         },
@@ -57,8 +57,8 @@
       {
         "id": "approve_quick",
         "name": "快速审批：实施方案",
-        "type": "APPROVAL",
         "description": "「怎么做」的单人把关：改法是否可行、切换与回退是否能兜住风险、是否需要在制库存同步处置。影响面已由 ECR 审过，这里不再重复论证「为什么改」。意见必填",
+        "type": "APPROVAL",
         "assignee": {
           "strategy": "INITIATOR"
         },
@@ -69,8 +69,8 @@
       {
         "id": "setup_multi",
         "name": "设置会签参与人",
-        "type": "SET_ASSIGNEE",
         "description": "标准 / 重大变更需要跨职能确认「各自那一段怎么做」：在此指定会签成员（重大时再指定 CCB 成员）",
+        "type": "SET_ASSIGNEE",
         "assignee": {
           "strategy": "INITIATOR"
         },
@@ -79,10 +79,21 @@
       {
         "id": "cs_plan",
         "name": "实施方案会签",
-        "type": "COUNTERSIGN_APPROVAL",
         "description": "硬件 / 工艺 / 质量 / 采购按各自视角确认怎么改：受影响对象与目标版本、切换与回退方案、（电子）器件与替代料/AVL 准入、是否触发认证重测与 PCN 客户通知、（智能硬件）跨域接口一致性与试产验证。全票通过才进入决策，任一反对即驳回",
+        "type": "COUNTERSIGN_APPROVAL",
         "assignee": {
-          "strategy": "INITIATOR"
+          "strategy": "ROLE",
+          "roleCodes": [
+            "COMPONENT_ENGINEER",
+            "HARDWARE_ENGINEER",
+            "ME_ENGINEER",
+            "NPI_ENGINEER",
+            "PROCESS_ENGINEER",
+            "SOURCING_ENGINEER",
+            "SW_ENGINEER",
+            "SYSTEM_ENGINEER",
+            "QUALITY_ENGINEER"
+          ]
         },
         "passRule": {
           "mode": "PERCENT",
@@ -94,16 +105,26 @@
       {
         "id": "gw_ccb",
         "name": "是否需要 CCB 决策",
-        "type": "EXCLUSIVE_GATEWAY",
-        "description": "重大变更（影响已发布产品 / 认证 / 客户合同）的实施方案必须由 CCB 集体决策；标准变更由产品经理收口"
+        "description": "重大变更（影响已发布产品 / 认证 / 客户合同）的实施方案必须由 CCB 集体决策；标准变更由产品经理收口",
+        "type": "EXCLUSIVE_GATEWAY"
       },
       {
         "id": "cs_ccb",
         "name": "CCB 决策会签",
-        "type": "COUNTERSIGN_APPROVAL",
         "description": "变更控制委员会对实施方案集体决策：批准、有条件批准、驳回；条件与生效方式（是否分批、是否限机型）随决策留痕，全票通过方为批准",
+        "type": "COUNTERSIGN_APPROVAL",
         "assignee": {
-          "strategy": "INITIATOR"
+          "strategy": "ROLE",
+          "roleCodes": [
+            "COMPONENT_ENGINEER",
+            "HARDWARE_ENGINEER",
+            "ME_ENGINEER",
+            "NPI_ENGINEER",
+            "QUALITY_ENGINEER",
+            "SW_ENGINEER",
+            "SOURCING_ENGINEER",
+            "SYSTEM_ENGINEER"
+          ]
         },
         "passRule": {
           "mode": "PERCENT",
@@ -115,8 +136,8 @@
       {
         "id": "approve_plan",
         "name": "实施方案审批",
-        "type": "APPROVAL",
         "description": "本流程相对变更请求多出来的那一关 —— ECR 只批「改什么」，这里批「怎么做」：执行计划与实施窗口、切换与回退步骤、认证与试验安排、受影响对象的升级顺序、任务清单与责任人是否齐备。意见必填",
+        "type": "APPROVAL",
         "assignee": {
           "strategy": "INITIATOR"
         },
@@ -127,8 +148,8 @@
       {
         "id": "set_approved",
         "name": "审批通过：已批准",
+        "description": "单据状态置为「已批准」（APPROVED）：三条审签路径（快速 / 标准 / 重大）都汇到这里，变更事项由待生效转为可执行，随后派发变更任务",
         "type": "SERVICE",
-        "description": "单据状态置为「已批准」（APPROVED）：三条审签路径（快速 / 标准 / 重大）都汇到这里，更改事项由待生效转为可执行，随后派发变更任务",
         "serviceRef": "change.setRequestStatus",
         "params": {
           "status": "APPROVED"
@@ -137,8 +158,8 @@
       {
         "id": "set_rejected",
         "name": "审批驳回：已驳回",
-        "type": "SERVICE",
         "description": "单据状态置为「已驳回」（REJECTED）—— 任一审批环节驳回都汇到这里，结论只写一次",
+        "type": "SERVICE",
         "serviceRef": "change.setRequestStatus",
         "params": {
           "status": "REJECTED"
@@ -147,8 +168,8 @@
       {
         "id": "sub_task",
         "name": "派发变更任务（子流程）",
-        "type": "SUB_PROCESS",
         "description": "按 changeTaskList 逐个拉起变更任务流程，每个任务一个独立实例（businessKey = 任务 oid）；全部任务完成后本通告才继续",
+        "type": "SUB_PROCESS",
         "processKey": "change-task",
         "variableMap": {
           "initiator": "${initiator}",
@@ -170,6 +191,42 @@
         "id": "end_rejected",
         "name": "结束：审批驳回",
         "type": "END"
+      },
+      {
+        "id": "task_usfws7",
+        "name": "变更任务确认与派发",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "change-notice-task-plan"
+      },
+      {
+        "id": "task_0gr582",
+        "name": "变更实施汇总确认",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "PROJECT_ROLE",
+          "roleCodes": [
+            "HARDWARE_LEAD"
+          ]
+        },
+        "formRef": "change-notice-task-summary"
+      },
+      {
+        "id": "service_z24pmr",
+        "name": "实施完成",
+        "type": "SERVICE",
+        "serviceRef": "change.completeNotice"
+      },
+      {
+        "id": "service_uhs4lt",
+        "name": "任务已派发：实施中",
+        "type": "SERVICE",
+        "serviceRef": "change.setRequestStatus",
+        "params": {
+          "status": "IN_WORK"
+        }
       }
     ],
     "edges": [
@@ -247,6 +304,9 @@
         "source": "cs_plan",
         "target": "set_rejected",
         "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom"
+        },
         "name": "驳回",
         "route": "REJECT"
       },
@@ -304,41 +364,153 @@
         "route": "REJECT"
       },
       {
-        "id": "e16",
-        "source": "set_approved",
-        "target": "sub_task",
-        "kind": "NORMAL"
-      },
-      {
         "id": "e17",
         "source": "set_rejected",
         "target": "end_rejected",
         "kind": "NORMAL"
       },
       {
-        "id": "e18",
-        "source": "sub_task",
+        "id": "flow_1",
+        "source": "set_approved",
+        "target": "task_usfws7",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "right"
+        }
+      },
+      {
+        "id": "flow_5",
+        "source": "service_z24pmr",
         "target": "end_done",
-        "kind": "NORMAL"
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom"
+        }
+      },
+      {
+        "id": "flow_6",
+        "source": "task_0gr582",
+        "target": "service_z24pmr",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom",
+          "target": "top"
+        }
+      },
+      {
+        "id": "flow_2",
+        "source": "task_usfws7",
+        "target": "service_uhs4lt",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom"
+        }
+      },
+      {
+        "id": "flow_3",
+        "source": "service_uhs4lt",
+        "target": "sub_task",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom"
+        }
+      },
+      {
+        "id": "flow_4",
+        "source": "sub_task",
+        "target": "task_0gr582",
+        "kind": "NORMAL",
+        "anchor": {
+          "source": "bottom"
+        }
       }
     ],
     "layout": {
       "nodes": {
-        "start_1": { "x": 445, "y": 40 },
-        "set_approving": { "x": 399, "y": 150 },
-        "gw_level": { "x": 441, "y": 260 },
-        "setup_quick": { "x": 179, "y": 370 },
-        "setup_multi": { "x": 569, "y": 370 },
-        "approve_quick": { "x": 179, "y": 480 },
-        "cs_plan": { "x": 569, "y": 480 },
-        "gw_ccb": { "x": 621, "y": 590 },
-        "approve_plan": { "x": 179, "y": 590 },
-        "cs_ccb": { "x": 569, "y": 700 },
-        "set_approved": { "x": 399, "y": 800 },
-        "sub_task": { "x": 399, "y": 910 },
-        "end_done": { "x": 455, "y": 1020 },
-        "set_rejected": { "x": 780, "y": 800 },
-        "end_rejected": { "x": 836, "y": 910 }
+        "start_1": {
+          "x": 348,
+          "y": -84
+        },
+        "set_approving": {
+          "x": 292,
+          "y": -18
+        },
+        "gw_level": {
+          "x": 344,
+          "y": 68
+        },
+        "setup_quick": {
+          "x": 107,
+          "y": 65
+        },
+        "setup_multi": {
+          "x": 517,
+          "y": 65
+        },
+        "approve_quick": {
+          "x": 107,
+          "y": 156
+        },
+        "cs_plan": {
+          "x": 517,
+          "y": 168
+        },
+        "gw_ccb": {
+          "x": 472,
+          "y": 266
+        },
+        "approve_plan": {
+          "x": 240,
+          "y": 263
+        },
+        "cs_ccb": {
+          "x": 434,
+          "y": 440
+        },
+        "set_approved": {
+          "x": 150,
+          "y": 531
+        },
+        "sub_task": {
+          "x": 348,
+          "y": 683
+        },
+        "end_done": {
+          "x": 404,
+          "y": 917
+        },
+        "set_rejected": {
+          "x": 708,
+          "y": 396
+        },
+        "end_rejected": {
+          "x": 764,
+          "y": 538
+        },
+        "task_usfws7": {
+          "x": 348,
+          "y": 531,
+          "width": 142,
+          "height": 44
+        },
+        "task_0gr582": {
+          "x": 348,
+          "y": 761,
+          "width": 142,
+          "height": 44
+        },
+        "service_z24pmr": {
+          "x": 348,
+          "y": 837,
+          "width": 142,
+          "height": 44
+        },
+        "service_uhs4lt": {
+          "x": 348,
+          "y": 611,
+          "width": 142,
+          "height": 44
+        }
       }
     }
   }

@@ -34,8 +34,14 @@ import java.util.Set;
  *                                                                         CLOSE
  *                                                                           ▼
  *                                                                        CLOSED
- *   任意未完成状态 ──CANCEL──▶ CANCELLED
+ *   DRAFT ──CANCEL──▶ CANCELLED（仅草稿可取消）
  * </pre>
+ *
+ * <h3>提交后就不可取消（2026-11-08）</h3>
+ * <p>{@code SUBMIT} 一过，单据已经交给审批人 / 实施人，取消等于单方面撤销一份正在被别人
+ * 办理的单据：审批人的待办变成幽灵待办，已派发的子流程指向一张作废的单。故 {@code CANCEL}
+ * 只保留 {@code DRAFT} 一条。真正需要叫停已提交/实施中的单据，走管理员「设置状态」
+ * （{@link #ADMIN_SET_STATUS}）—— 它要求填原因、会终止流程实例、并记入处理记录。
  *
  * <h3>提交即提交审批（2026-11-03）</h3>
  * <p>租户配置为"需要审批"时，{@code SUBMIT} 直接把流程拉起来（状态直接落到 {@code APPROVING}），
@@ -94,7 +100,11 @@ public final class ChangeNoticeFlow {
     public static final String COMPLETE = "COMPLETE";
     /** 关闭：COMPLETED → CLOSED（要求其下变更任务全部 COMPLETED —— 子流程先关） */
     public static final String CLOSE = "CLOSE";
-    /** 取消：未完成状态 → CANCELLED（需 comment） */
+    /**
+     * 取消：DRAFT → CANCELLED（需 comment）。
+     *
+     * <p>仅草稿可取消 —— 提交之后单据已进入审批 / 实施，不再由责任人单方面作废；见类注释。
+     */
     public static final String CANCEL = "CANCEL";
     /**
      * 管理员设置状态（运维纠错，不参与状态机校验）。
@@ -135,11 +145,9 @@ public final class ChangeNoticeFlow {
         rule(START_WORK, APPROVED, IN_WORK);
         rule(COMPLETE, IN_WORK, COMPLETED);
         rule(CLOSE, COMPLETED, CLOSED);
+        // 只有草稿能取消：提交（= 提交审批）之后单据在别人手上（审批人 / 实施人），
+        // 再允许取消就是单方面作废一份正在办理的单。要叫停走管理员「设置状态」。
         rule(CANCEL, DRAFT, CANCELLED);
-        rule(CANCEL, SUBMITTED, CANCELLED);
-        rule(CANCEL, APPROVING, CANCELLED);
-        rule(CANCEL, APPROVED, CANCELLED);
-        rule(CANCEL, IN_WORK, CANCELLED);
     }
 
     private ChangeNoticeFlow() {
@@ -170,9 +178,19 @@ public final class ChangeNoticeFlow {
         return DRAFT.equals(status) || REJECTED.equals(status);
     }
 
-    /** 该状态是否允许增删受影响对象 */
+    /**
+     * 该状态是否允许增删受影响对象。
+     *
+     * <p>计划阶段（草稿 / 已驳回）与实施阶段（已批准 / 实施中）都可以：
+     * 前者是规划范围，后者是执行中发现漏项 —— 与 {@link #isTaskPlannable} 同口径。
+     * 「变更任务确认与派发」节点落在审批通过之后，要在那里给事项补对象，就必须放行已批准。
+     *
+     * <p>审批中不行：审批人批的是那一刻的清单，批的过程中范围还在变，批的到底是什么就说不清。
+     * 终态（已关闭 / 已取消）也不行：单子已经收口。已执行修订的对象另有单独拦截（见服务层）。
+     */
     public static boolean isAffectedEditable(String status) {
-        return DRAFT.equals(status) || REJECTED.equals(status);
+        return DRAFT.equals(status) || REJECTED.equals(status)
+                || APPROVED.equals(status) || IN_WORK.equals(status);
     }
 
     /**

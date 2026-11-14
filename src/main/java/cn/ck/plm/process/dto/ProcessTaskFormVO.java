@@ -60,6 +60,15 @@ public class ProcessTaskFormVO {
     private String businessTypeCode;
 
     /**
+     * 流程实例的 businessKey（发起时写入的业务主键）。
+     *
+     * <p>与 {@link #businessOid} 的区别：后者来自 {@code ck_process_entity_set}，只有"实例关联了
+     * 软类型对象"时才有；变更请求 / 通告 / 任务这类单据不是软类型实例，实体关联表里没有行，
+     * 它们只用 businessKey 指向自己。表单要靠它回查单据（如「执行变更任务」按任务 oid 取范围）。
+     */
+    private String businessKey;
+
+    /**
      * 本实例的**用户表单变量**（流程变量剔除平台内部项，如 {@code businessObjectSet} /
      * {@code initiator} / {@code approved}）。
      *
@@ -98,6 +107,9 @@ public class ProcessTaskFormVO {
 
     public String getBusinessTypeCode() { return businessTypeCode; }
     public void setBusinessTypeCode(String businessTypeCode) { this.businessTypeCode = businessTypeCode; }
+
+    public String getBusinessKey() { return businessKey; }
+    public void setBusinessKey(String businessKey) { this.businessKey = businessKey; }
 
     public Map<String, Object> getVariables() { return variables; }
     public void setVariables(Map<String, Object> variables) { this.variables = variables; }

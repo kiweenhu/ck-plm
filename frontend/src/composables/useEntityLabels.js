@@ -11,8 +11,13 @@ import {
   CHANGE_TASK_STATUS_LABEL,
 } from '@/utils/changeFlow'
 
-/** 变更三类单据的状态词表：kind → { label, color }（同一空间里的状态码，按单据类型翻） */
-const CHANGE_STATUS_META = {
+/**
+ * 变更三类单据的状态词表：kind → { label, color }（同一空间里的状态码，按单据类型翻）。
+ *
+ * <p>导出给「任务办理页 · 业务实体」复用：那里同样要按 businessKey 反查单据，
+ * 状态文案不能与任务中心列表出现两套。
+ */
+export const CHANGE_STATUS_META = {
   REQUEST: { label: CHANGE_REQUEST_STATUS_LABEL, color: CHANGE_REQUEST_STATUS_COLOR },
   NOTICE: { label: CHANGE_NOTICE_STATUS_LABEL, color: CHANGE_NOTICE_STATUS_COLOR },
   TASK: { label: CHANGE_TASK_STATUS_LABEL, color: CHANGE_TASK_STATUS_COLOR },

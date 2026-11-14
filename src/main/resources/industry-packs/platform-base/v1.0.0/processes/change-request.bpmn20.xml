@@ -16,9 +16,9 @@
     <userTask id="setup_quick" name="设置快速通道审批人" ckplm:nodeType="SET_ASSIGNEE" flowable:assignee="${initiator}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="CKPLM_SETUP_ASSIGNEE" ckplm:formRef="CKPLM_SETUP_ASSIGNEE"/>
     <userTask id="approve_quick" name="快速审批" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_approve_quick}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" ckplm:approvalMode="&quot;SINGLE&quot;" ckplm:commentRequired="true" flowable:formKey="CKPLM_APPROVAL_OPINION" ckplm:formRef="CKPLM_APPROVAL_OPINION"/>
     <userTask id="setup_multi" name="设置会签参与人" ckplm:nodeType="SET_ASSIGNEE" flowable:assignee="${initiator}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="CKPLM_SETUP_ASSIGNEE" ckplm:formRef="CKPLM_SETUP_ASSIGNEE"/>
-    <userTask id="cs_impact" name="影响分析会签" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;PERCENT&quot;,&quot;percent&quot;:100}" ckplm:commentRequired="true" flowable:formKey="change-request-impact" ckplm:formRef="change-request-impact">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_cs_impact}" flowable:elementVariable="ckplmApprover"><completionCondition>${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 100 || ckplmVetoed}</completionCondition></multiInstanceLoopCharacteristics></userTask>
+    <userTask id="cs_impact" name="影响分析会签" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;HARDWARE_LEAD&quot;,&quot;PROCESS_ENGINEER&quot;,&quot;QUALITY_ENGINEER&quot;,&quot;SOURCING_ENGINEER&quot;,&quot;COMPANY_LEADER&quot;,&quot;PRODUCT_MANAGER&quot;]}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;PERCENT&quot;,&quot;percent&quot;:100}" ckplm:commentRequired="true" flowable:formKey="change-request-impact" ckplm:formRef="change-request-impact">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_cs_impact}" flowable:elementVariable="ckplmApprover"><completionCondition>${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 100 || ckplmVetoed}</completionCondition></multiInstanceLoopCharacteristics></userTask>
     <exclusiveGateway id="gw_ccb" name="是否需要 CCB 决策" ckplm:nodeType="EXCLUSIVE_GATEWAY" default="e11"/>
-    <userTask id="cs_ccb" name="CCB 决策会签" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;PERCENT&quot;,&quot;percent&quot;:100}" ckplm:commentRequired="true" flowable:formKey="change-request-ccb" ckplm:formRef="change-request-ccb">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_cs_ccb}" flowable:elementVariable="ckplmApprover"><completionCondition>${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 100 || ckplmVetoed}</completionCondition></multiInstanceLoopCharacteristics></userTask>
+    <userTask id="cs_ccb" name="CCB 决策会签" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;COMPANY_LEADER&quot;,&quot;HARDWARE_ENGINEER&quot;,&quot;COMPONENT_ENGINEER&quot;,&quot;PROCESS_ENGINEER&quot;,&quot;NPI_ENGINEER&quot;,&quot;ME_ENGINEER&quot;,&quot;QUALITY_ENGINEER&quot;,&quot;SYSTEM_ENGINEER&quot;,&quot;SOURCING_ENGINEER&quot;]}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;PERCENT&quot;,&quot;percent&quot;:100}" ckplm:commentRequired="true" flowable:formKey="change-request-ccb" ckplm:formRef="change-request-ccb">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_cs_ccb}" flowable:elementVariable="ckplmApprover"><completionCondition>${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 100 || ckplmVetoed}</completionCondition></multiInstanceLoopCharacteristics></userTask>
     <serviceTask id="set_analyzing" name="进入影响分析" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="change.setRequestStatus" ckplm:serviceParams="{&quot;status&quot;:&quot;ANALYZING&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>change.setRequestStatus</flowable:string></flowable:field><flowable:field name="status"><flowable:string>ANALYZING</flowable:string></flowable:field></extensionElements></serviceTask>
     <serviceTask id="set_reviewing_quick" name="进入评审" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="change.setRequestStatus" ckplm:serviceParams="{&quot;status&quot;:&quot;REVIEWING&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>change.setRequestStatus</flowable:string></flowable:field><flowable:field name="status"><flowable:string>REVIEWING</flowable:string></flowable:field></extensionElements></serviceTask>
     <serviceTask id="set_reviewing" name="影响分析通过：进入评审" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="change.setRequestStatus" ckplm:serviceParams="{&quot;status&quot;:&quot;REVIEWING&quot;}">  <extensionElements><flowable:field name="serviceId"><flowable:string>change.setRequestStatus</flowable:string></flowable:field><flowable:field name="status"><flowable:string>REVIEWING</flowable:string></flowable:field></extensionElements></serviceTask>
@@ -48,16 +48,16 @@
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="change-request">
     <bpmndi:BPMNShape id="Shape_start_1" bpmnElement="start_1">
-      <omgdc:Bounds x="385" y="40" width="30" height="30"/>
+      <omgdc:Bounds x="445" y="40" width="30" height="30"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_gw_level" bpmnElement="gw_level">
-      <omgdc:Bounds x="381" y="150" width="38" height="38"/>
+      <omgdc:Bounds x="441" y="150" width="38" height="38"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_setup_quick" bpmnElement="setup_quick">
-      <omgdc:Bounds x="329" y="370" width="142" height="44"/>
+      <omgdc:Bounds x="209" y="370" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_approve_quick" bpmnElement="approve_quick">
-      <omgdc:Bounds x="329" y="480" width="142" height="44"/>
+      <omgdc:Bounds x="209" y="480" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_setup_multi" bpmnElement="setup_multi">
       <omgdc:Bounds x="569" y="370" width="142" height="44"/>
@@ -75,58 +75,58 @@
       <omgdc:Bounds x="569" y="260" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_set_reviewing_quick" bpmnElement="set_reviewing_quick">
-      <omgdc:Bounds x="329" y="260" width="142" height="44"/>
+      <omgdc:Bounds x="209" y="260" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_set_reviewing" bpmnElement="set_reviewing">
       <omgdc:Bounds x="569" y="590" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_set_accepted" bpmnElement="set_accepted">
-      <omgdc:Bounds x="489" y="920" width="142" height="44"/>
+      <omgdc:Bounds x="209" y="920" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_set_rejected" bpmnElement="set_rejected">
-      <omgdc:Bounds x="729" y="920" width="142" height="44"/>
+      <omgdc:Bounds x="569" y="920" width="142" height="44"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_end_accepted" bpmnElement="end_accepted">
-      <omgdc:Bounds x="545" y="1030" width="30" height="30"/>
+      <omgdc:Bounds x="265" y="1030" width="30" height="30"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNShape id="Shape_end_rejected" bpmnElement="end_rejected">
-      <omgdc:Bounds x="785" y="1030" width="30" height="30"/>
+      <omgdc:Bounds x="625" y="1030" width="30" height="30"/>
     </bpmndi:BPMNShape>
     <bpmndi:BPMNEdge id="Edge_e1" bpmnElement="e1">
-      <omgdi:waypoint x="400" y="70"/>
-      <omgdi:waypoint x="400" y="150"/>
+      <omgdi:waypoint x="460" y="70"/>
+      <omgdi:waypoint x="460" y="150"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e2" bpmnElement="e2">
-      <omgdi:waypoint x="400" y="188"/>
-      <omgdi:waypoint x="400" y="260"/>
+      <omgdi:waypoint x="460" y="188"/>
+      <omgdi:waypoint x="280" y="260"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e3" bpmnElement="e3">
-      <omgdi:waypoint x="400" y="188"/>
+      <omgdi:waypoint x="460" y="188"/>
       <omgdi:waypoint x="640" y="260"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e14" bpmnElement="e14">
-      <omgdi:waypoint x="400" y="304"/>
-      <omgdi:waypoint x="400" y="370"/>
+      <omgdi:waypoint x="280" y="304"/>
+      <omgdi:waypoint x="280" y="370"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e15" bpmnElement="e15">
       <omgdi:waypoint x="640" y="304"/>
       <omgdi:waypoint x="640" y="370"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e4" bpmnElement="e4">
-      <omgdi:waypoint x="400" y="414"/>
-      <omgdi:waypoint x="400" y="480"/>
+      <omgdi:waypoint x="280" y="414"/>
+      <omgdi:waypoint x="280" y="480"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e5" bpmnElement="e5">
       <omgdi:waypoint x="640" y="414"/>
       <omgdi:waypoint x="640" y="480"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e6" bpmnElement="e6">
-      <omgdi:waypoint x="400" y="524"/>
-      <omgdi:waypoint x="560" y="920"/>
+      <omgdi:waypoint x="280" y="524"/>
+      <omgdi:waypoint x="280" y="920"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e7" bpmnElement="e7">
-      <omgdi:waypoint x="400" y="524"/>
-      <omgdi:waypoint x="800" y="920"/>
+      <omgdi:waypoint x="280" y="524"/>
+      <omgdi:waypoint x="640" y="920"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e8" bpmnElement="e8">
       <omgdi:waypoint x="640" y="524"/>
@@ -134,7 +134,7 @@
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e9" bpmnElement="e9">
       <omgdi:waypoint x="640" y="524"/>
-      <omgdi:waypoint x="800" y="920"/>
+      <omgdi:waypoint x="640" y="920"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e10" bpmnElement="e10">
       <omgdi:waypoint x="640" y="738"/>
@@ -142,27 +142,27 @@
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e11" bpmnElement="e11">
       <omgdi:waypoint x="640" y="738"/>
-      <omgdi:waypoint x="560" y="920"/>
+      <omgdi:waypoint x="280" y="920"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e12" bpmnElement="e12">
       <omgdi:waypoint x="640" y="854"/>
-      <omgdi:waypoint x="560" y="920"/>
+      <omgdi:waypoint x="280" y="920"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e13" bpmnElement="e13">
       <omgdi:waypoint x="640" y="854"/>
-      <omgdi:waypoint x="800" y="920"/>
+      <omgdi:waypoint x="640" y="920"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e16" bpmnElement="e16">
       <omgdi:waypoint x="640" y="634"/>
       <omgdi:waypoint x="640" y="700"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e17" bpmnElement="e17">
-      <omgdi:waypoint x="560" y="964"/>
-      <omgdi:waypoint x="560" y="1030"/>
+      <omgdi:waypoint x="280" y="964"/>
+      <omgdi:waypoint x="280" y="1030"/>
     </bpmndi:BPMNEdge>
     <bpmndi:BPMNEdge id="Edge_e18" bpmnElement="e18">
-      <omgdi:waypoint x="800" y="964"/>
-      <omgdi:waypoint x="800" y="1030"/>
+      <omgdi:waypoint x="640" y="964"/>
+      <omgdi:waypoint x="640" y="1030"/>
     </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

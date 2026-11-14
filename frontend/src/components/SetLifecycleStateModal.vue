@@ -28,23 +28,17 @@
           :message="options.blockedReason"
         />
 
-        <!-- 对象仍绑着旧模板 / 旧子版本 / 未绑定：设置状态会在同一事务里先切到业务配置的模板。
-             不再提供"保留旧模板"——那会把状态写进旧模板，与本次给候选的新模板对不上 -->
+        <!-- 绑定与业务配置不一致时的说明：未绑定 / 同模板旧子版本 / 换了模板，三种说法分开。
+             设置状态会在同一事务里先切到业务配置的模板；「重置模板」只换版本、不额外设状态 -->
         <a-alert
-          v-if="options.templateChanged || options.templateBindRequired"
+          v-if="options?.templateChanged || options?.templateBindRequired"
           type="warning"
           show-icon
           class="slm-mismatch"
-          message="本次会先切换到业务配置的生命周期模板"
+          :message="mismatchTitle"
         >
           <template #description>
-            <template v-if="options.templateBindRequired">
-              对象尚未绑定生命周期模板，将绑定为「{{ options.configuredTemplateName || options.configuredTemplateCode }}」。
-            </template>
-            <template v-else>
-              对象仍绑定「{{ options.boundTemplateName || options.boundTemplateCode }}」，
-              业务配置已改为「{{ options.configuredTemplateName || options.configuredTemplateCode }}」。
-            </template>
+            <span>{{ mismatchDescription }}</span>
             <span v-if="migrationNote" class="slm-switch-note">{{ migrationNote }}</span>
           </template>
         </a-alert>
@@ -59,6 +53,14 @@
         </div>
 
         <a-radio-group v-model:value="mode" class="slm-radio" :disabled="blocked">
+          <!-- 只换模板版本、不额外做一次状态迁移：模板改版后让历史对象跟上最新版 -->
+          <a-radio
+            v-if="versionOutdated"
+            value="RESET_TEMPLATE"
+            :disabled="resetTemplateDisabled"
+          >
+            重置生命周期模板到最新版本（{{ options?.configuredTemplateVersion || '最新版' }}）
+          </a-radio>
           <a-radio value="SPECIFIED" :disabled="specifiedDisabled">设置对象到指定状态</a-radio>
           <a-radio value="INITIAL" :disabled="initialDisabled">
             退回初始状态（{{ options?.initial?.name || options?.initial?.code || '—' }}）
@@ -87,8 +89,11 @@
 /**
  * 「设置生命周期状态」弹窗 —— 行操作下拉里的那一项。
  *
- * <p><b>两个选项，依据都是该类型绑定的生命周期模板</b>：
+ * <p><b>三个选项，依据都是该类型绑定的生命周期模板</b>：
  * <ol>
+ *   <li><b>重置生命周期模板到最新版本</b>：对象固化的模板子版本落后于最新版时（同模板改过版），
+ *       只把绑定换到最新版，不额外做一次状态迁移。状态按 code 保留，最新版没有当前状态时
+ *       落到最新版的初始状态。换模板（code 不同）/ 未绑定的情形不露这一项 —— 那是迁移，不是重置。</li>
  *   <li><b>设置对象到初始状态</b>：模板定义的初始状态（如「草稿」）。执行时<b>沿模板的回退规则
  *       逐跳退</b>（已发布 → 工作中 → 草稿），不是一步跳过去 —— 多跳在模板里本来就没有直接规则，
  *       允许跳跃等于把回退链当摆设；某一跳没有回退规则会明确失败并说清卡在哪。</li>
@@ -153,14 +158,44 @@ const blocked = computed(() => !!options.value?.blockedReason)
 const migrating = computed(() =>
   !!options.value?.templateChanged || !!options.value?.templateBindRequired)
 
-/** 切换模板会把当前状态带到哪：新模板里有同 code 就保留，没有就落到新模板初始状态 */
+/** 绑的是同一个模板的旧子版本：只有这种情况给「重置到最新版本」 */
+const versionOutdated = computed(() => !!options.value?.templateVersionOutdated)
+
+/** 已经是最新版本就没得重置（这一项此时本来也不显示，留作提交侧的兜底） */
+const resetTemplateDisabled = computed(() => !versionOutdated.value)
+
+/** 顶部提示的标题：三种不一致各有各的说法，别把"版本落后"说成"换了模板" */
+const mismatchTitle = computed(() => {
+  if (options.value?.templateBindRequired) return '本次会先绑定业务配置的生命周期模板'
+  if (versionOutdated.value) return '对象绑定的模板版本落后'
+  return '本次会先切换到业务配置的生命周期模板'
+})
+
+const mismatchDescription = computed(() => {
+  const o = options.value
+  if (!o) return ''
+  const target = o.configuredTemplateName || o.configuredTemplateCode
+  if (o.templateBindRequired) {
+    return `对象尚未绑定生命周期模板，将绑定为「${target}」。`
+  }
+  const bound = o.boundTemplateName || o.boundTemplateCode
+  if (versionOutdated.value) {
+    return `对象绑定「${bound}」的 ${o.boundTemplateVersion || '旧'} 版，`
+      + `最新版为 ${o.configuredTemplateVersion || '—'}：可用「重置生命周期模板」跟上最新版，不必换模板。`
+  }
+  return `对象仍绑定「${bound}」，业务配置已改为「${target}」。`
+})
+
+/** 切换模板 / 重置版本会把当前状态带到哪：有同 code 就保留，没有就落到新版初始状态 */
 const migrationNote = computed(() => {
   const o = options.value
   if (!migrating.value || o.migrationKeepsStatus == null) return ''
   const current = o.current?.name || o.current?.code
+  // 同模板换版本时说"新版本"，换模板时说"新模板"，两句话不能混
+  const scope = versionOutdated.value ? '新版本' : '新模板'
   if (!current) return `绑定后状态为「${o.migrationStatusName || o.migrationStatusCode}」`
-  if (o.migrationKeepsStatus) return `当前状态「${current}」在新模板中保留不变`
-  return `当前状态「${current}」在新模板中不存在，将重置为「${o.migrationStatusName || o.migrationStatusCode}」`
+  if (o.migrationKeepsStatus) return `当前状态「${current}」在${scope}中保留不变`
+  return `当前状态「${current}」在${scope}中不存在，将重置为「${o.migrationStatusName || o.migrationStatusCode}」`
 })
 
 /** 已在初始状态就没有"退回"可言 */
@@ -205,8 +240,11 @@ const stateOptions = computed(() =>
   })))
 
 const canSubmit = computed(() => {
-  if (!props.visible || loading.value || options.value?.reason || blocked.value) return false
-  // 没有可迁移目标时两种模式都执行不了，别让用户点了才知道
+  // options 还没回来（或首屏渲染时是 null）也不能放行：那会带着空目标去提交
+  if (!props.visible || loading.value || !options.value || options.value.reason || blocked.value) return false
+  // 重置模板不依赖任何状态迁移，前提只是"确实有更新版本可切"
+  if (mode.value === 'RESET_TEMPLATE') return !resetTemplateDisabled.value
+  // 没有可迁移目标时另外两种模式都执行不了，别让用户点了才知道
   if (noTargets.value) return false
   if (mode.value === 'INITIAL') return !initialDisabled.value
   return !!targetStateCode.value
@@ -215,6 +253,11 @@ const canSubmit = computed(() => {
 const hint = computed(() => {
   // 被挡住时上面那条警示已经把原因说完了，再说一遍是噪声
   if (blocked.value) return ''
+  if (mode.value === 'RESET_TEMPLATE') {
+    return `将把绑定从 ${options.value?.boundTemplateVersion || '当前版本'} 重置到最新版本`
+      + ` ${options.value?.configuredTemplateVersion || '—'}：状态按 code 保留，`
+      + '最新版没有当前状态时落到该版初始状态。'
+  }
   // 无路可走时由 noTargetsNote 说明，底部再重复一遍也是噪声
   if (noTargets.value) return ''
   const target = options.value?.configuredTemplateName || options.value?.configuredTemplateCode
@@ -263,6 +306,10 @@ async function load() {
       const first = options.value.states.find((s) => s.reachable && s.code !== current)
       targetStateCode.value = first?.code
     }
+    // 版本落后又没有可迁状态：默认落在「重置到最新版本」上，别让人对着灰按钮猜
+    if (options.value?.templateVersionOutdated && !targetStateCode.value) {
+      mode.value = 'RESET_TEMPLATE'
+    }
   } catch {
     if (seq === loadSeq) {
       options.value = { reason: '读取生命周期状态失败，请稍后重试' }
@@ -274,22 +321,30 @@ async function load() {
 
 async function confirm() {
   if (!canSubmit.value) return
+  const resetTemplate = mode.value === 'RESET_TEMPLATE'
+  const objectName = props.record?.name || props.record?.code || '对象'
   saving.value = true
   try {
     const res = await setLifecycleState(props.record.oid, {
       typeDefinitionCode: typeCode.value,
       mode: mode.value,
       targetStateCode: mode.value === 'SPECIFIED' ? targetStateCode.value : undefined,
-      // 迁移与设状态在后端同一个事务：要么模板和状态一起变，要么都不变
-      migrateTemplate: migrating.value,
+      // 迁移与设状态在后端同一个事务：要么模板和状态一起变，要么都不变。
+      // 重置模板走独立分支（后端自己解析最新版），不要重复带迁移标记
+      migrateTemplate: !resetTemplate && migrating.value,
     })
     if (res?.code === 200) {
-      const target = mode.value === 'INITIAL'
-        ? (options.value?.initial?.name || options.value?.initial?.code)
-        : (options.value?.states || []).find((s) => s.code === targetStateCode.value)?.name
-      const templateName = options.value?.configuredTemplateName || options.value?.configuredTemplateCode
-      const prefix = migrating.value ? `已切换到「${templateName}」并` : ''
-      message.success(`${prefix}将「${props.record?.name || props.record?.code || '对象'}」设置为「${target}」`)
+      if (resetTemplate) {
+        const version = options.value?.configuredTemplateVersion || '最新版'
+        message.success(`已将「${objectName}」的生命周期模板重置到最新版本 ${version}`)
+      } else {
+        const target = mode.value === 'INITIAL'
+          ? (options.value?.initial?.name || options.value?.initial?.code)
+          : (options.value?.states || []).find((s) => s.code === targetStateCode.value)?.name
+        const templateName = options.value?.configuredTemplateName || options.value?.configuredTemplateCode
+        const prefix = migrating.value ? `已切换到「${templateName}」并` : ''
+        message.success(`${prefix}将「${objectName}」设置为「${target}」`)
+      }
       close()
       emit('success')
     }

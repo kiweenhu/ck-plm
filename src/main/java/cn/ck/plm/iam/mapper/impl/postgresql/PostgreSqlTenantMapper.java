@@ -109,4 +109,13 @@ public interface PostgreSqlTenantMapper extends TenantMapper {
     @Select("SELECT " + COLUMNS + " FROM ck_tenant WHERE status = 'ACTIVE' ORDER BY created_at ASC")
     @ResultMap("tenantResult")
     List<Tenant> selectActive();
+
+    @Override
+    // 排除平台租户与默认租户：它们是系统内置的，从来没有"注册申请 → 审核"这回事，
+    // 混进审核台账只会让人以为平台租户也被谁批过（approved_by 还是空的）
+    @Select("SELECT " + COLUMNS + " FROM ck_tenant WHERE status <> 'PENDING' "
+            + "AND oid NOT IN ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000001') "
+            + "ORDER BY approved_at DESC NULLS LAST, created_at DESC")
+    @ResultMap("tenantResult")
+    List<Tenant> selectReviewed();
 }

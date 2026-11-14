@@ -13,6 +13,7 @@ import {
   COUNTERSIGN_FORM_CODE,
   SETUP_ASSIGNEE_FORM_CODE,
   NodeType,
+  formTemplatesFor,
   registerTaskFormTemplates,
 } from '@flow-dsl-core'
 
@@ -51,11 +52,36 @@ describe('生效表单 code 的派生', () => {
     expect(effectiveFormCode(formOf(NodeType.APPROVAL, 'MY_FORM'))).toBe('MY_FORM')
   })
 
-  it('语义固定的表单：残留的历史 formKey 盖不过它', () => {
-    // 老模板里可能躺着一个当年手填的 formRef（当时内置表单还没登记）——
-    // 「设置审批人」的表单由代码生成，让它被顶掉就会出现"发起人挑人的那一步没了"
-    expect(effectiveFormCode(formOf(NodeType.SET_ASSIGNEE, 'MY_FORM')))
-      .toBe(SETUP_ASSIGNEE_FORM_CODE)
+  it('只标了 SET_ASSIGNEE 的行业表单，也能出现在新节点类型的下拉里', () => {
+    // 数据里常年只写 SET_ASSIGNEE（旧行/装包时的单值）。若严格按类型过滤，
+    // 新节点类型「变更任务结果审批设置参与者」的下拉会空掉，面板只能把英文 code 摊在框里。
+    registerTaskFormTemplates([
+      {
+        code: 'change-task-approve-setup', label: '变更任务审批设置参与者', description: '',
+        builtin: false, component: 'EcnTaskApproveSetupForm', nodeTypes: [NodeType.SET_ASSIGNEE],
+      },
+    ])
+    try {
+      const codes = formTemplatesFor(NodeType.CHANGE_TASK_SETUP).map((t) => t.code)
+      expect(codes).toContain('change-task-approve-setup')
+      // 内置那张也是"挑人表"，两种设置参与者都应能选到它
+      expect(codes).toContain(SETUP_ASSIGNEE_FORM_CODE)
+    } finally {
+      registerTaskFormTemplates([])
+    }
+  })
+
+  it('「设置审批人」没写 formKey → 派生内置「设置流程参与者」', () => {
+    // 2026-11-09：它不再是"语义固定"（可换成能同时展示修订产物的行业表单），
+    // 但默认必须存在 —— 不指定就落到通用兜底表单，这个节点就选不了人
+    expect(effectiveFormCode(formOf(NodeType.SET_ASSIGNEE))).toBe(SETUP_ASSIGNEE_FORM_CODE)
+  })
+
+  it('「设置审批人」显式指定了能挑人的行业表单 → 用它', () => {
+    // 变更任务流程的诉求：挑人之前先看到本任务修订了哪些对象。
+    // 固定住就永远换不上那张表（编译层会把 formRef 静默覆盖回内置）。
+    expect(effectiveFormCode(formOf(NodeType.SET_ASSIGNEE, 'change-task-approve-setup')))
+      .toBe('change-task-approve-setup')
   })
 
   it('没写 formKey 的审批活动 → 派生为「审批意见」', () => {
@@ -121,6 +147,71 @@ describe('表单视图的派发', () => {
       expect(resolveTaskFormView(impact)).toBe(FORM_COMPONENT_VIEWS.EcrImpactCountersignForm)
       expect(resolveTaskFormView(ccb)).toBe(FORM_COMPONENT_VIEWS.EcrCcbDecisionForm)
       expect(resolveTaskFormView(ccb)).not.toBe(FALLBACK_FORM_VIEW)
+    } finally {
+      registerTaskFormTemplates([])
+    }
+  })
+
+  it('「变更任务确认与派发」节点拿到派发表单（清单可编辑，提交前还要同步变量）', () => {
+    // 这一节点是审批通过后、自动派发前的最后一站：清单要能改，改完提交时把
+    // changeTaskList 写回流程变量 —— 绑不上就只剩「同意/驳回」，改清单得跑去通告抽屉。
+    registerTaskFormTemplates([
+      {
+        code: 'change-notice-task-plan',
+        label: '变更任务确认与派发',
+        builtin: false,
+        component: 'EcnTaskPlanForm',
+        nodeTypes: [NodeType.TASK],
+      },
+    ])
+    try {
+      const plan = formOf(NodeType.TASK, 'change-notice-task-plan')
+      expect(resolveTaskFormView(plan)).toBe(FORM_COMPONENT_VIEWS.EcnTaskPlanForm)
+      expect(resolveTaskFormView(plan)).not.toBe(FALLBACK_FORM_VIEW)
+    } finally {
+      registerTaskFormTemplates([])
+    }
+  })
+
+  it('执行变更任务节点拿到自己的表单（否则办理人只有同意/驳回，改不了对象）', () => {
+    // 这张表是 change-task 子流程唯一的办理入口：展示通告 + 任务范围，
+    // 「执行变更」触发服务端修订。绑不上就静默退回通用表单 —— 表现为"节点表单没了"。
+    registerTaskFormTemplates([
+      {
+        code: 'change-task-execute',
+        label: '执行变更任务',
+        builtin: false,
+        component: 'EcnTaskExecuteForm',
+        nodeTypes: [NodeType.TASK],
+      },
+    ])
+    try {
+      const exec = formOf(NodeType.TASK, 'change-task-execute')
+      expect(resolveTaskFormView(exec)).toBe(FORM_COMPONENT_VIEWS.EcnTaskExecuteForm)
+      expect(resolveTaskFormView(exec)).not.toBe(FALLBACK_FORM_VIEW)
+    } finally {
+      registerTaskFormTemplates([])
+    }
+  })
+
+  it('变更任务的结果审批 / 会签各回各的视图（执行结果就在表单里展示）', () => {
+    // 审批人放行的是"这些对象确实改成了这些新版本"，只看任务标题等于凭印象签
+    registerTaskFormTemplates([
+      {
+        code: 'change-task-approval', label: '变更任务执行结果审批', description: '',
+        builtin: false, component: 'EcnTaskApprovalForm', nodeTypes: [NodeType.APPROVAL],
+      },
+      {
+        code: 'change-task-countersign', label: '变更任务执行结果会签', description: '',
+        builtin: false, component: 'EcnTaskCountersignForm',
+        nodeTypes: [NodeType.COUNTERSIGN_APPROVAL],
+      },
+    ])
+    try {
+      expect(resolveTaskFormView(formOf(NodeType.APPROVAL, 'change-task-approval')))
+        .toBe(FORM_COMPONENT_VIEWS.EcnTaskApprovalForm)
+      expect(resolveTaskFormView(formOf(NodeType.COUNTERSIGN_APPROVAL, 'change-task-countersign')))
+        .toBe(FORM_COMPONENT_VIEWS.EcnTaskCountersignForm)
     } finally {
       registerTaskFormTemplates([])
     }

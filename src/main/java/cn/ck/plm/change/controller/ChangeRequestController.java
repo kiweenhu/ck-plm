@@ -24,13 +24,13 @@ import java.util.Map;
  * <pre>
  * GET    /api/plm/change-requests                 列表（status / keyword / page / pageSize）
  * GET    /api/plm/change-requests/stats           各状态计数（页头状态概览）
- * GET    /api/plm/change-requests/{oid}           详情（请求本体 + 时间线 + 关联问题 + 预估对象）
+ * GET    /api/plm/change-requests/{oid}           详情（请求本体 + 时间线 + 关联问题 + 预估对象 + 子通告 + 子通告下的变更任务）
  * POST   /api/plm/change-requests                 新建（编号自动生成 ECR-####，状态恒为 DRAFT）
  * PUT    /api/plm/change-requests/{oid}           编辑（patch 语义；已关闭/已取消不可编辑）
  * POST   /api/plm/change-requests/{oid}/transition 状态流转 { action, comment }
  * DELETE /api/plm/change-requests/{oid}           删除（仅草稿）
  * GET    /api/plm/change-requests/object-candidates 对象候选（object picker，keyword / limit）
- * GET    /api/plm/change-requests/related-objects  收集关联对象（零件 → 关联文档 + 替代件，entityOids 逗号分隔）
+ * GET    /api/plm/change-requests/related-objects  收集关联对象（零件 → 关联文档 + 关联工程数据 + 替代件，entityOids 逗号分隔）
  * GET    /api/plm/change-requests/{oid}/affected-objects          预估受影响对象
  * POST   /api/plm/change-requests/{oid}/affected-objects          添加预估对象 { entityOid }
  * DELETE /api/plm/change-requests/{oid}/affected-objects/{affectedOid} 移除预估对象
@@ -80,6 +80,9 @@ public class ChangeRequestController {
         result.put("affectedObjects", service.affectedObjects(oid));
         // 子流程：本请求派生出的变更通告。关闭前"还差什么"看这里
         result.put("notices", service.childNotices(oid));
+        // 再下一层：这些通告派出来的变更任务。前端详情页的「变更任务」表格读的就是这个键，
+        // 少了它会永远显示"这些通告下还没有变更任务"（服务层 childTasks 早就备好了）
+        result.put("tasks", service.childTasks(oid));
         return ApiResponse.ok(result);
     }
 
@@ -155,7 +158,7 @@ public class ChangeRequestController {
      * 收集所选对象关联的其他对象（变更任务挑对象时的「收集关联对象」）。
      *
      * <p>{@code entityOids} = 逗号分隔的对象 oid；当前口径只对零件生效：
-     * 关联文档（DESCRIBES + REFERENCE）+ 替代件（双向），BOM 不收集。
+     * 关联文档（DESCRIBES + REFERENCE）+ 关联工程数据（EPMBuildRule）+ 替代件（双向），BOM 不收集。
      */
     @GetMapping("/related-objects")
     public ApiResponse<List<Map<String, Object>>> relatedObjects(@RequestParam String entityOids) {

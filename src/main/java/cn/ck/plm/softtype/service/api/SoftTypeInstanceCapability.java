@@ -146,6 +146,21 @@ public interface SoftTypeInstanceCapability {
     }
 
     /**
+     * 只把迭代绑定的生命周期模板<b>换到目标子版本</b>，不按目标状态再走一步 ——
+     * 行操作「重置生命周期模板到最新版本」用。
+     *
+     * <p>与 {@link #setLifecycleStateInstance} 的区别：那个是"先迁模板、再设到某个状态"，
+     * 目标状态必须是模板允许的一步迁移；这里的诉求只是"把对象跟上模板最新版"，
+     * 状态由 {@code rebindLifecycle} 按 code 映射（新版有同 code 就保留，没有就落到新版
+     * 初始状态），不额外要求一次状态迁移。
+     *
+     * @param targetTemplateIterationOid 目标模板子版本 oid（{@code ck_lifecycle_template_iteration.oid}）
+     */
+    default void rebindLifecycleInstance(String oid, String entityVersion, String targetTemplateIterationOid) {
+        throw unsupported("重置生命周期模板");
+    }
+
+    /**
      * 退回<b>模板的初始状态</b>（如 已发布 → 工作中 → 草稿）—— 行操作「设置对象到初始状态」用。
      *
      * <p>与 {@link #setLifecycleStateInstance} 的区别是"多跳"：指定状态要求当前状态能<b>一步</b>

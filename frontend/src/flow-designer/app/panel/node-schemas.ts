@@ -29,6 +29,7 @@ import {
   OVERDUE_ACTION_LABEL,
   PASS_RULE_MODE_LABEL,
   REJECT_TARGET_LABEL,
+  SERVICE_SET_CHANGE_STATUS,
   TIMER_MODE_LABEL,
   serviceIdsHiddenFromServiceList,
   serviceParamsAllFromList,
@@ -48,11 +49,43 @@ import {
 } from '@flow-dsl-core'
 // 锚点清单由画布层给出（面板与画布必须同一份推导，见 anchorOptions 的说明）
 import { anchorsOf } from '@flow-canvas'
+import { CHANGE_NOTICE_STATUS_LABEL, CHANGE_REQUEST_STATUS_LABEL } from '@/utils/changeFlow'
 import type { FieldSpec, OptionItem, SchemaContext } from './field-schema'
 
 /** 把 `{CODE: '中文'}` 常量映射转为下拉选项 */
 function optionsOf(labelMap: Record<string, string>): OptionItem[] {
   return Object.entries(labelMap).map(([value, label]) => ({ value, label }))
+}
+
+/**
+ * 「设置变更单据状态」的候选 —— 按流程 key 只列该单据真正允许流程写的状态。
+ *
+ * <p>两份清单与后端 {@code ChangeRequestStatusHandler} 的 REQUEST_ALLOWED / NOTICE_ALLOWED
+ * 一一对应。把两种单据的 code 混在一个下拉里，选错只能在运行期被白名单拒掉；
+ * 自定义 key 认不出单据类型时两组都列并标注，至少不会让人以为「只有这几个」。
+ */
+function changeDocumentStatusOptions(ctx: SchemaContext): OptionItem[] {
+  const toItems = (codes: string[], labels: Record<string, string>): OptionItem[] =>
+    codes.map((code) => ({ value: code, label: `${labels[code] || code}（${code}）` }))
+  const requestItems = toItems(
+    ['ANALYZING', 'REVIEWING', 'ACCEPTED', 'REJECTED'],
+    CHANGE_REQUEST_STATUS_LABEL,
+  )
+  const noticeItems = toItems(
+    ['APPROVING', 'APPROVED', 'IN_WORK', 'REJECTED'],
+    CHANGE_NOTICE_STATUS_LABEL,
+  )
+  const key = String(ctx.dsl?.meta?.key || '')
+  if (key.includes('request')) {
+    return requestItems
+  }
+  if (key.includes('notice')) {
+    return noticeItems
+  }
+  return [
+    ...requestItems.map((item) => ({ ...item, label: `变更请求 · ${item.label}` })),
+    ...noticeItems.map((item) => ({ ...item, label: `变更通告 · ${item.label}` })),
+  ]
 }
 
 /**
@@ -378,12 +411,15 @@ export function serviceParamFields(): FieldSpec[] {
         continue
       }
       const isPassword = param.control === 'password'
+      // 「设置变更单据状态」的目标状态本来就是枚举：改成下拉，候选按流程 key 取 ECR / ECN 各自的白名单
+      const isChangeStatus = service.id === SERVICE_SET_CHANGE_STATUS && param.name === 'status'
       fields.push({
         key: `params.${param.name}`,
         label: param.label,
-        control: param.optionsSource ? 'select' : (isPassword ? 'password' : 'text'),
+        control: param.optionsSource || isChangeStatus ? 'select' : (isPassword ? 'password' : 'text'),
         optionsSource: param.optionsSource,
-        placeholder: param.optionsSource
+        optionsFromDsl: isChangeStatus ? changeDocumentStatusOptions : undefined,
+        placeholder: param.optionsSource || isChangeStatus
           ? `选择${param.label}`
           : (isPassword ? `填写${param.label}（不回显）` : `填写${param.label}`),
         required: param.required,
@@ -483,8 +519,24 @@ const NODE_FIELDS: Record<NodeTypeT, FieldSpec[]> = {
     ...assigneeFields('assignee', '执行人'),
     { key: 'commentRequired', label: '必填说明', control: 'switch' },
     ...deadlineFields(),
-    // 本活动的表单是内置固定的（设置流程参与者）：默认填好、不可修改
-    ...formAndCommentFields({ fixed: true }),
+    // 默认是内置的「设置流程参与者」，可换成其它同样会挑人的表单
+    //（校验 SETUP_FORM_INVALID 会拦下"换成审批意见"这类不会写人员变量的表）
+    ...formAndCommentFields(),
+  ],
+  // 变更任务结果审批设置参与者：与设置审批人同一职责，默认表单是行业那张
+  // 「变更任务审批设置参与者」（挑人之前先展示本任务修订了哪些对象）
+  [NodeType.CHANGE_TASK_SETUP]: [
+    {
+      key: 'hint-change-task-setup',
+      label: '变更任务结果审批设置参与者',
+      control: 'hint',
+      group: '基本',
+      help: '用于变更任务流程：先展示本变更任务已修订的对象与新版本，再一次性指定后续审批 / 会签 / 办理活动的人员。行为与「设置审批人」完全一致（由发起人执行、只管下游），差别只是默认表单。',
+    },
+    ...assigneeFields('assignee', '执行人'),
+    { key: 'commentRequired', label: '必填说明', control: 'switch' },
+    ...deadlineFields(),
+    ...formAndCommentFields(),
   ],
   // 会签审批：与审批节点共用大部分字段，但**没有审批模式**（它就是会签本身），
   // 且通过规则恒可见 —— 不存在「先选模式才看得到规则」的两段式操作
@@ -673,18 +725,15 @@ const NODE_FIELDS: Record<NodeTypeT, FieldSpec[]> = {
       help: '受控白名单函数；配置服务后此项隐藏',
     },
   ],
+  // 条件怎么写是「出边」的属性（字段选择器 / 表达式），网关本身没有可配的表达式模式：
+  // 一条分支一套条件，同一网关的不同出边可以一条用字段、一条用表达式。
   [NodeType.EXCLUSIVE_GATEWAY]: [
-    {
-      key: 'advanced',
-      label: '启用表达式模式',
-      control: 'switch',
-      help: '关闭时按字段选择器配条件（在出边的属性里配置）',
-    },
     {
       key: 'hint-branches',
       label: '分支条件',
       control: 'hint',
-      help: '分支条件挂在「出边」上：选中连线即可配置，网关的默认分支建议显式指定',
+      help: '分支条件挂在「出边」上：选中连线即可配置（条件模式可选字段选择器 / 表达式），'
+        + '网关的默认分支建议显式指定',
     },
   ],
   [NodeType.PARALLEL_GATEWAY]: [
@@ -697,16 +746,10 @@ const NODE_FIELDS: Record<NodeTypeT, FieldSpec[]> = {
   ],
   [NodeType.INCLUSIVE_GATEWAY]: [
     {
-      key: 'advanced',
-      label: '启用表达式模式',
-      control: 'switch',
-      help: '包容分支按条件求值决定激活哪些出边',
-    },
-    {
       key: 'hint-branches',
       label: '分支条件',
       control: 'hint',
-      help: '分支条件挂在「出边」上：选中连线即可配置',
+      help: '包容分支按条件求值决定激活哪些出边；条件挂在「出边」上（条件模式可选字段选择器 / 表达式）',
     },
   ],
   [NodeType.NOTIFY]: [

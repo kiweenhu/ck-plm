@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * {@link TypeLifecycleStateService} 的实现：类型 → 绑定模板 → 状态候选项。
@@ -92,17 +93,23 @@ public class DefaultTypeLifecycleStateService implements TypeLifecycleStateServi
 
         vo.setConfiguredTemplateCode(configured.getCode());
         vo.setConfiguredTemplateName(configured.getName());
+        String configuredIterationOid = configured.getLatestIteration().getOid();
+        vo.setConfiguredTemplateIterationOid(configuredIterationOid);
+        vo.setConfiguredTemplateVersion(configured.getLatestIteration().getVersion());
         if (boundUsable) {
             vo.setBoundTemplateCode(bound.getCode());
             vo.setBoundTemplateName(bound.getName());
+            vo.setBoundTemplateIterationOid(bound.getLatestIteration().getOid());
+            vo.setBoundTemplateVersion(bound.getLatestIteration().getVersion());
         }
-        String configuredIterationOid = configured.getLatestIteration().getOid();
         // 绑定的模板 / 子版本与业务配置不是同一版 → 本次会先切换（含同 code 的旧子版本）
         boolean changed = boundUsable
                 && !configuredIterationOid.equals(bound.getLatestIteration().getOid());
         boolean bindRequired = !boundUsable;
         vo.setTemplateChanged(changed);
         vo.setTemplateBindRequired(bindRequired);
+        // 同一个模板只是落后了版本：界面给「重置到最新版本」，不必走"换模板"的说法
+        vo.setTemplateVersionOutdated(changed && Objects.equals(configured.getCode(), bound.getCode()));
 
         // 切换预览：状态按 code 保留，保留不了就落到新模板的初始状态（与 rebindLifecycle 同规则）
         String reachabilityBase = currentStatusCode;

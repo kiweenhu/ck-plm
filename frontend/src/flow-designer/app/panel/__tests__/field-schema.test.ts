@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   APPROVAL_OPINION_FORM_CODE,
+  CHANGE_TASK_SETUP_FORM_CODE,
   COUNTERSIGN_FORM_CODE,
   ApprovalMode,
   AssigneeStrategy,
@@ -179,19 +180,30 @@ describe('自动服务 · 设置状态（目标状态下拉）', () => {
   })
 })
 
-describe('节点表单：注册表驱动的下拉 + 内置固定表单只读', () => {
-  it('设置审批人：只读下拉，且默认指向内置的「设置流程参与者」', () => {
+describe('节点表单：注册表驱动的下拉 + 默认表单', () => {
+  it('设置审批人：可选表单（不再只读），默认指向内置的「设置流程参与者」', () => {
     const dsl = emptyDsl()
     const target = { type: NodeType.SET_ASSIGNEE }
     const field = fieldOf(nodeFields(NodeType.SET_ASSIGNEE), 'formRef')
 
     expect(field.control).toBe('select')
-    expect(field.disabled).toBe(true)
+    // 2026-11-09 放开：变更任务流程要换成能同时展示修订产物的行业表单
+    expect(field.disabled).not.toBe(true)
     // 候选项来自注册表（不能手填 code）
     const options = field.optionsFromDsl?.(ctxOf(dsl, target)) ?? []
     expect(options.map((o) => o.value)).toEqual([SETUP_ASSIGNEE_FORM_CODE])
-    // 老模板的节点没写过 formRef 时，显示内置值 —— 而不是一个灰掉的空框
+    // 老模板的节点没写过 formRef 时，显示内置值 —— 而不是一个空框
     expect(field.defaultWhenEmpty?.(ctxOf(dsl, target))).toBe(SETUP_ASSIGNEE_FORM_CODE)
+  })
+
+  it('变更任务结果审批设置参与者：默认表单是行业那张「变更任务审批设置参与者」', () => {
+    const dsl = emptyDsl()
+    const target = { type: NodeType.CHANGE_TASK_SETUP }
+    const field = fieldOf(nodeFields(NodeType.CHANGE_TASK_SETUP), 'formRef')
+
+    expect(field.disabled).not.toBe(true)
+    // 默认值必须落到行业表：落到内置那张就看不到"本任务修订了哪些对象"
+    expect(field.defaultWhenEmpty?.(ctxOf(dsl, target))).toBe(CHANGE_TASK_SETUP_FORM_CODE)
   })
 
   it('审批节点：可选用哪张表单，默认指向内置的「审批意见」', () => {

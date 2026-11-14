@@ -108,7 +108,15 @@ public final class ChangeRequestFlow {
     public static final String REOPEN = "REOPEN";
     /** 关闭：ACCEPTED → CLOSED */
     public static final String CLOSE = "CLOSE";
-    /** 取消：DRAFT / SUBMITTED / REVIEWING / REJECTED → CANCELLED（需 comment） */
+    /**
+     * 取消：DRAFT / SUBMITTED / ANALYZING / REVIEWING / REJECTED → CANCELLED（需 comment）。
+     *
+     * <p>状态机层面放行，<b>能否取消还要看有没有流程实例</b>：已进入评审流程的单据由
+     * {@code ChangeRequestServiceImpl#transition} 拦下（2026-11-10）—— 单据已经在审批人 /
+     * 实施人手上，责任人单方面作废会让对方收到一张指向作废单的待办，而那段代码并不终止
+     * 流程实例，实例会继续往下派任务。真正要叫停走管理员「设置状态」。
+     * 免审模式没有实例，这些状态仍可自行作废。
+     */
     public static final String CANCEL = "CANCEL";
 
     private static final Map<String, Map<String, String>> RULES = new LinkedHashMap<>();

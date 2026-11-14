@@ -82,6 +82,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.Deque;
@@ -609,6 +610,11 @@ public class ProcessServiceImpl implements ProcessService {
                              Map<String, Object> formVariables) {
         String user = identity.currentUserId();
         Task task = requireTask(taskId, identity.currentTenantId());
+        // callActivity 子流程的最后一个任务办完时，引擎在同一次 complete 里结束子流程、
+        // 立刻推进父流程并创建父流程的下一个 userTask。这段推进不经过任何一次 completeTask，
+        // 只扫当前实例的「单人候选自动指派」就看不到它 —— 任务只有 candidate 没有 assignee，
+        // 只落在「可认领」，用户感受就是"任务没派给我"。办理前先把整条父链记下来。
+        List<String> parentInstances = parentProcessInstanceIds(task.getProcessInstanceId());
         boolean approved = !"reject".equalsIgnoreCase(action == null ? "" : action.trim());
 
         // 这一票的结论先按任务记下（放在驳回分支之前：驳回也是"投了一票"，同样要留痕）：
@@ -624,7 +630,7 @@ public class ProcessServiceImpl implements ProcessService {
         // 没配的流程（手写 BPMN、老部署）返回 false，仍走老口径，行为不变。
         if (!approved && rejectRouter.reject(task, comment)) {
             log.info("任务驳回: taskId={}, user={}, 已按配置退回到目标节点", taskId, user);
-            autoAssignSingleCandidate(task.getProcessInstanceId());
+            autoAssignSingleCandidateInHierarchy(task.getProcessInstanceId(), parentInstances);
             notifyTodoTasks(task.getProcessInstanceId(), user);
             notifyIfFinished(task.getProcessInstanceId(), user);
             return;
@@ -665,7 +671,7 @@ public class ProcessServiceImpl implements ProcessService {
         //   候选人恰好一人时（单人办理的常态）要直接指派，任务才会进他的「待办」；
         //   否则先通知，通知到的是"assignee 还空着"的任务（用户实测反馈即此：
         //   提交「设置审批人」后 Roney.Liu 收不到「申请填报与完善」任务、act_ru_task.assignee_ 为空）。
-        autoAssignSingleCandidate(task.getProcessInstanceId());
+        autoAssignSingleCandidateInHierarchy(task.getProcessInstanceId(), parentInstances);
         // 办理会推进流程：下游任务可能要落到别人头上，或者整条流程就此结束
         notifyTodoTasks(task.getProcessInstanceId(), user);
         notifyIfFinished(task.getProcessInstanceId(), user);
@@ -1029,6 +1035,55 @@ public class ProcessServiceImpl implements ProcessService {
     }
 
     /**
+     * 当前实例 + 它的父实例链上的「单人候选自动指派」。
+     *
+     * <p>callActivity 子流程的最后一个任务办完时，引擎在同一次 complete 里结束子流程、
+     * 立刻推进父流程并创建父流程的下一个 userTask。这段推进没有经过任何一次
+     * {@code completeTask}，只扫当前实例的 {@link #autoAssignSingleCandidate} 看不到它：
+     * 任务只有 candidate、没有 assignee，只落在「可认领」，用户感受就是"没派给我"。
+     */
+    private void autoAssignSingleCandidateInHierarchy(String instanceId, List<String> parentInstances) {
+        autoAssignSingleCandidate(instanceId);
+        if (parentInstances == null) {
+            return;
+        }
+        for (String parent : parentInstances) {
+            autoAssignSingleCandidate(parent);
+        }
+    }
+
+    /**
+     * 从历史实例一路向上取父流程实例（callActivity 可能嵌套多层）。
+     *
+     * <p>父链要在办理<b>之前</b>取：子流程结束后运行时记录已删除，而历史实例的
+     * {@code superProcessInstanceId} 从启动起就稳定存在。带层数上限，防止异常数据成环。
+     */
+    private List<String> parentProcessInstanceIds(String instanceId) {
+        List<String> parents = new ArrayList<>();
+        if (!isNotBlank(instanceId)) {
+            return parents;
+        }
+        String current = instanceId;
+        for (int i = 0; i < 8; i++) {
+            HistoricProcessInstance hpi;
+            try {
+                hpi = historyService.createHistoricProcessInstanceQuery()
+                        .processInstanceId(current).singleResult();
+            } catch (Exception e) {
+                log.warn("查询父流程实例失败: instance={} error={}", current, e.getMessage());
+                break;
+            }
+            String parent = hpi == null ? null : hpi.getSuperProcessInstanceId();
+            if (!isNotBlank(parent) || parents.contains(parent)) {
+                break;
+            }
+            parents.add(parent);
+            current = parent;
+        }
+        return parents;
+    }
+
+    /**
      * 会签（多实例审批）的本轮结论 —— 按票汇总，而不是"最后一票覆盖"。
      *
      * <h3>为什么必须汇总</h3>
@@ -1199,6 +1254,8 @@ public class ProcessServiceImpl implements ProcessService {
             vo.setBusinessOid(refs.get(0).getEntityOid());
             vo.setBusinessTypeCode(refs.get(0).getTypeCode());
         }
+        // 业务主键：单据类流程（变更请求 / 通告 / 任务）没有实体关联行，表单只能靠它回查单据
+        vo.setBusinessKey(businessKeyOf(task.getProcessInstanceId()));
         vo.setVariables(formVariablesOf(task.getProcessInstanceId()));
         ProcessDefinition pd = findProcessDefinition(task.getProcessDefinitionId(), new HashMap<>());
         if (pd == null) {
@@ -2223,6 +2280,70 @@ public class ProcessServiceImpl implements ProcessService {
         vo.setAssignees(raw);
         vo.setAssigneeNames(resolveUserNames(raw));
         return vo;
+    }
+
+    @Override
+    public Set<String> runningInstanceIds(Collection<String> instanceIds) {
+        if (instanceIds == null || instanceIds.isEmpty()) {
+            return Set.of();
+        }
+        List<String> ids = instanceIds.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return Set.of();
+        }
+        // 不按租户过滤：调用方拿的是单据自己存的 instanceId（UUID 全局唯一），
+        // 而这里只是"还能不能人工改状态"的判断。加租户条件反而会在系统线程
+        // （拿不到当前租户）时全部查不到，把运行中的单据误判成已结束。
+        Set<String> running = new LinkedHashSet<>();
+        for (ProcessInstance instance : runtimeService.createProcessInstanceQuery()
+                .processInstanceIds(new LinkedHashSet<>(ids))
+                .list()) {
+            running.add(instance.getProcessInstanceId());
+        }
+        return running;
+    }
+
+    @Override
+    public Map<String, String> instanceIdsByBusinessKey(Collection<String> businessKeys) {
+        if (businessKeys == null || businessKeys.isEmpty()) {
+            return Map.of();
+        }
+        List<String> keys = businessKeys.stream()
+                .filter(key -> key != null && !key.isBlank())
+                .distinct()
+                .toList();
+        if (keys.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        // 历史表同时覆盖"在跑"和"已结束"：按 businessKey 查就能回答"这条任务有没有流程实例"。
+        // 逐条查而不是 in：Flowable 6.x 的 HistoricProcessInstanceQuery 没有 businessKeyIn，
+        // 而调用方给的是任务清单（个位数），这点开销比换一种关联模型划算。
+        // 倒序取第一条 = 同一业务对象只留最新一轮（驳回重提会新建实例）。
+        for (String key : keys) {
+            List<HistoricProcessInstance> found = historyService.createHistoricProcessInstanceQuery()
+                    .processInstanceBusinessKey(key)
+                    .orderByProcessInstanceStartTime().desc()
+                    .listPage(0, 1);
+            if (!found.isEmpty()) {
+                result.put(key, found.get(0).getId());
+            }
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional
+    public void setInstanceVariable(String instanceId, String name, Object value) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("流程变量名不能为空");
+        }
+        requireRunningInstance(instanceId);
+        runtimeService.setVariable(instanceId, name.trim(), value);
+        log.info("流程变量已更新: instanceId={}, name={}", instanceId, name.trim());
     }
 
     @Override

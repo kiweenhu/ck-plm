@@ -19,6 +19,7 @@ import cn.ck.plm.change.entity.ChangeRequestAffectedObject;
 import cn.ck.plm.change.flow.ChangeRequestFlow;
 import cn.ck.plm.change.dto.ChangeIssueRef;
 import cn.ck.plm.change.entity.ChangeRequestIssue;
+import cn.ck.plm.change.entity.ChangeTask;
 import cn.ck.plm.change.mapper.ChangeActivityMapper;
 import cn.ck.plm.change.mapper.ChangeIssueLookupMapper;
 import cn.ck.plm.change.mapper.ChangeNoticeMapper;
@@ -28,6 +29,7 @@ import cn.ck.plm.change.mapper.ChangeRequestIssueMapper;
 import cn.ck.plm.change.mapper.ChangeRequestMapper;
 import cn.ck.plm.change.service.api.ChangeConfigService;
 import cn.ck.plm.change.service.api.ChangeRequestService;
+import cn.ck.plm.change.service.api.ChangeTaskService;
 import cn.ck.plm.process.service.api.ProcessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,6 +91,8 @@ public class ChangeRequestServiceImpl implements ChangeRequestService {
     private final ChangeIssueLookupMapper issueLookupMapper;
     /** 子流程查询：ECR → ECN 的关闭门槛与详情展示 */
     private final ChangeNoticeMapper noticeMapper;
+    /** 子流程的第二层：ECN 下的变更任务（详情页要直接看到"派给谁改了"） */
+    private final ChangeTaskService changeTaskService;
     /** 编号生成：按 CHANGE_REQUEST 类型绑定的编码规则（随 platform-base 包安装） */
     private final NumberService numberService;
     /** 预估受影响对象（评审输入，不参与修订执行） */
@@ -106,6 +110,7 @@ public class ChangeRequestServiceImpl implements ChangeRequestService {
                                    ChangeRequestIssueMapper issueMapper,
                                    ChangeIssueLookupMapper issueLookupMapper,
                                    ChangeNoticeMapper noticeMapper,
+                                   ChangeTaskService changeTaskService,
                                    NumberService numberService,
                                    ChangeConfigService configService,
                                    ProcessService processService,
@@ -117,6 +122,7 @@ public class ChangeRequestServiceImpl implements ChangeRequestService {
         this.issueMapper = issueMapper;
         this.issueLookupMapper = issueLookupMapper;
         this.noticeMapper = noticeMapper;
+        this.changeTaskService = changeTaskService;
         this.numberService = numberService;
         this.configService = configService;
         this.processService = processService;
@@ -277,6 +283,18 @@ public class ChangeRequestServiceImpl implements ChangeRequestService {
         // 责任人闸门放在最前面：非责任人连"关闭门槛/必填说明"都不该看到，
         // 否则会先收到"还有 1 个变更通告未关闭"这种与他无关的提示。
         assertOwner(existing, normalized);
+
+        // 已进入流程的单据不能由责任人单方面作废（2026-11-10）。
+        // 与 ECN 同一口径（见 ChangeNoticeFlow 的「提交后就不可取消」）：单据一旦交给审批人 /
+        // 实施人，取消等于撤销一份正在被别人办理的单，对方手上会留下指向作废单的幽灵待办；
+        // 而本方法并不终止流程实例，实例会继续往下派任务。真正要叫停走管理员「设置状态」。
+        // 免审模式没有实例，这类单据仍可自行作废。
+        if (ChangeRequestFlow.CANCEL.equals(normalized) && !isBlank(existing.getProcessInstanceId())) {
+            // 变更请求没有 ECN 那种"管理员设置状态"的入口，所以只能给出去处：等结论走完
+            throw new IllegalStateException("该变更请求已进入评审流程（实例 "
+                    + existing.getProcessInstanceId() + "），不能取消；请等评审结论走完，"
+                    + "如需中途叫停请联系租户管理员");
+        }
 
         // 开启审批时，影响分析是评审流程里的一步（影响分析会签），单据上不再提供人工入口 ——
         // 两条路都能把单据推到「影响分析中」，就分不清这张单到底是流程评估的，还是人点的。
@@ -496,11 +514,15 @@ public class ChangeRequestServiceImpl implements ChangeRequestService {
     }
 
     /**
-     * 收集关联对象：零件 → 关联文档（DESCRIBES + REFERENCE）+ 替代件。
+     * 收集关联对象：零件 → 关联文档（DESCRIBES + REFERENCE）+ 关联工程数据（EPMBuildRule）+ 替代件。
      *
-     * <p>只对零件收集：文档侧没有"关联零件"这层语义（工程文档的结构是另一套）。
+     * <p>只对零件收集：文档 / 工程数据侧没有"关联零件"这层语义（它们是关系里的被动端）。
      * 结果按 oid 去重 —— 同一份文档可能在多个迭代上各挂过一条、也可能既是替代件又被别的
      * 入参对象关联到，重复项在下拉里只会变成视觉噪音。
+     *
+     * <p><b>工程数据必须一起收</b>（2026-11-10）：改一张零件的数模是最常见的变更，
+     * 只收 ck_document 时"收集关联对象"对只有数模的零件返回空，用户会以为没有关联对象 ——
+     * 而实际上 ck_eng_doc_part_link 上就挂着那份数模。
      */
     @Override
     public List<Map<String, Object>> relatedObjects(List<String> entityOids) {
@@ -518,6 +540,7 @@ public class ChangeRequestServiceImpl implements ChangeRequestService {
                 continue;
             }
             collectInto(collected, objectLookupMapper.selectRelatedDocuments(oid, tenant));
+            collectInto(collected, objectLookupMapper.selectRelatedEngDocuments(oid, tenant));
             collectInto(collected, objectLookupMapper.selectAlternateParts(oid, tenant));
         }
         return new ArrayList<>(collected.values());
@@ -673,6 +696,20 @@ public class ChangeRequestServiceImpl implements ChangeRequestService {
         }
         // 复用列表查询（未关闭优先、创建时间倒序）：子单通常个位数，展示用 200 条足够
         return noticeMapper.selectList(tenantOid(), null, oid, null, MAX_PAGE_SIZE, 0);
+    }
+
+    @Override
+    public List<ChangeTask> childTasks(String oid) {
+        List<ChangeNotice> notices = childNotices(oid);
+        if (notices.isEmpty()) {
+            return List.of();
+        }
+        // 通告通常 1~3 张，逐张取任务即可；byNotice 顺带回填 processInstanceId（详情页要"去流程"入口）
+        List<ChangeTask> tasks = new ArrayList<>();
+        for (ChangeNotice notice : notices) {
+            tasks.addAll(changeTaskService.byNotice(notice.getOid()));
+        }
+        return tasks;
     }
 
     @Override

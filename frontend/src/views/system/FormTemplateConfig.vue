@@ -54,6 +54,10 @@
         </template>
         <template v-else-if="column.key === 'code'">
           <code class="ftc-code">{{ record.code }}</code>
+          <!-- 组件名缺失 = 运行期只能落到通用表单，这是"选了表单却没生效"的头号原因，摆出来 -->
+          <div class="ftc-name__desc">
+            {{ record.component ? `组件 ${record.component}` : '未标注组件（走通用表单）' }}
+          </div>
         </template>
         <template v-else-if="column.key === 'nodeTypes'">
           <a-tag v-for="t in nodeTypesOf(record)" :key="t" class="ftc-type-tag">
@@ -122,6 +126,19 @@
           />
           <div class="ftc-form__hint">
             内置表单的适用范围由系统决定（运行期按它渲染），不可修改；自定义表单随意。
+          </div>
+        </a-form-item>
+
+        <a-form-item label="渲染组件">
+          <a-input
+            v-model:value="form.component"
+            :disabled="form.builtin"
+            placeholder="如：EcnTaskExecuteForm（留空 = 通用表单）"
+          />
+          <div class="ftc-form__hint">
+            前端已实现的表单组件名（见 <code>components/task/taskForms</code> 的注册表）。填了才会渲染
+            专属表单；留空或写错一律回落到「同意 / 驳回」通用表单，办理不会因此打不开。
+            内置模板的组件由代码固化，不可改。
           </div>
         </a-form-item>
 
@@ -253,6 +270,8 @@ function emptyForm() {
     name: '',
     nodeTypes: [],
     description: '',
+    /** 前端渲染器名（留空 = 运行期走兜底通用表单） */
+    component: '',
     sortOrder: 100,
     enabled: true,
     builtin: false,
@@ -273,6 +292,7 @@ function openEdit(record) {
     name: record.name,
     nodeTypes: nodeTypesOf(record),
     description: record.description || '',
+    component: record.component || '',
     sortOrder: record.sortOrder ?? 100,
     enabled: record.enabled !== false,
     builtin: !!record.builtin,
@@ -298,6 +318,8 @@ async function onSubmit() {
     name: form.value.name.trim(),
     nodeTypes: form.value.nodeTypes.join(','),
     description: form.value.description,
+    // 空串 = 明确清空（后端会转成 null）；不传则后端当"本次不改"
+    component: (form.value.component || '').trim(),
     sortOrder: form.value.sortOrder,
     enabled: form.value.enabled,
   }

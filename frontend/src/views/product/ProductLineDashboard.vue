@@ -1440,7 +1440,7 @@
     <SetLifecycleStateModal
       v-model:visible="lifecycleVisible"
       :record="lifecycleTarget"
-      @success="refreshStageLists"
+      @success="refreshObjectLists"
     />
   </div>
 </template>
@@ -2467,7 +2467,7 @@ function openEditModal(record) {
   editModalVisible.value = true
 }
 
-/** 执行保存（不关闭弹窗/不提示，由调用方决定后续行为） */
+/** 执行保存（不关闭弹窗/不提示/不刷列表，由调用方决定后续行为） */
 async function performSave() {
   if (editFormRef.value) {
     const errors = editFormRef.value.validate()
@@ -2495,13 +2495,7 @@ async function performSave() {
     const res = isPart
       ? await updatePart(editEntityOid.value, payload)
       : await updateDocument(editEntityOid.value, payload)
-    if (res.code === 200) {
-      if (selectedFolder.value) {
-        if (isPart) loadParts(selectedFolder.value.oid)
-        loadDocuments(selectedFolder.value.oid)
-      }
-      return true
-    }
+    if (res.code === 200) return true
     message.error(res.message || '保存失败')
     return false
   } catch (e) {
@@ -2517,6 +2511,9 @@ async function confirmEdit() {
   if (ok) {
     message.success('保存成功')
     editModalVisible.value = false
+    // 保存改的是行上的属性（名称 / 版本信息）：物料清单、产品数模各自缓存了一份，
+    // 只刷当前文件夹的话，切到那两个页签看到的还是旧行。
+    refreshObjectLists()
   }
 }
 
@@ -2533,17 +2530,20 @@ async function confirmSaveAndCheckin() {
     if (res.code === 200) {
       message.success('保存并检入成功')
       editModalVisible.value = false
-      if (selectedFolder.value) {
-        if (isPart) loadParts(selectedFolder.value.oid)
-        loadDocuments(selectedFolder.value.oid)
-      }
+      // 检入会清掉「已检出」并让「检入」菜单项消失 —— 判定全在行数据的 checkedOut 上。
+      // 物料清单 / 产品数模各自缓存一行，不强制重取的话锁还在、下拉里还挂着「检入」
+      // （2026-11-12 用户反馈：编辑页保存检入后条目没刷新）。
+      refreshObjectLists()
     } else {
       message.warning(res.message || '保存成功，但检入失败')
       editModalVisible.value = false
+      // 保存已落库：即使检入失败，也要把当前状态刷准（此时对象仍处于检出中）
+      refreshObjectLists()
     }
   } catch (e) {
     message.warning(e?.response?.data?.message || '保存成功，但检入失败')
     editModalVisible.value = false
+    refreshObjectLists()
   } finally {
     editModalSaving.value = false
   }
@@ -3269,10 +3269,8 @@ function reviseRecord(record) {
         const res = await reviseObject(entityType, record.oid)
         if (res.code === 200) {
           message.success(`已修订: ${record.code || record.name}`)
-          if (selectedFolder.value) {
-            if (isPart) loadParts(selectedFolder.value.oid)
-            loadDocuments(selectedFolder.value.oid)
-          }
+          // 修订会换大版本：物料清单 / 产品数模里那些行同样要重取（只刷当前文件夹看不到）
+          refreshObjectLists()
         } else {
           message.error(res.message || '修订失败')
         }
@@ -3400,14 +3398,18 @@ const checkoutTargetDoc = ref(null)
 const checkoutThenEdit = ref(false)
 
 /**
- * 检出 / 检入 / 取消检出成功后，把所有正在展示这些对象的列表重新拉一遍。
+ * 对象的「版本 / 生命周期 / 检出」这类**行上状态**变了之后，把所有正在展示它的列表重新拉一遍。
  *
- * 为什么不能只刷「当前文件夹」：物料清单（bomLoaded）与产品数模（cadModelsLoaded）
- * 是两个独立页签，各自缓存了一份数据。不主动失效的话，用户撤销检出后
- * 那两列的「已检出: 谁」会一直挂着旧值，看起来像"操作没生效"。
+ * <p>触发场景：检出 / 检入 / 取消检出 / 修订 / 设置生命周期状态 —— 它们改的都是同一件事：
+ * 这一行显示什么。用户换个页签就该看到新值，而不该靠 F5。
+ *
+ * <p>为什么不能只刷「当前文件夹」：物料清单（bomLoaded）与产品数模（cadModelsLoaded）
+ * 是两个独立页签，各自按容器聚合了一份数据，还各带一个"已取过"的缓存标志。
+ * 不主动失效的话，设置完状态切到物料清单，生命周期列还是旧值 —— 看起来像"操作没生效"
+ * （2026-11-12 用户反馈：设置状态后物料清单 / 数模条目要刷新页面才更新）。
  * 两个 loader 都必须带 force，否则被各自的缓存标志直接挡回来。
  */
-function refreshAfterCheckoutChange() {
+function refreshObjectLists() {
   if (selectedFolder.value) {
     loadParts(selectedFolder.value.oid)
     if (selectedFolder.value._mergedInherited) {
@@ -3451,7 +3453,7 @@ async function confirmCheckout() {
       checkoutTargetDoc.value = null
       checkoutThenEdit.value = false
       // 文件夹内容 + 物料清单 + 产品数模 一起刷新（检出列要立刻变成"已检出: 我"）
-      refreshAfterCheckoutChange()
+      refreshObjectLists()
       // 检出并编辑：立即打开编辑对话框
       if (shouldEditAfter && target) {
         openEditModal(target)
@@ -3643,24 +3645,19 @@ async function onTailor(kind, record, patch) {
   }
 }
 
-/** 刷新当前文件夹下的列表（与本页其它写操作后的刷新口径一致） */
-function refreshStageLists() {
-  if (!selectedFolder.value) return
-  loadParts(selectedFolder.value.oid)
-  if (selectedFolder.value._mergedInherited) {
-    loadInheritedDocuments(selectedFolder.value._mergedInherited.oid)
-  }
-  loadDocuments(selectedFolder.value.oid)
-}
-
 /**
- * 流程发起成功后：列表照旧刷，但**还必须重拉方法论实例** ——
- * 阶段门 / 评审的状态来自 {@code /api/instances} 的现算结果（流程在跑 → 进行中），
+ * 流程发起成功后：**对象列表 + 方法论实例都要重拉**。
+ *
+ * <p>阶段门 / 评审的状态来自 {@code /api/instances} 的现算结果（流程在跑 → 进行中），
  * 只刷零件 / 文档的话，用户看到的是"流程已发起、评审行还是未开始"的割裂
  * （2026-10-26 用户反馈"流程发起后，评审清单上没有变化"）。
+ *
+ * <p>发起流程还会把对象置为「审核中」——物料清单 / 产品数模的生命周期列同样会变，
+ * 所以这里用 {@code refreshObjectLists}：零件 / 文档 / 物料清单 / 产品数模一起刷，
+ * 两个页签缓存都强制失效。
  */
 function onProcessStarted() {
-  refreshStageLists()
+  refreshObjectLists()
   loadInstances()
 }
 
@@ -3768,7 +3765,7 @@ function undoCheckoutRecord(record) {
             : await undoCheckoutApi(record.oid)
         if (res.code === 200) {
           message.success(`已取消检出: ${record.code || record.name}`)
-          refreshAfterCheckoutChange()
+          refreshObjectLists()
         } else {
           message.error(res.message || '取消检出失败')
         }
@@ -3797,7 +3794,7 @@ function checkinRecord(record) {
             : await checkinDocApi(record.oid)
         if (res.code === 200) {
           message.success(`已检入: ${record.code || record.name}`)
-          refreshAfterCheckoutChange()
+          refreshObjectLists()
         } else {
           message.error(res.message || '检入失败')
         }

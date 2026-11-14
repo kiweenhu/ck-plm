@@ -10,8 +10,10 @@ package cn.ck.plm.change.delegate;
 import cn.ck.plm.change.entity.ChangeActivity;
 import cn.ck.plm.change.entity.ChangeNotice;
 import cn.ck.plm.change.entity.ChangeRequest;
+import cn.ck.plm.change.entity.ChangeTask;
 import cn.ck.plm.change.flow.ChangeNoticeFlow;
 import cn.ck.plm.change.flow.ChangeRequestFlow;
+import cn.ck.plm.change.flow.ChangeTaskFlow;
 import cn.ck.plm.change.mapper.ChangeActivityMapper;
 import cn.ck.plm.change.mapper.ChangeNoticeMapper;
 import cn.ck.plm.change.mapper.ChangeRequestMapper;
@@ -24,7 +26,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -57,6 +63,9 @@ import java.util.Set;
  * 只在流程结束回调里做；现在状态由流程节点先写成 {@code APPROVED}，回调会按幂等跳过，
  * 所以派发要跟着搬到这里。派发失败只记日志（审已批完是既成事实），
  * 流程结束时的回调还会再补一次。
+ *
+ * <p>派发的<b>另一个产物</b>是流程变量 {@code changeTaskList}：紧接着的派发节点是
+ * 1:M 多实例子流程，集合就取这个变量（见 {@link #dispatchQuietly}）。
  */
 @Component
 public class ChangeRequestStatusHandler implements PlmServiceHandler {
@@ -68,6 +77,15 @@ public class ChangeRequestStatusHandler implements PlmServiceHandler {
 
     /** 参数：目标状态 code（取自 {@link ChangeRequestFlow} / {@link ChangeNoticeFlow} 的状态常量） */
     private static final String PARAM_STATUS = "status";
+
+    /**
+     * 派发子流程要遍历的任务清单变量名。
+     *
+     * <p>三处必须一致：{@code change-notice} / {@code change-notice-derived} 的
+     * {@code sub_task.multiInstance.collection}、子流程 {@code variableMap} 里
+     * {@code ${task.oid}} / {@code ${task.assignee}} 的元素结构、以及这里写入的键名。
+     */
+    private static final String VAR_TASK_LIST = "changeTaskList";
 
     /**
      * 变更请求允许流程写入的状态。
@@ -83,7 +101,7 @@ public class ChangeRequestStatusHandler implements PlmServiceHandler {
     ));
 
     /**
-     * 变更通告允许流程写入的状态 —— 一个过程态 + 两个结论。
+     * 变更通告允许流程写入的状态 —— 两个过程态（审批中 / 实施中）+ 两个结论（批准 / 驳回）。
      *
      * <p>{@code APPROVING} 本可以在拉起流程时由服务层直接写（原先就是这么做的），
      * 但流程图上"单据何时进入审批中"这件事要能看见 —— 与变更请求用例的
@@ -92,6 +110,10 @@ public class ChangeRequestStatusHandler implements PlmServiceHandler {
     private static final Set<String> NOTICE_ALLOWED = new LinkedHashSet<>(java.util.Arrays.asList(
             ChangeNoticeFlow.APPROVING,    // 审批中：流程一开始就置上，审批人看到的是"审批中"
             ChangeNoticeFlow.APPROVED,     // 已批准：审批通过（并派发更改事项）
+            // 实施中：审批通过、更改事项全部派发后由流程节点推进。
+            // 人工「开始实施」在流程运行时是被拦的（进度归流程），这个状态只能由流程写；
+            // COMPLETED 仍只走 change.completeNotice（它有"受影响对象全部执行完"的门槛）
+            ChangeNoticeFlow.IN_WORK,
             ChangeNoticeFlow.REJECTED      // 已驳回：任一环节驳回
     ));
 
@@ -198,7 +220,7 @@ public class ChangeRequestStatusHandler implements PlmServiceHandler {
         String from = notice.getStatus();
         if (status.equals(from)) {
             log.info("变更通告 {} 已是 {}，跳过（节点 {}）", notice.getCode(), status, context.nodeName());
-            dispatchQuietly(notice);
+            dispatchQuietly(notice, context);
             return;
         }
 
@@ -213,27 +235,60 @@ public class ChangeRequestStatusHandler implements PlmServiceHandler {
         log.info("变更通告 {} 状态 {} → {}（流程节点 {}，instance={}）",
                 notice.getCode(), from, status, context.nodeName(), context.processInstanceId());
 
-        dispatchQuietly(notice);
+        dispatchQuietly(notice, context);
     }
 
     /**
-     * 审批通过 → 派发更改事项清单（DRAFT → OPEN）。
+     * 审批通过 → 派发更改事项清单（DRAFT → OPEN），并把清单写进流程变量。
      *
-     * <p>失败只记日志、不抛：审批结论已经落库，不该因为它回滚；
+     * <p>派发本身失败只记日志、不抛：审批结论已经落库，不该因为它回滚；
      * 流程结束回调发现状态已是「已批准」时会再补一次派发（幂等）。
+     *
+     * <p><b>但清单变量无论成败都必须写</b>：下游 {@code sub_task} 是多实例子流程，
+     * 集合表达式 {@code ${changeTaskList}} 解析不到会抛
+     * {@code Unknown property used in expression}，把本节点刚落库的「已批准」一起回滚
+     * —— 审批人就只看到一句报错，单据还停在审批中。空清单就写空列表：没有任务时
+     * 多实例创建 0 个实例，流程直接往后走。
      */
-    private void dispatchQuietly(ChangeNotice notice) {
+    private void dispatchQuietly(ChangeNotice notice, PlmServiceContext context) {
         if (!ChangeNoticeFlow.APPROVED.equals(notice.getStatus())) {
             return;
         }
+        List<Map<String, Object>> plan = List.of();
         try {
             int dispatched = taskService.dispatchByNotice(notice.getOid());
             if (dispatched > 0) {
                 log.info("变更通告 {} 派发变更任务 {} 条（流程节点）", notice.getCode(), dispatched);
             }
+            plan = dispatchedTasks(notice.getOid());
         } catch (Exception e) {
             log.error("变更通告 {} 审批通过后派发变更任务失败: {}", notice.getCode(), e.getMessage(), e);
         }
+        context.setVariable(VAR_TASK_LIST, plan);
+        log.info("变更通告 {} 派发子流程清单 {} 条（节点 {}）",
+                notice.getCode(), plan.size(), context.nodeName());
+    }
+
+    /**
+     * 已派发（OPEN）的任务 → 子流程清单。
+     *
+     * <p>元素结构由流程 DSL 规定：{@code oid} 作子流程 businessKey、{@code assignee} 作
+     * {@code taskAssignee} 变量。只收 OPEN：DRAFT 是"还没派发的提案"，
+     * 提前拉起子流程会让人对着未生效的任务干活。
+     */
+    private List<Map<String, Object>> dispatchedTasks(String noticeOid) {
+        List<Map<String, Object>> plan = new ArrayList<>();
+        for (ChangeTask task : taskService.byNotice(noticeOid)) {
+            if (!ChangeTaskFlow.OPEN.equals(task.getStatus())) {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("oid", task.getOid());
+            // 允许为空（未指派责任人）：子流程照样起，任务中心里显示为"未指派"
+            item.put("assignee", task.getAssignee() == null ? "" : task.getAssignee());
+            plan.add(item);
+        }
+        return plan;
     }
 
     // ==================== 共用 ====================

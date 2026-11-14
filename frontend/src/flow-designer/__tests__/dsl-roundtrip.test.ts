@@ -21,6 +21,7 @@ import { compileToBpmnXml, parseBpmnXml } from '../bpmn-compiler'
 import {
   ApprovalMode,
   AssigneeStrategy,
+  CHANGE_TASK_SETUP_FORM_CODE,
   ConditionMode,
   ConditionOperator,
   DeadlineAnchor,
@@ -105,11 +106,16 @@ function describeDiff(before: FlowDsl, after: FlowDsl): string {
 function normalizeForCompare(dsl: FlowDsl): FlowDsl {
   return {
     ...dsl,
-    nodes: dsl.nodes.map((node) =>
-      node.type === NodeType.SET_ASSIGNEE
-        ? { ...node, formRef: node.formRef ?? SETUP_ASSIGNEE_FORM_CODE }
-        : node,
-    ),
+    nodes: dsl.nodes.map((node) => {
+      if (node.type === NodeType.SET_ASSIGNEE) {
+        return { ...node, formRef: node.formRef ?? SETUP_ASSIGNEE_FORM_CODE }
+      }
+      // 行业变体同理：默认表单是「变更任务审批设置参与者」，解析层会补回来
+      if (node.type === NodeType.CHANGE_TASK_SETUP) {
+        return { ...node, formRef: node.formRef ?? CHANGE_TASK_SETUP_FORM_CODE }
+      }
+      return node
+    }),
   }
 }
 
@@ -163,6 +169,30 @@ describe('DSL 往返：人工类节点', () => {
 
   it('编译 → 解析后不丢任何人工配置', () => {
     expectLossless(dsl)
+  })
+})
+
+describe('DSL 往返：变更任务结果审批设置参与者', () => {
+  const dsl = flowOf(
+    [
+      { id: 'start_1', type: NodeType.START, name: '开始', initiator: { strategy: AssigneeStrategy.INITIATOR } },
+      { id: 'ect_setup_1', type: NodeType.CHANGE_TASK_SETUP, name: '变更任务结果审批设置参与者', assignee: { strategy: AssigneeStrategy.INITIATOR } },
+      { id: 'approval_1', type: NodeType.APPROVAL, name: '任务结果审批', assignee: { strategy: AssigneeStrategy.INITIATOR }, approvalMode: ApprovalMode.SINGLE },
+      { id: 'end_1', type: NodeType.END, name: '结束' },
+    ],
+    [
+      { id: 'flow_1', source: 'start_1', target: 'ect_setup_1', kind: EdgeKind.NORMAL },
+      { id: 'flow_2', source: 'ect_setup_1', target: 'approval_1', kind: EdgeKind.NORMAL },
+      { id: 'flow_3', source: 'approval_1', target: 'end_1', kind: EdgeKind.NORMAL },
+    ],
+  )
+
+  it('类型与默认表单都不丢（默认表单是运行期的契约）', () => {
+    expectLossless(dsl)
+    const { xml } = compileToBpmnXml(dsl)
+    // 节点类型要写进产物：解析靠它把行业变体读回来，否则会退化成普通办理
+    expect(xml).toContain('ckplm:nodeType="CHANGE_TASK_SETUP"')
+    expect(xml).toContain(`flowable:formKey="${CHANGE_TASK_SETUP_FORM_CODE}"`)
   })
 })
 

@@ -28,6 +28,7 @@ import {
   OverdueAction,
   PassRuleMode,
   SETUP_COVERED_TYPES,
+  SETUP_NODE_TYPES,
   TimerMode,
   UNARY_OPERATORS,
   UNSUPPORTED_ASSIGNEE_STRATEGIES,
@@ -41,6 +42,7 @@ import {
   setupControlledIds,
   setupNodes,
 } from './ops'
+import { isSetupFormCode } from './forms'
 import { builtinVariableOf, isBuiltinVariableName } from './builtin-variables'
 import type {
   ApprovalNode,
@@ -107,7 +109,8 @@ type Add = (issue: Issue) => void
 export function nodeConfigured(node: FlowNode): boolean {
   switch (node.type) {
     case NodeType.SET_ASSIGNEE:
-      // 执行人（默认发起人）配好即可；它"设置谁"由下游活动的策略决定
+    case NodeType.CHANGE_TASK_SETUP:
+      // 执行人（默认发起人）配好即可；它"设置谁"由下游活动的人员策略决定
       return hasAssignee((node as SetAssigneeNode).assignee)
     // 会签的「已配置」标准比单签高：既要有人，也要有聚合规则（怎么算通过）
     case NodeType.COUNTERSIGN_APPROVAL: {
@@ -284,9 +287,92 @@ function checkCountersignAggregation(
  * 因此这里没有"某活动声明了却没有设置活动"这类规则 ——
  * 需要人办的活动就那三类，覆盖与否由**类型 + 可达性**自动决定，不靠声明。
  */
+/**
+ * 两个「设置审批人」活动是否**互斥** —— 运行期不可能都执行。
+ *
+ * <p>判据两条，缺一不可：
+ * <ol>
+ *   <li>彼此不可达：一个在另一个下游就是先后执行，后者会覆盖前者的人选；</li>
+ *   <li>存在一个<b>排他网关</b>，它的两条不同出边分别能到达这两个活动 ——
+ *       排他网关一次只走一条，所以两个活动只会执行其中一个。</li>
+ * </ol>
+ *
+ * <p>为什么只认排他网关：并行 / 包容网关会同时走多条分支，两个设置活动都会执行、
+ * 都会写 {@code ckplmSetupAssignees_*}，那是真冲突，不能放行。
+ */
+function mutuallyExclusive(dsl: FlowDsl, aId: string, bId: string): boolean {
+  if (aId === bId) {
+    return false
+  }
+  if (
+    canReach(dsl, aId, bId, { ignoreReject: true })
+    || canReach(dsl, bId, aId, { ignoreReject: true })
+  ) {
+    return false
+  }
+  for (const gateway of dsl.nodes) {
+    if (gateway.type !== NodeType.EXCLUSIVE_GATEWAY) {
+      continue
+    }
+    const outs = outgoingEdges(dsl, gateway.id).filter((edge) => edge.route !== EdgeRoute.REJECT)
+    for (let i = 0; i < outs.length; i += 1) {
+      for (let j = i + 1; j < outs.length; j += 1) {
+        const left = outs[i].target
+        const right = outs[j].target
+        const aOnLeft = canReach(dsl, left, aId, { ignoreReject: true })
+        const aOnRight = canReach(dsl, right, aId, { ignoreReject: true })
+        const bOnLeft = canReach(dsl, left, bId, { ignoreReject: true })
+        const bOnRight = canReach(dsl, right, bId, { ignoreReject: true })
+        // 分处两条出边 → 互斥（canReach 含自身，直接连在网关上的情况也覆盖）
+        if ((aOnLeft && bOnRight) || (aOnRight && bOnLeft)) {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
+/** 一组设置活动里**真正撞车**的两两组合（互斥分支上的组合不算） */
+function clashingPairs(dsl: FlowDsl, setters: FlowNode[]): Array<[FlowNode, FlowNode]> {
+  const pairs: Array<[FlowNode, FlowNode]> = []
+  for (let i = 0; i < setters.length; i += 1) {
+    for (let j = i + 1; j < setters.length; j += 1) {
+      if (!mutuallyExclusive(dsl, setters[i].id, setters[j].id)) {
+        pairs.push([setters[i], setters[j]])
+      }
+    }
+  }
+  return pairs
+}
+
 function checkSetup(dsl: FlowDsl, add: Add): void {
   const setters = setupNodes(dsl)
   const covered = dsl.nodes.filter((node) => SETUP_COVERED_TYPES.includes(node.type))
+
+  // ⓪ 设置活动换了表单（2026-11-09 起允许）：换上去的必须仍然会挑人。
+  //    编译层不管表单是什么，照样把下游活动的承办人指向 ckplmSetupAssignees_{nodeId}；
+  //    如果那张表单（如「审批意见」）提交时不写这个变量，下游任务建出来没有办理人，
+  //    而且运行期不报错 —— 只能在这里拦。
+  for (const setter of setters) {
+    // setupNodes 返回的是宽类型 FlowNode（只有设置参与者类才有 formRef）
+    if (!SETUP_NODE_TYPES.includes(setter.type)) {
+      continue
+    }
+    const formRef = (setter as SetAssigneeNode).formRef
+    if (!formRef || isSetupFormCode(formRef)) {
+      continue
+    }
+    add({
+      code: IssueCode.SETUP_FORM_INVALID,
+      level: IssueLevel.ERROR,
+      nodeId: setter.id,
+      message:
+        `「${setter.name}」用的是表单「${formRef}」，它不会为下游活动挑选人员：`
+        + '提交后下游审批 / 会签的承办人变量没人写入，任务建出来没有办理人。'
+        + '请改用「设置流程参与者」或其它能挑人的表单',
+    })
+  }
 
   // ① 有需要人办的活动，却没有设置活动 → 这些人不会被发起人指派（各自按配置解析）
   if (covered.length > 0 && setters.length === 0) {
@@ -310,7 +396,7 @@ function checkSetup(dsl: FlowDsl, add: Add): void {
   //
   // 不撞车（各管各的分支）只是"多设了几个"，给提醒即可 —— 把合法的用法也拦下来，
   // 用户会学会忽略这条规则。
-  const coveredBy = new Map<string, string[]>()
+  const coveredBy = new Map<string, FlowNode[]>()
   const targetsOf = new Map<string, string[]>()
   for (const setter of setters) {
     // 不沿「驳回」回边：驳回是回退，不代表"在它之后执行"（见 canReach 的说明）
@@ -319,23 +405,30 @@ function checkSetup(dsl: FlowDsl, add: Add): void {
     )
     targetsOf.set(setter.id, targets.map((node) => node.id))
     for (const node of targets) {
-      coveredBy.set(node.id, [...(coveredBy.get(node.id) ?? []), setter.name])
+      coveredBy.set(node.id, [...(coveredBy.get(node.id) ?? []), setter])
     }
   }
   let conflicted = false
   for (const node of covered) {
-    const names = coveredBy.get(node.id) ?? []
-    if (names.length < 2) {
+    const settersOf = coveredBy.get(node.id) ?? []
+    if (settersOf.length < 2) {
+      continue
+    }
+    // 分处排他网关两条分支的设置活动只会执行一个（如"快速通道"与"标准/重大"各设一次），
+    // 运行期不存在"后者覆盖前者"，不算冲突 —— 这是合法用法，不能拦保存。
+    const clashing = clashingPairs(dsl, settersOf)
+    if (clashing.length === 0) {
       continue
     }
     conflicted = true
+    const involved = Array.from(new Set(clashing.flat()))
     add({
       code: IssueCode.SETUP_MULTIPLE,
       level: IssueLevel.ERROR,
       nodeId: node.id,
       message:
-        `「${node.name}」的人员被 ${names.length} 个「设置审批人」活动同时覆盖` +
-        `（${names.map((name) => `「${name}」`).join('、')}）：` +
+        `「${node.name}」的人员被 ${involved.length} 个「设置审批人」活动同时覆盖` +
+        `（${involved.map((setter) => `「${setter.name}」`).join('、')}）：` +
         '运行期由后执行的那一个写入，先执行的那一个所填人员会被静默覆盖 —— ' +
         '发起人以为指定了人，实际落到另一批人头上。请只保留一个能覆盖到它的「设置审批人」活动',
     })
@@ -345,8 +438,8 @@ function checkSetup(dsl: FlowDsl, add: Add): void {
       code: IssueCode.SETUP_MULTIPLE,
       level: IssueLevel.WARNING,
       message:
-        `流程里有 ${setters.length} 个「设置审批人」活动（目前各自覆盖的活动不重叠）：` +
-        '一旦后续改动让它们覆盖到同一个活动，后执行者会覆盖先执行者',
+        `流程里有 ${setters.length} 个「设置审批人」活动：运行期只会执行实际走到的那一条分支上的那个。` +
+        '一旦后续改动让同一条执行路径上出现两个，后执行者会覆盖先执行者',
     })
   }
 
@@ -359,24 +452,31 @@ function checkSetup(dsl: FlowDsl, add: Add): void {
     //    指定，任务建出来是空的（跑到那一步才发现"没人可办"）。所以：
     //      · 上游（含间接）人力活动全部为发起人策略 → 不报；
     //      · 只要有一个不是 → ERROR（拦保存），并在提示里点名是哪几个。
+    // 2026-11-08 再放宽一处：策略为「流程变量」（VARIABLE）时也不报 —— 这类活动的承办人
+    // 由运行期变量装进去（例如子流程的 taskAssignee，由父流程派发时写入），
+    // 根本轮不到「设置审批人」来指派，也不存在"任务建出来没人办"。
+    // 变更任务（ECT）这类"由派发节点装人"的子流程就是这种形态：不豁免的话，
+    // 流程里只要前面有一个办理节点，后面就永远存不了盘。
     // 同样**不沿「驳回」回边**（2026-10-13 实测反馈）：一条"驳回回到上游填报节点"的边，
     // 会让那条路径上的审批节点**反过来**变成"可达设置审批人"，于是被误判成"它之前的活动"
     // —— 用户画完驳回边就存不了盘。驳回是回退，不代表执行先后。
     const upstream = dsl.nodes.filter(
       (node) => node.id !== setter.id && canReach(dsl, node.id, setter.id, { ignoreReject: true }),
     )
+    const selfSourced = (node: FlowNode) =>
+      node.assignee?.strategy === AssigneeStrategy.INITIATOR
+      || node.assignee?.strategy === AssigneeStrategy.VARIABLE
     const offenders = upstream.filter((node) =>
-      SETUP_COVERED_TYPES.includes(node.type)
-      && node.assignee?.strategy !== AssigneeStrategy.INITIATOR)
+      SETUP_COVERED_TYPES.includes(node.type) && !selfSourced(node))
     if (offenders.length > 0) {
       add({
         code: IssueCode.SETUP_NOT_FIRST,
         level: IssueLevel.ERROR,
         nodeId: setter.id,
         message:
-          `「${setter.name}」之前有不由发起人办理的活动（${offenders.map((n) => `「${n.name}」`).join('、')}）：` +
+          `「${setter.name}」之前有不由发起人办理、也没配流程变量的活动（${offenders.map((n) => `「${n.name}」`).join('、')}）：` +
           '它们的人员不会被「设置审批人」指定，承办人会落空。' +
-          '把它们改为「由发起人办理」，或把「设置审批人」移到它们之前',
+          '把它们改为「由发起人办理」或「流程变量」，或把「设置审批人」移到它们之前',
       })
     }
 
@@ -402,6 +502,7 @@ function declaredAssigneeOf(node: FlowNode): { spec?: AssigneeSpec; label: strin
     case NodeType.START:
       return { spec: (node as StartNode).initiator, label: '发起人' }
     case NodeType.SET_ASSIGNEE:
+    case NodeType.CHANGE_TASK_SETUP:
       return { spec: (node as SetAssigneeNode).assignee, label: '执行人' }
     case NodeType.APPROVAL:
     case NodeType.COUNTERSIGN_APPROVAL:
@@ -1209,7 +1310,8 @@ function checkNode(dsl: FlowDsl, node: FlowNode, add: Add): void {
       checkAssignee(node.initiator, true, '发起人')
       break
 
-    case NodeType.SET_ASSIGNEE: {
+    case NodeType.SET_ASSIGNEE:
+    case NodeType.CHANGE_TASK_SETUP: {
       const setup = node as SetAssigneeNode
       checkAssignee(setup.assignee, true, '执行人')
       checkDeadline(node, setup.deadline, add)

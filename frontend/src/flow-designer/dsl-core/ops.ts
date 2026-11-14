@@ -16,6 +16,7 @@ import {
   GATEWAY_TYPES,
   NodeType,
   SETUP_COVERED_TYPES,
+  SETUP_NODE_TYPES,
   type NodeType as NodeTypeT,
 } from './constants'
 import type {
@@ -73,6 +74,7 @@ const DEFAULT_NODE_SIZE: Record<string, { width: number; height: number }> = {
   APPROVAL: { width: 142, height: 44 },
   COUNTERSIGN_APPROVAL: { width: 142, height: 44 },
   SET_ASSIGNEE: { width: 142, height: 44 },
+  CHANGE_TASK_SETUP: { width: 170, height: 44 },
   TASK: { width: 142, height: 44 },
   // 自动服务/通知此前矮 4px（48）—— 与其它活动统一高度：同类活动长得一样，画布才好扫
   SERVICE: { width: 142, height: 44 },
@@ -481,7 +483,8 @@ export function incomingEdges(dsl: FlowDsl, nodeId: string): FlowEdge[] {
  * 否则它会把自己也算进节点表单（自指）。
  */
 export function participantSpecOf(node: FlowNode): AssigneeSpec | undefined {
-  if (!ASSIGNEE_NODE_TYPES.includes(node.type) || node.type === NodeType.SET_ASSIGNEE) {
+  // 设置参与者类活动（含变更任务行业的那个变体）自己不进入"待指定"清单
+  if (!ASSIGNEE_NODE_TYPES.includes(node.type) || SETUP_NODE_TYPES.includes(node.type)) {
     return undefined
   }
   if (node.type === NodeType.NOTIFY) {
@@ -490,9 +493,9 @@ export function participantSpecOf(node: FlowNode): AssigneeSpec | undefined {
   return (node as { assignee?: AssigneeSpec }).assignee
 }
 
-/** 流程里的「设置审批人」活动 */
+/** 流程里的「设置参与者」类活动（内置设置审批人 + 变更任务行业变体） */
 export function setupNodes(dsl: FlowDsl): FlowNode[] {
-  return dsl.nodes.filter((node) => node.type === NodeType.SET_ASSIGNEE)
+  return dsl.nodes.filter((node) => SETUP_NODE_TYPES.includes(node.type))
 }
 
 /**

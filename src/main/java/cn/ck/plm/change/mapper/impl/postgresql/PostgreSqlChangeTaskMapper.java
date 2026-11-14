@@ -70,10 +70,10 @@ public interface PostgreSqlChangeTaskMapper extends ChangeTaskMapper {
     @ResultMap("changeTaskResult")
     List<ChangeTask> selectByNotice(@Param("noticeOid") String noticeOid);
 
-    /** 任务中心列：额外带出所属通告编号（响应装配，不入库） */
+    /** 任务中心列：额外带出所属通告编号与状态（响应装配，不入库） */
     String MINE_COLUMNS = "t.oid, t.code, t.name, t.description, t.notice_oid, t.task_type, t.assignee, t.status, "
             + "t.plan_start, t.plan_end, t.completed_at, t.tenant_oid, t.creator, t.created_at, t.updater, "
-            + "t.updated_at, n.code AS notice_code";
+            + "t.updated_at, n.code AS notice_code, n.status AS notice_status";
 
     @Override
     @Select("<script>" +
@@ -98,6 +98,7 @@ public interface PostgreSqlChangeTaskMapper extends ChangeTaskMapper {
             @Result(property = "description", column = "description"),
             @Result(property = "noticeOid",   column = "notice_oid"),
             @Result(property = "noticeCode",  column = "notice_code"),
+            @Result(property = "noticeStatus", column = "notice_status"),
             @Result(property = "taskType",    column = "task_type"),
             @Result(property = "assignee",    column = "assignee"),
             @Result(property = "status",      column = "status"),

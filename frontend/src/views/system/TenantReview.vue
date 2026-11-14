@@ -16,7 +16,7 @@
 
     <template v-else>
     <a-card :bordered="false" style="margin-top: 16px">
-      <a-tabs v-model:activeKey="activeTab">
+      <a-tabs v-model:activeKey="activeTab" @change="onTabChange">
         <a-tab-pane key="pending" :tab="'待审核 (' + pendingList.length + ')'">
           <a-table
             :columns="columns"
@@ -51,8 +51,35 @@
           <a-empty v-if="!loading && pendingList.length === 0" description="暂无待审核租户" />
         </a-tab-pane>
 
-        <a-tab-pane key="done" tab="已处理">
-          <a-empty description="历史记录功能开发中" />
+        <a-tab-pane key="done" :tab="'已处理 (' + reviewedList.length + ')'">
+          <a-table
+            :columns="reviewedColumns"
+            :data-source="reviewedList"
+            :loading="reviewedLoading"
+            :pagination="false"
+            row-key="oid"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'result'">
+                <a-tag :color="REVIEW_RESULT_COLOR[record.status] || 'default'">
+                  {{ REVIEW_RESULT_LABEL[record.status] || record.status }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'approvedAt'">
+                {{ formatAt(record.approvedAt) }}
+              </template>
+              <template v-else-if="column.key === 'rejectReason'">
+                <span :class="{ 'tenant-review__muted': !record.rejectReason }">
+                  {{ record.rejectReason || '—' }}
+                </span>
+              </template>
+            </template>
+          </a-table>
+          <a-empty
+            v-if="!reviewedLoading && reviewedList.length === 0"
+            description="暂无已处理记录"
+          />
         </a-tab-pane>
       </a-tabs>
     </a-card>
@@ -82,7 +109,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons-vue'
-import { getPendingTenants, approveTenant, rejectTenant } from '@/api'
+import { getPendingTenants, getReviewedTenants, approveTenant, rejectTenant } from '@/api'
 import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
@@ -96,6 +123,26 @@ const activeTab = ref('pending')
 const loading = ref(false)
 const pendingList = ref([])
 
+/** 已处理台账：通过 / 驳回 / 通过后又被停用、禁用的 */
+const reviewedList = ref([])
+const reviewedLoading = ref(false)
+/** 是否已经拉过（切页签时才查，审核动作后置回 false 重拉） */
+const reviewedLoaded = ref(false)
+
+/** 审核结果标签：PENDING 不会出现在这里 */
+const REVIEW_RESULT_LABEL = {
+  ACTIVE: '已通过',
+  REJECTED: '已驳回',
+  SUSPENDED: '已停用',
+  DISABLED: '已禁用'
+}
+const REVIEW_RESULT_COLOR = {
+  ACTIVE: 'green',
+  REJECTED: 'red',
+  SUSPENDED: 'orange',
+  DISABLED: 'default'
+}
+
 const columns = [
   { title: '租户标识', dataIndex: 'tenantId', key: 'tenantId' },
   { title: '公司名称', dataIndex: 'name', key: 'name' },
@@ -107,6 +154,29 @@ const columns = [
   { title: '状态', key: 'status' },
   { title: '操作', key: 'action', width: 200 }
 ]
+
+/**
+ * 已处理列表的列。
+ *
+ * <p>与待审核列表的差别在最后四列：审核结果是**已发生的事实**，
+ * 要能答出"谁批的 / 什么时候批的 / 为什么驳回"，这是台账的全部意义。
+ */
+const reviewedColumns = [
+  { title: '租户标识', dataIndex: 'tenantId', key: 'tenantId' },
+  { title: '公司名称', dataIndex: 'name', key: 'name' },
+  { title: '联系人', dataIndex: 'contactName', key: 'contactName' },
+  { title: '管理员', dataIndex: 'adminUsername', key: 'adminUsername' },
+  { title: '审核结果', key: 'result', width: 100 },
+  { title: '审核人', dataIndex: 'approvedBy', key: 'approvedBy', width: 110 },
+  { title: '审核时间', key: 'approvedAt', width: 150 },
+  { title: '驳回原因', key: 'rejectReason' }
+]
+
+/** 后端返回 ISO（2026-11-09T13:20:16），台账里只要到分钟 */
+function formatAt(value) {
+  if (!value) return '—'
+  return String(value).replace('T', ' ').slice(0, 16)
+}
 
 const rejectModal = reactive({
   visible: false,
@@ -129,6 +199,27 @@ const fetchPending = async () => {
   }
 }
 
+/** 已处理台账（审核结果） */
+const fetchReviewed = async () => {
+  reviewedLoading.value = true
+  try {
+    const res = await getReviewedTenants()
+    if (res.code === 200) {
+      reviewedList.value = res.data || []
+      reviewedLoaded.value = true
+    }
+  } catch {
+    // handled by interceptor
+  } finally {
+    reviewedLoading.value = false
+  }
+}
+
+/** 切到「已处理」才查一次：常用路径是待审核，不必每次进页面都多打一个请求 */
+function onTabChange(key) {
+  if (key === 'done' && !reviewedLoaded.value) fetchReviewed()
+}
+
 /**
  * 审核通过。
  *
@@ -147,6 +238,8 @@ const handleApprove = async (record) => {
   } catch {
     message.error('审核请求失败，请稍后重试')
   } finally {
+    // 台账变了：下次切到「已处理」重拉
+    reviewedLoaded.value = false
     await fetchPending()
   }
 }
@@ -176,6 +269,7 @@ const handleReject = async () => {
     rejectModal.visible = false
   } finally {
     rejectModal.loading = false
+    reviewedLoaded.value = false
     await fetchPending()
   }
 }
@@ -186,3 +280,9 @@ onMounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.tenant-review__muted {
+  color: #bfbfbf;
+}
+</style>

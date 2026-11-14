@@ -177,7 +177,7 @@
       :title="flow.action ? CHANGE_REQUEST_ACTION_LABEL[flow.action] : '流转'"
       :confirm-loading="flow.saving"
       :ok-button-props="{ disabled: flowConfirmDisabled }"
-      width="520px"
+      width="680px"
       centered
       ok-text="确定"
       cancel-text="取消"
@@ -191,13 +191,28 @@
         class="chg-flow-hint"
         :message="flowCloseBlockReason || '关闭前需先派生本请求的变更通告；一张通告都没有会被退回，派生的通告也必须全部关闭（已关闭 / 已取消）'"
       />
+      <!-- 发起评审：单据结论条 + 流程信息网格（与 ECN「提交审批」共用 ChangeFlowInfoPanel）——
+           用户要判断的是同一件事：走哪条流程、部署没部署。以前只有一句"将走某流程评审"，
+           流程 key 配错或模板没部署，要等点完确定才被后端退回 -->
+      <ChangeFlowInfoPanel
+        v-else-if="isReviewSubmit"
+        :record="flow.record"
+        :status-label="CHANGE_REQUEST_STATUS_LABEL[flow.record?.status] || flow.record?.status || ''"
+        :status-color="CHANGE_REQUEST_STATUS_COLOR[flow.record?.status] || 'default'"
+        :tags="reviewTags"
+        :flow="approvalFlow"
+        :blocked="reviewFlowBlocked"
+        :block-reason="reviewFlowBlockReason"
+        :block-hint="reviewFlowBlockHint"
+        :info-message="reviewFlowInfo"
+      />
+      <!-- 免审：提交即受理，原因必须写（与后端审计口径一致） -->
       <a-alert
-        v-else-if="flow.action === 'SUBMIT' && changeConfig.approvalRequired"
-        type="info"
+        v-else-if="flow.action === 'SUBMIT'"
+        type="warning"
         show-icon
         class="chg-flow-hint"
-        :message="submitHintTitle"
-        :description="submitHintDetail"
+        message="本租户已开启免审：提交即受理，不必走评审流程；填写的说明会记入时间线"
       />
       <a-alert
         v-else-if="flow.action === 'ANALYZE'"
@@ -289,13 +304,13 @@
               </a-space>
             </a-descriptions-item>
             <a-descriptions-item label="变更原因" :span="2">
-              <div class="chg-pre">{{ drawer.request.reason || '—' }}</div>
+              <div class="chg-pre chg-rich" v-html="drawerRich.reason"></div>
             </a-descriptions-item>
             <a-descriptions-item label="建议方案" :span="2">
-              <div class="chg-pre">{{ drawer.request.proposal || '—' }}</div>
+              <div class="chg-pre chg-rich" v-html="drawerRich.proposal"></div>
             </a-descriptions-item>
             <a-descriptions-item label="补充说明" :span="2">
-              <div class="chg-pre">{{ drawer.request.description || '—' }}</div>
+              <div class="chg-pre chg-rich" v-html="drawerRich.description"></div>
             </a-descriptions-item>
             <a-descriptions-item label="补充材料" :span="2">
               <a
@@ -366,6 +381,54 @@
             关闭变更请求前，必须先派生本请求的变更通告，并确保这些通告全部关闭（已关闭 / 已取消）。
           </div>
 
+          <!-- 再下一层：通告派出来的变更任务。没有这一段，想知道"谁在改、改到哪"得逐张点进通告 -->
+          <template v-if="drawer.notices.length">
+            <a-divider orientation="left" class="chg-divider">
+              变更任务（{{ drawer.tasks.length }}）
+            </a-divider>
+            <a-empty
+              v-if="!drawer.tasks.length"
+              description="这些通告下还没有变更任务"
+              :image-style="{ height: '40px' }"
+            />
+            <a-table
+              v-else
+              :columns="taskColumns"
+              :data-source="drawer.tasks"
+              :pagination="false"
+              row-key="oid"
+              size="small"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'code'">
+                  <a-tag color="cyan" size="small">{{ record.code }}</a-tag>
+                </template>
+                <template v-else-if="column.key === 'notice'">
+                  <span>{{ noticeCodeOf(record.noticeOid) }}</span>
+                </template>
+                <template v-else-if="column.key === 'status'">
+                  <a-tag :color="CHANGE_TASK_STATUS_COLOR[record.status] || 'default'">
+                    {{ CHANGE_TASK_STATUS_LABEL[record.status] || record.status }}
+                  </a-tag>
+                </template>
+                <template v-else-if="column.key === 'assignee'">
+                  <span :class="{ 'chg-muted': !record.assignee }">{{ record.assignee || '未指派' }}</span>
+                </template>
+                <template v-else-if="column.key === 'process'">
+                  <a
+                    v-if="record.processInstanceId"
+                    class="chg-link"
+                    @click="openProcessInstance(record.processInstanceId)"
+                  >查看流程</a>
+                  <span v-else class="chg-muted">未发起</span>
+                </template>
+              </template>
+            </a-table>
+            <div class="chg-hint">
+              变更任务由变更通告派发，执行人按任务下的受影响对象做修订；状态在「我的任务」页签里推进。
+            </div>
+          </template>
+
           <a-divider orientation="left" class="chg-divider">处理记录</a-divider>
           <a-empty v-if="!drawer.activities.length" description="暂无记录" :image-style="{ height: '48px' }" />
           <a-timeline v-else>
@@ -397,6 +460,7 @@ import { useRoute, useRouter } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
 import DynamicForm from '@/components/DynamicForm.vue'
 import { useUserStore } from '@/stores/user'
+import ChangeFlowInfoPanel from './ChangeFlowInfoPanel.vue'
 import {
   createChangeRequest,
   deleteChangeRequest,
@@ -405,6 +469,7 @@ import {
   getChangeConfig,
   getChangeRequest,
   getMyTodoTasks,
+  getProcessTemplateVersion,
   listChangeRequests,
   listProcessTemplates,
   transitionChangeRequest,
@@ -419,6 +484,8 @@ import {
   CHANGE_REQUEST_ACTION_LABEL,
   CHANGE_REQUEST_STATUS_COLOR,
   CHANGE_REQUEST_STATUS_LABEL,
+  CHANGE_TASK_STATUS_COLOR,
+  CHANGE_TASK_STATUS_LABEL,
   CHANGE_TYPE_LABEL,
   CUSTOMER_IMPACT_LABEL,
   INVENTORY_IMPACT_LABEL,
@@ -429,6 +496,7 @@ import {
   primaryRequestAction,
   requestRequiresComment
 } from '@/utils/changeFlow'
+import { sanitizeHtml } from '@/utils/html'
 
 const userStore = useUserStore()
 const currentUsername = computed(() => userStore.username || '')
@@ -478,6 +546,21 @@ const noticeColumns = [
   { title: '责任人', dataIndex: 'owner', key: 'owner', width: 100 }
 ]
 
+/**
+ * 详情抽屉里的变更任务（ECT）列表 —— 通告的子流程。
+ *
+ * 列宽合计控制在一屏内：抽屉本来就窄，再加就只剩编号看得见。
+ */
+const taskColumns = [
+  { title: '编号', key: 'code', width: 110 },
+  { title: '标题', dataIndex: 'name', key: 'name' },
+  // 归属通告：本请求可能派生多张 ECN，任务不标归属就分不清是给哪张单干的活
+  { title: '变更通告', key: 'notice', width: 100 },
+  { title: '状态', key: 'status', width: 90 },
+  { title: '责任人', dataIndex: 'assignee', key: 'assignee', width: 90 },
+  { title: '流程', key: 'process', width: 80 }
+]
+
 const loading = ref(false)
 const rows = ref([])
 const total = ref(0)
@@ -512,16 +595,12 @@ function entityTypeLabel(type) {
 /**
  * 租户变更配置：审批开关与 request 流程 key。
  *
- * <p>只用于「发起评审」弹窗的提示文案 —— 真正的分支判断在后端，
- * 开关读不到时按默认（需要审批）展示，避免提示与实际相反。
+ * <p>只用于「发起评审」弹窗 —— 真正的分支判断在后端，开关读不到时按默认（需要审批）展示，
+ * 避免提示与实际相反。
  */
 const changeConfig = ref({
   approvalRequired: true,
-  requestProcessKey: 'change-request',
-  /** 流程中文名：配置里只有 key，查一次模板清单补成业务同学看得懂的名字 */
-  requestProcessName: '',
-  /** 该流程是否已部署 —— 未部署要在提示里说清楚，否则用户以为点确定就能跑 */
-  requestProcessDeployed: true
+  requestProcessKey: 'change-request'
 })
 
 async function loadConfig() {
@@ -531,38 +610,119 @@ async function loadConfig() {
   } catch {
     /* 读不到按默认值提示 */
   }
-  await loadProcessName()
 }
 
-/** 按 key 反查流程名（「发起评审」提示要用中文名，而不是 change-request 这种技术 key） */
-async function loadProcessName() {
+/**
+ * 评审流程（「发起评审」真正拉起的那条）。
+ *
+ * <p>与 ECN「提交审批」同一口径：按配置里的 {@code requestProcessKey} 去流程清单查一次，
+ * 把名称 / 版本 / 部署状态 / 说明摆进弹窗。key 配错或模板没部署，以前要等点完确定
+ * 才被后端退回，用户拿到的只是一句"发起失败"。
+ */
+const approvalFlow = reactive({
+  loading: false,
+  /** 查过一次（无论是否命中）：查不到时说"未在流程清单里找到"，不再重复请求 */
+  loaded: false,
+  found: false,
+  key: '',
+  name: '',
+  description: '',
+  latestVersion: null,
+  latestCreatedAt: '',
+  deployedVersion: null,
+  /** 最新版本的变更说明（要按版本号再查一次，取不到就空着） */
+  changeNote: ''
+})
+
+/**
+ * 查一次「发起评审会拉起的那条流程」。
+ *
+ * <p>每次都重查：用户可能刚在「流程清单」里部署完就回来发起，缓存会让弹窗仍显示"尚未部署"。
+ * 查不到不编造；只有拿到确切结论时才禁用确定。
+ */
+async function loadApprovalFlow() {
+  if (approvalFlow.loading) return
+  approvalFlow.loading = true
   const key = changeConfig.value.requestProcessKey
-  if (!key) return
+  // 每次重查先清掉上一次结论：流程可能刚被删/换 key，留着旧值会显示"已部署"却发起失败
+  Object.assign(approvalFlow, {
+    key,
+    found: false,
+    name: '',
+    description: '',
+    latestVersion: null,
+    latestCreatedAt: '',
+    deployedVersion: null,
+    changeNote: ''
+  })
   try {
+    if (!key) return
     const res = await listProcessTemplates({})
-    if (res?.code !== 200) return
-    const hit = (res.data || []).find((t) => t.key === key)
+    const hit = res?.code === 200 ? (res.data || []).find((item) => item.key === key) : null
     if (!hit) return
-    changeConfig.value.requestProcessName = hit.displayName || hit.name || hit.key
-    changeConfig.value.requestProcessDeployed = !!hit.deployedVersion
+    Object.assign(approvalFlow, {
+      found: true,
+      name: hit.displayName || hit.name || key,
+      description: hit.description || '',
+      latestVersion: hit.latestVersion ?? null,
+      deployedVersion: hit.deployedVersion ?? null
+    })
+    // 变更说明长在版本行上：单独取一次最新版（取不到只是少一行，不影响发起）
+    if (hit.latestVersion) {
+      const ver = await getProcessTemplateVersion(hit.oid, hit.latestVersion).catch(() => null)
+      if (ver?.code === 200 && ver.data) {
+        approvalFlow.changeNote = ver.data.changeNote || ''
+        approvalFlow.latestCreatedAt = String(ver.data.createdAt || '').substring(0, 19).replace('T', ' ')
+      }
+    }
   } catch {
-    /* 查不到就退回 key 展示，不影响发起 */
+    /* 查不到就不拦：真正的判定在后端 */
+  } finally {
+    approvalFlow.loaded = true
+    approvalFlow.loading = false
   }
 }
 
-/** 「发起评审」提示第一行：这张单会走哪条流程 */
-const submitHintTitle = computed(() => {
-  const record = flow.record
-  const subject = record?.code
-    ? `${record.code}${record.name ? ' ' + record.name : ''}`
-    : '本变更请求'
-  const processName =
-    changeConfig.value.requestProcessName || changeConfig.value.requestProcessKey || '变更请求评审流程'
-  return `已配置变更审批：「${subject}」发起后将走「${processName}」评审`
+/** 本次流转是否会拉起评审流程：开了审批的提交才算（免审提交直接受理） */
+const isReviewSubmit = computed(() => flow.action === 'SUBMIT' && changeConfig.value.approvalRequired)
+
+/** 弹窗里的变更级别标签：分流依据，和流程信息一起看才解释得通 */
+const reviewTags = computed(() => {
+  const level = flow.record?.changeLevel
+  if (!level) return []
+  return [{
+    text: `变更级别：${CHANGE_LEVEL_LABEL[level] || level}`,
+    color: CHANGE_LEVEL_COLOR[level] || 'default'
+  }]
 })
 
-/** 「发起评审」提示第二行：按什么分级分流、去哪儿办、结束之后单据变成什么 */
-const submitHintDetail = computed(() => {
+/**
+ * 现在发起必然被退回的原因（空串 = 可以发起）。
+ *
+ * <p>三档都说清楚：没配 key / 流程清单里没这条 / 有但没部署 —— 以前都要等后端抛错才知道。
+ */
+const reviewFlowBlockReason = computed(() => {
+  // 正在查的时候什么都不判断：否则每次重开弹窗都会先闪一句"找不到流程"
+  if (!isReviewSubmit.value || !approvalFlow.loaded || approvalFlow.loading) return ''
+  if (!approvalFlow.key) return '未配置评审流程：请到「变更控制 → 设置」填写评审流程 key，或开启免审'
+  if (!approvalFlow.found) return `流程清单里找不到「${approvalFlow.key}」这条流程，发起会被退回`
+  if (!approvalFlow.deployedVersion) return '这条评审流程还没有部署，现在发起会被退回'
+  return ''
+})
+
+const reviewFlowBlocked = computed(() => !!reviewFlowBlockReason.value)
+
+/** 不能发起时补一句"去哪儿修"（光说不能发起，用户还是找不到出口） */
+const reviewFlowBlockHint = computed(() => {
+  if (!reviewFlowBlocked.value) return ''
+  if (approvalFlow.key && approvalFlow.found) {
+    return '请先在「流程清单」里部署该流程；或到「变更控制 → 设置」把评审流程换成已部署的那条。'
+  }
+  return '流程模板可在「业务配置 → 流程模板」查看；未配置流程也可以到「变更控制 → 设置」开启免审。'
+})
+
+/** 可以发起时的一句话：按什么分级分流、去哪儿办、结束之后本单变成什么 */
+const reviewFlowInfo = computed(() => {
   const level = CHANGE_LEVEL_LABEL[flow.record?.changeLevel] || '标准'
   const path =
     {
@@ -570,10 +730,7 @@ const submitHintDetail = computed(() => {
       STANDARD: '影响分析会签 → 评审决策',
       MAJOR: '影响分析会签 → CCB 决策会签'
     }[flow.record?.changeLevel] || '影响分析会签 → 评审决策'
-  const tail = changeConfig.value.requestProcessDeployed
-    ? ''
-    : '注意：该流程尚未部署，请先在「流程清单」里部署，否则无法发起。'
-  return `按「${level}」变更分流到「${path}」；评审待办在「任务中心」办理，流程结束后本单状态自动更新为「已受理」或「已否决」。${tail}`
+  return `提交后立即发起评审流程：按「${level}」变更分流到「${path}」；评审待办在「任务中心」办理，结束后本单状态自动更新为「已受理」或「已否决」`
 })
 
 /**
@@ -592,9 +749,12 @@ function actionsOf(record) {
     : actions
   // 挂了流程实例的单：受理/否决由流程回写；「发起评审」也不能再给 ——
   // 评审早就在跑了（状态由流程的「设置状态」节点推进），再点一次后端会以
-  // "已发起过评审流程，不能重复发起"拒绝，按钮留着只会让用户白点一次
+  // "已发起过评审流程，不能重复发起"拒绝，按钮留着只会让用户白点一次。
+  // 「取消」同理（2026-11-10）：单据已经在审批人手上，责任人单方面作废会让对方的待办
+  // 变成指向一张作废单的幽灵待办（后端 transition 同样拦，见 ChangeRequestServiceImpl）。
+  // 免审没有流程实例，这些状态仍可自行作废。
   return record.processInstanceId
-    ? visible.filter((action) => action !== 'ACCEPT' && action !== 'REJECT' && action !== 'SUBMIT')
+    ? visible.filter((action) => !['ACCEPT', 'REJECT', 'SUBMIT', 'CANCEL'].includes(action))
     : visible
 }
 
@@ -630,8 +790,12 @@ const drawerCloseBlockReason = computed(() => closeBlockReason(drawer.notices))
 const flowCloseBlockReason = computed(() =>
   (flow.action === 'CLOSE' && flow.gateChecked ? closeBlockReason(flow.notices) : ''))
 
-/** 流转弹窗的确定是否置灰：核对中先不让点，核对出不满足条件也不让点 */
-const flowConfirmDisabled = computed(() => flow.gateLoading || !!flowCloseBlockReason.value)
+/**
+ * 流转弹窗的确定是否置灰：核对中先不让点，核对出不满足条件也不让点；
+ * 评审流程没配 / 没部署同样不给点（否则点完才被后端退回）。
+ */
+const flowConfirmDisabled = computed(() =>
+  flow.gateLoading || !!flowCloseBlockReason.value || reviewFlowBlocked.value)
 
 /** 详情抽屉里的按钮是否置灰：非责任人全部只读，关闭还要满足"通告已全部闭环" */
 function drawerActionDisabled(action) {
@@ -656,6 +820,13 @@ function openNoticeDetail(record) {
   // 两层遮罩叠在一起会挡住刚打开的变更通告详情。
   drawer.visible = false
   router.push({ path: '/change', query: { tab: 'notice', noticeOid: record.oid } })
+}
+
+/** 任务行 → 归属通告编号（详情接口已带回 notices，不另发请求） */
+function noticeCodeOf(noticeOid) {
+  if (!noticeOid) return '—'
+  const notice = (drawer.notices || []).find((item) => item.oid === noticeOid)
+  return notice?.code || '—'
 }
 
 /** 评审流程实例详情：/workflow/instance/:id 对普通成员开放（见 router 的 ADMIN_ROUTES 注释） */
@@ -716,9 +887,24 @@ const drawer = reactive({
   activities: [],
   issues: [],
   notices: [],
+  /** 通告下的变更任务（详情接口带回，含 noticeOid / processInstanceId） */
+  tasks: [],
   affectedObjects: [],
   /** 补充材料的元信息（单据上只存 attachmentOid，文件名要单独查一次） */
   attachment: null
+})
+
+/**
+ * 抽屉里三段富文本（变更原因 / 建议方案 / 补充说明）落库存的是 HTML。
+ * 详情是只读展示，用 v-html 渲染排版，渲染前统一消毒 —— 内容来自租户提交。
+ */
+const drawerRich = computed(() => {
+  const pick = (v) => sanitizeHtml(v) || '—'
+  return {
+    reason: pick(drawer.request?.reason),
+    proposal: pick(drawer.request?.proposal),
+    description: pick(drawer.request?.description)
+  }
 })
 
 function emptyForm() {
@@ -879,6 +1065,9 @@ function openTransition(record, action) {
   flow.visible = true
   // 「关闭」要先知道子通告关没关完：抽屉里已有一份就复用，否则现查一次
   if (action === 'CLOSE') loadCloseGate(record)
+  // 「发起评审」要先查清会拉起哪条流程（名称 / 版本 / 部署状态）：
+  // key 配错或模板没部署，不能让用户点完确定才被退回。每次都重查（可能刚部署完回来）
+  if (action === 'SUBMIT' && changeConfig.value.approvalRequired) loadApprovalFlow()
 }
 
 /**
@@ -908,6 +1097,12 @@ async function loadCloseGate(record) {
 }
 
 async function handleFlow() {
+  // 先判"发起必然失败"的那一档：它同时在 flowConfirmDisabled 里，先说的话才不会
+  // 被下面那句"正在核对变更通告状态"盖住，用户才知道到底缺什么
+  if (reviewFlowBlocked.value) {
+    message.warning(reviewFlowBlockReason.value)
+    return
+  }
   if (flowConfirmDisabled.value) {
     message.warning(flowCloseBlockReason.value || '正在核对变更通告状态，请稍候')
     return
@@ -941,6 +1136,7 @@ async function openDetail(record) {
   drawer.loading = true
   drawer.issues = []
   drawer.notices = []
+  drawer.tasks = []
   drawer.affectedObjects = []
   try {
     const res = await getChangeRequest(record.oid)
@@ -951,6 +1147,8 @@ async function openDetail(record) {
       drawer.affectedObjects = res.data.affectedObjects || []
       // 子流程：关闭变更请求前要看到"还有哪些通告没关"
       drawer.notices = res.data.notices || []
+      // 再下一层：这些通告下派了哪些变更任务、分别归谁执行
+      drawer.tasks = res.data.tasks || []
       // 补充材料：单据上只存附件 oid，文件名/大小要按 oid 回查（查不到就当没传）
       drawer.attachment = null
       if (drawer.request.attachmentOid) {
@@ -1060,6 +1258,11 @@ defineExpose({ reload })
 .chg-drawer-actions { margin-top: 12px; }
 .chg-divider { margin: 16px 0 12px; }
 .chg-pre { white-space: pre-wrap; word-break: break-word; }
+/* 富文本详情：段落/列表自带外边距会把描述行撑开，首尾也留空 */
+.chg-rich :deep(p) { margin: 0 0 6px; }
+.chg-rich :deep(p:last-child) { margin-bottom: 0; }
+.chg-rich :deep(ul), .chg-rich :deep(ol) { margin: 0 0 6px; padding-left: 20px; }
+.chg-rich :deep(img) { max-width: 100%; height: auto; }
 .chg-muted { color: #bfbfbf; }
 .chg-hint { color: #8c8c8c; font-size: 12px; margin-top: 6px; line-height: 1.6; }
 .chg-flow-hint { margin-bottom: 12px; }

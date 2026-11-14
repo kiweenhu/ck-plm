@@ -151,13 +151,9 @@ const NOTICE_TRANSITIONS = {
   START_WORK: { APPROVED: 'IN_WORK' },
   COMPLETE: { IN_WORK: 'COMPLETED' },
   CLOSE: { COMPLETED: 'CLOSED' },
-  CANCEL: {
-    DRAFT: 'CANCELLED',
-    SUBMITTED: 'CANCELLED',
-    APPROVING: 'CANCELLED',
-    APPROVED: 'CANCELLED',
-    IN_WORK: 'CANCELLED'
-  }
+  // 只有草稿能取消：提交（= 提交审批）之后单据在审批人 / 实施人手上，
+  // 再允许取消就是单方面作废一份正在办理的单。要叫停走管理员「设置状态」。
+  CANCEL: { DRAFT: 'CANCELLED' }
 }
 
 /**
@@ -182,10 +178,16 @@ export function availableNoticeActions(status) {
   return actions
 }
 
-export function primaryNoticeAction(status) {
+/**
+ * 主动作：按业务优先级取第一个**可用**动作。
+ *
+ * <p>`actions` 默认取状态机的可用动作；调用方可传一份过滤后的清单
+ * （如流程在跑时去掉 START_WORK / COMPLETE），主按钮就不会和列表其它入口各说各话。
+ */
+export function primaryNoticeAction(status, actions = availableNoticeActions(status)) {
   // SUBMITTED 的主动作是「发起审批」—— 不排进去的话，这个状态会没有任何主按钮
   for (const action of ['SUBMIT', 'START_APPROVAL', 'START_WORK', 'COMPLETE', 'CLOSE']) {
-    if (NOTICE_TRANSITIONS[action][status]) return action
+    if (actions.includes(action)) return action
   }
   return null
 }
@@ -213,10 +215,14 @@ export function noticeEditable(status) {
   return status === 'DRAFT' || status === 'REJECTED'
 }
 
-/** 该状态能否增删受影响对象 */
-export function noticeAffectedEditable(status) {
-  return status === 'DRAFT' || status === 'REJECTED'
-}
+/*
+ * 受影响对象在**详情页一律只读**：对象清单与"对象归哪张事项"由流程决定
+ * （新建/编辑通告时的更改事项、审批通过后的「变更任务确认与派发」办理页）。
+ * 详情页改动不走派发清单同步（流程变量 changeTaskList），真放开了，
+ * "页面上的清单"和"实际派发的清单"就会各说各话。
+ *
+ * 后端仍允许"已批准 / 实施中"增删对象 —— 那是留给派发节点补对象的，不要据此放开详情页。
+ */
 
 // ==================== 变更任务（ECT）====================
 
@@ -248,6 +254,8 @@ export const CHANGE_TASK_ACTION_LABEL = {
   CREATE: '新建',
   UPDATE: '更新',
   START: '开始处理',
+  // 执行修订：表单里那一下「执行变更」（服务端逐个修订对象并回填产物），不是状态推进
+  EXECUTE: '执行修订',
   SUBMIT: '提交验收',
   PASS: '验收通过',
   RETURN: '验收退回'

@@ -55,7 +55,7 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'target'">
-            <span class="ecn-code">{{ record.entityCode }}</span>
+            <ChangeObjectLink :record="record" class="ecn-code" />
             {{ record.entityName }}
           </template>
           <template v-else-if="column.key === 'container'">
@@ -65,6 +65,12 @@
             <a-tag v-if="record.executedAt" color="green">已执行</a-tag>
             <a-tag v-else color="default">待执行</a-tag>
           </template>
+          <template v-else-if="column.key === 'versions'">
+            <span class="ecn-version">{{ record.baseVersion || '—' }} → {{ record.currentResultVersion || record.resultVersion || '—' }}</span>
+          </template>
+          <template v-else-if="column.key === 'executor'">
+            {{ record.executedBy || '—' }}
+          </template>
           <template v-else-if="column.key === 'note'">
             {{ record.note || '—' }}
           </template>
@@ -72,10 +78,12 @@
       </a-table>
     </div>
 
-    <div v-if="tasks.length" class="ecn-card">
+    <div v-if="tasks.length && !hideTasks" class="ecn-card">
       <div class="ecn-head">
         <span class="ecn-title">更改事项（执行清单）</span>
-        <span class="ecn-muted">共 {{ tasks.length }} 项 · 审批通过后自动派发</span>
+        <span class="ecn-muted">
+          共 {{ tasks.length }} 项{{ detailed ? '' : ' · 审批通过后自动派发' }}
+        </span>
       </div>
       <a-table
         :columns="taskColumns"
@@ -99,6 +107,11 @@
             <a-tag :color="CHANGE_TASK_STATUS_COLOR[record.status] || 'default'">
               {{ CHANGE_TASK_STATUS_LABEL[record.status] || record.status }}
             </a-tag>
+            <!-- 完成时间只在真完成时才有：汇总确认的人要靠它判断"什么时候改完的" -->
+            <div v-if="record.completedAt" class="ecn-muted ecn-time">{{ record.completedAt }}</div>
+          </template>
+          <template v-else-if="column.key === 'objects'">
+            {{ taskObjectText(record) }}
           </template>
         </template>
       </a-table>
@@ -109,6 +122,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { getChangeNotice } from '@/api'
+import ChangeObjectLink from '@/components/change/ChangeObjectLink.vue'
 import {
   CERT_IMPACT_LABEL,
   CHANGE_LEVEL_COLOR,
@@ -137,7 +151,21 @@ import {
  */
 const props = defineProps({
   /** 表单上下文（ProcessTaskFormVO），只用到 variables.noticeOid */
-  form: { type: Object, default: null }
+  form: { type: Object, default: null },
+  /**
+   * 汇总确认视图（变更实施汇总确认节点用）。
+   *
+   * <p>审批 / 会签阶段任务都还没跑完，"变更后版本、执行人、每个任务改了几个对象"这些列
+   * 全是空值，只会让人以为漏填。所以默认关掉，只在汇总确认那里打开。
+   */
+  detailed: { type: Boolean, default: false },
+  /**
+   * 隐藏只读的「更改事项」卡（「变更任务确认与派发」用）。
+   *
+   * <p>那一节点要在同一页里给出可编辑的清单 —— 上面一块只读、下面一块可编辑，出现两份
+   * 一样的表，办理人不知道该看哪份。留摘要 + 受影响对象，清单交给调用方的编辑器渲染。
+   */
+  hideTasks: { type: Boolean, default: false }
 })
 
 const loading = ref(false)
@@ -147,20 +175,62 @@ const request = ref(null)
 const affectedObjects = ref([])
 const tasks = ref([])
 
-const objectColumns = [
+const BASE_OBJECT_COLUMNS = [
   { key: 'target', title: '对象', dataIndex: 'entityName' },
-  { key: 'container', title: '所属', dataIndex: 'containerName', width: 180 },
+  { key: 'container', title: '所属', dataIndex: 'containerName', width: 160 },
   { key: 'state', title: '执行状态', dataIndex: 'executedAt', width: 100 },
-  { key: 'note', title: '备注', dataIndex: 'note', width: 160 }
+  { key: 'note', title: '备注', dataIndex: 'note', width: 140 }
 ]
 
-const taskColumns = [
+/** 汇总确认才显示的列：变更前 → 变更后、谁执行的 */
+const DETAILED_OBJECT_COLUMNS = [
+  { key: 'versions', title: '变更前 → 变更后', width: 150 },
+  { key: 'executor', title: '执行人', width: 110 }
+]
+
+const BASE_TASK_COLUMNS = [
   { key: 'task', title: '任务', dataIndex: 'name' },
   { key: 'type', title: '类型', dataIndex: 'taskType', width: 90 },
-  { key: 'assignee', title: '责任人', dataIndex: 'assignee', width: 120 },
-  { key: 'plan', title: '计划', dataIndex: 'planEnd', width: 190 },
+  { key: 'assignee', title: '责任人', dataIndex: 'assignee', width: 110 },
+  { key: 'plan', title: '计划', dataIndex: 'planEnd', width: 180 },
   { key: 'status', title: '状态', dataIndex: 'status', width: 100 }
 ]
+
+/** 汇总确认才显示：这个任务改了几个对象（已执行 / 总数） */
+const DETAILED_TASK_COLUMNS = [
+  { key: 'objects', title: '对象', width: 80 }
+]
+
+const objectColumns = computed(() =>
+  props.detailed ? [...BASE_OBJECT_COLUMNS, ...DETAILED_OBJECT_COLUMNS] : BASE_OBJECT_COLUMNS)
+
+const taskColumns = computed(() =>
+  props.detailed ? [...BASE_TASK_COLUMNS, ...DETAILED_TASK_COLUMNS] : BASE_TASK_COLUMNS)
+
+/**
+ * 按任务聚合受影响对象 —— "这个任务改了什么、改完没有"。
+ *
+ * <p>受影响对象按 {@code taskOid} 归属到任务；未分配的（taskOid 为空）不进任何任务行，
+ * 只在下面的对象清单里出现 —— 汇总确认本来就是要抓这种漏掉的。
+ */
+const taskObjectStats = computed(() => {
+  const map = new Map()
+  for (const item of affectedObjects.value) {
+    const key = item.taskOid || ''
+    if (!key) continue
+    const stat = map.get(key) || { total: 0, executed: 0 }
+    stat.total += 1
+    if (item.executedAt) stat.executed += 1
+    map.set(key, stat)
+  }
+  return map
+})
+
+function taskObjectText(record) {
+  const stat = taskObjectStats.value.get(record.oid)
+  if (!stat) return '—'
+  return `${stat.executed}/${stat.total}`
+}
 
 const noticeOid = computed(() => {
   const value = props.form?.variables?.noticeOid
@@ -194,7 +264,19 @@ async function load() {
 
 onMounted(load)
 
-defineExpose({ reload: load })
+defineExpose({
+  reload: load,
+  /**
+   * 已加载的数据快照 —— 汇总确认表单在 collect 时读它做前置校验
+   * （还差哪些任务 / 哪些对象没执行）。返回函数而不是响应式对象：
+   * 调用方拿到的一定是"提交这一刻"的值，不会读到挂载前的空数组。
+   */
+  snapshot: () => ({
+    notice: notice.value,
+    tasks: tasks.value,
+    affectedObjects: affectedObjects.value
+  })
+})
 </script>
 
 <style scoped>
@@ -228,6 +310,20 @@ defineExpose({ reload: load })
 .ecn-muted {
   font-size: 12px;
   color: #8c8c8c;
+}
+
+/* 任务状态下方的完成时间：比正文小一号，别和状态标签抢注意力 */
+.ecn-time {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* 版本跃迁用等宽：A.2 → B.1 这类值对齐了才扫得快 */
+.ecn-version {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .ecn-pre {

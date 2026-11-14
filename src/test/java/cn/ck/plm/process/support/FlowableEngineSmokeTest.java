@@ -20,6 +20,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,14 +63,27 @@ class FlowableEngineSmokeTest {
      * 自建表 + 关异步执行器：测试里不需要定时器 / 异步任务跑起来。
      */
     static ProcessEngine newEngine(String name) {
-        return new StandaloneInMemProcessEngineConfiguration()
-                .setJdbcUrl("jdbc:h2:mem:ckplm_" + name + ";DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE")
-                .setJdbcDriver("org.h2.Driver")
-                .setJdbcUsername("sa")
-                .setJdbcPassword("")
-                .setDatabaseSchemaUpdate(ProcessEngineConfiguration.DB_SCHEMA_UPDATE_TRUE)
-                .setAsyncExecutorActivate(false)
-                .buildProcessEngine();
+        return newEngine(name, null);
+    }
+
+    /**
+     * 带 {@code beans} 的版本：流程里的 {@code ${beanName}}（自动服务节点统一是
+     * {@code ${plmServiceDelegate}}）只有注册到引擎才解得开，否则一进入该节点就抛
+     * {@code Unknown property used in expression}。
+     */
+    static ProcessEngine newEngine(String name, Map<String, Object> beans) {
+        StandaloneInMemProcessEngineConfiguration config = new StandaloneInMemProcessEngineConfiguration();
+        config.setJdbcUrl("jdbc:h2:mem:ckplm_" + name + ";DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE");
+        config.setJdbcDriver("org.h2.Driver");
+        config.setJdbcUsername("sa");
+        config.setJdbcPassword("");
+        config.setDatabaseSchemaUpdate(ProcessEngineConfiguration.DB_SCHEMA_UPDATE_TRUE);
+        config.setAsyncExecutorActivate(false);
+        if (beans != null && !beans.isEmpty()) {
+            // setBeans 的键类型是 Object（引擎按表达式里的名字查），这里转一层
+            config.setBeans(new HashMap<>(beans));
+        }
+        return config.buildProcessEngine();
     }
 
     @Test

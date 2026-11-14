@@ -20,12 +20,14 @@ import java.time.LocalDateTime;
  * 作废、状态推进属于对象自身的生命周期动作，不从这里走 ——
  * 否则处置枚举会重新长回来，两套语义又会分叉。
  *
- * <h3>三段版本信息</h3>
+ * <h3>本表只记「变更前」（2026-11-09 拆表）</h3>
  * <pre>
- * baseIterationOid / baseVersion      被修订的那一版（A.2）
- * resultIterationOid / resultVersion  修订产物（B.1）；执行后回填
- * executedAt 非空                     已执行 —— 幂等判据：重复提交不产生第二个 B 版
+ * ck_change_affected_object   一条 = "要把哪个对象的哪一版改掉"（base_*）
+ * ck_change_result_object     一条 = 执行产出的一个版本（{@link ChangeResultObject}）
  * </pre>
+ * <p>本类上的 {@code resultIterationOid / resultVersion / executedAt / executedBy}
+ * 是<b>查询期 JOIN 出来的只读展示字段，不落本表</b> —— 列表页需要"改没改、改成哪一版"
+ * 一眼可见，但事实只有一个来源：结果表。
  *
  * <h3>locked（变更占用）</h3>
  * <p>同一主对象同时只能被一个未完成的变更持有。锁建在
@@ -71,16 +73,32 @@ public class ChangeAffectedObject extends BaseEntity implements TenantEntity {
     /** 被修订的版本号（A.2） */
     private String baseVersion;
 
-    /** 修订产物迭代 oid（B.1）；执行后回填 */
+    /**
+     * 修订产物迭代 oid（B.1）—— <b>只读展示字段</b>：不落本表，查询期从
+     * {@code ck_change_result_object} LEFT JOIN 出来。
+     *
+     * <p>一拆多时这里只会有其中一条（列表按"已执行 / 未执行"展示足够）；
+     * 要完整的产出一律查结果表，不要指望这个字段。
+     */
     private String resultIterationOid;
 
-    /** 修订产物版本号（B.1） */
+    /** 修订产物版本号（B.1）—— 同上，JOIN 得到的展示字段 */
     private String resultVersion;
 
-    /** 执行时间（非空 = 已执行，幂等判据） */
+    /**
+     * 修订产物所在大版本的<b>最新小版本</b>（B.2）—— 服务层回查出来的展示字段，不落库。
+     *
+     * <p>结果表里记的是修订那一刻的快照 B.1；执行人拿到权限后检出 / 修改 / 检入，
+     * 会在同一个 B 大版本下再出 B.2、B.3……审批人要看的是"这次改完的结果现在是哪一版"，
+     * 而不是第一次修订的版本。限定同一 master + 同一 revision，别把下一次大版本 C.1 混进来。
+     * 查不到时前端回落 {@link #resultVersion}。
+     */
+    private String currentResultVersion;
+
+    /** 执行时间 —— JOIN 得到（非空即"已有结果行"） */
     private LocalDateTime executedAt;
 
-    /** 执行人 */
+    /** 执行人 —— JOIN 得到 */
     private String executedBy;
 
     /** 变更占用：ECN 批准时置 true，完成/取消时释放 */
@@ -130,6 +148,9 @@ public class ChangeAffectedObject extends BaseEntity implements TenantEntity {
 
     public String getResultVersion() { return resultVersion; }
     public void setResultVersion(String resultVersion) { this.resultVersion = resultVersion; }
+
+    public String getCurrentResultVersion() { return currentResultVersion; }
+    public void setCurrentResultVersion(String currentResultVersion) { this.currentResultVersion = currentResultVersion; }
 
     public LocalDateTime getExecutedAt() { return executedAt; }
     public void setExecutedAt(LocalDateTime executedAt) { this.executedAt = executedAt; }

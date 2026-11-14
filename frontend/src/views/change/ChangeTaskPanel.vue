@@ -44,16 +44,33 @@
         </template>
         <template v-else-if="column.key === 'action'">
           <a-space size="small">
+            <!-- 子流程已拉起：执行由流程驱动，动作换成「去办理 / 流程」，
+                 不再给「开始处理 / 提交验收」这类直接改状态的按钮；
+                 没有子流程的（免审单）也要等通告进入「实施中」才放开。 -->
+            <a-button v-if="todoTaskOf(record)" type="link" size="small" @click="goTask(record)">
+              去办理
+            </a-button>
             <a-button
-              v-for="action in availableTaskActions(record.status)"
-              :key="action"
+              v-else-if="record.processInstanceId"
               type="link"
               size="small"
-              :disabled="taskRequiresOwner(action) && record.assignee !== currentUsername"
-              @click="openTransition(record, action)"
+              @click="goProcess(record)"
             >
-              {{ CHANGE_TASK_ACTION_LABEL[action] }}
+              流程
             </a-button>
+            <template v-else-if="tasksExecutable(record)">
+              <a-button
+                v-for="action in availableTaskActions(record.status)"
+                :key="action"
+                type="link"
+                size="small"
+                :disabled="taskRequiresOwner(action) && record.assignee !== currentUsername"
+                @click="openTransition(record, action)"
+              >
+                {{ CHANGE_TASK_ACTION_LABEL[action] }}
+              </a-button>
+            </template>
+            <span v-else class="chg-muted">待开始实施</span>
           </a-space>
         </template>
       </template>
@@ -83,9 +100,10 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import DataTable from '@/components/DataTable.vue'
-import { listMyChangeTasks, transitionChangeTask } from '@/api'
+import { getMyTodoTasks, listMyChangeTasks, transitionChangeTask } from '@/api'
 import {
   CHANGE_TASK_ACTION_LABEL,
   CHANGE_TASK_STATUS_COLOR,
@@ -132,6 +150,57 @@ const filters = reactive({ status: props.status || undefined, keyword: '' })
 
 const flow = reactive({ visible: false, saving: false, oid: '', code: '', name: '', action: '', comment: '' })
 
+const router = useRouter()
+
+/**
+ * 实例 → 我的待办任务 id。
+ *
+ * <p>任务一旦拉起子流程，状态就只能由流程里的办理推进：这里要给出「去办理」，
+ * 而不是让人在业务列表上点「开始处理」（那样流程里还挂着待办，两边对不上）。
+ * 一次拉自己的待办（通常几条）比逐行查便宜。
+ */
+const todoTaskByInstance = ref({})
+
+async function loadTodoTasks() {
+  try {
+    const res = await getMyTodoTasks({ page: 1, size: 200 })
+    if (res?.code !== 200) return
+    const map = {}
+    for (const task of res.data || []) {
+      if (task.processInstanceId && !map[task.processInstanceId]) {
+        map[task.processInstanceId] = task.id
+      }
+    }
+    todoTaskByInstance.value = map
+  } catch {
+    /* 待办拉不到不影响列表本身 */
+  }
+}
+
+function todoTaskOf(record) {
+  return record?.processInstanceId ? todoTaskByInstance.value[record.processInstanceId] || '' : ''
+}
+
+function goTask(record) {
+  const taskId = todoTaskOf(record)
+  if (taskId) router.push(`/workflow/task/${taskId}`)
+}
+
+function goProcess(record) {
+  if (record?.processInstanceId) router.push(`/workflow/instance/${record.processInstanceId}`)
+}
+
+/**
+ * 任务能不能在业务列表上直接推进 = 所属通告已进入「实施中」。
+ *
+ * <p>审批单的任务由流程派发、由任务子流程推进（走上面的「去办理」），轮不到这里；
+ * 免审单没有流程，任务在提交时就已派发（DRAFT → OPEN），但通告还停在「已批准」——
+ * 那时放开就会把任务先做完、通告状态还在后面追，所以按通告状态统一门控。
+ */
+function tasksExecutable(record) {
+  return record?.noticeStatus === 'IN_WORK'
+}
+
 /** 页头换了筛选（或清空）：同步内部状态并回到第一页重取 */
 watch(() => props.status, (value) => {
   const next = value || undefined
@@ -164,6 +233,7 @@ async function loadList() {
     if (res.code === 200) {
       rows.value = res.data.rows || []
       total.value = res.data.total || 0
+      loadTodoTasks()
       // 列表变了 → 让父级重取页头的状态计数
       emit('changed')
     } else {
@@ -232,4 +302,6 @@ defineExpose({ reload })
 
 <style scoped>
 .chg-panel { display: flex; flex-direction: column; height: 100%; }
+/* 无非流程动作时的占位说明（通告还没进入实施中） */
+.chg-muted { color: #8c8c8c; }
 </style>

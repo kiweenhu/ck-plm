@@ -239,6 +239,15 @@ export function getPendingCount() {
 }
 
 /**
+ * 已处理租户（审核结果台账）：通过 / 驳回，以及通过后被停用、禁用的。
+ *
+ * <p>每行带 approvedBy / approvedAt / rejectReason —— 审核页「已处理」页签直接展示。
+ */
+export function getReviewedTenants() {
+  return request.get('/tenants/reviewed')
+}
+
+/**
  * 审核通过
  *
  * <p>{@code config} 透传给 axios：审核页会传 {@code skipErrorToast} 自己提示 ——
@@ -704,6 +713,7 @@ export function getLifecycleStateOptions(oid, typeDefinitionCode) {
  * @param {object} data { typeDefinitionCode, mode, targetStateCode?, migrateTemplate? }
  *   mode=INITIAL：退回模板初始状态（沿模板回退规则逐跳，如 已发布 → 工作中 → 草稿）
  *   mode=SPECIFIED：设到 targetStateCode（要求当前状态能一步迁到它）
+ *   mode=RESET_TEMPLATE：只把对象绑定的模板换到最新子版本（状态按 code 保留，最新版没有就落初始）
  *   migrateTemplate=true：先把对象从固化的旧模板迁到业务配置的新模板，再设置状态（同一事务）
  */
 export function setLifecycleState(oid, data) {
@@ -3131,9 +3141,10 @@ export function listChangeObjectCandidates(keyword, limit = 20, containerOid) {
 /**
  * 收集所选对象关联的其他对象（更改事项挑对象时的「收集关联对象」）。
  *
- * <p>当前口径：只对零件生效 —— 关联文档（DESCRIBES + REFERENCE）+ 替代件（双向），BOM 不收集。
+ * <p>当前口径：只对零件生效 —— 关联文档（DESCRIBES + REFERENCE）+ 关联工程数据（EPMBuildRule）
+ * + 替代件（双向），BOM 不收集。
  * 返回 `[{ oid, entityType, code, name, containerOid, relation, alternateType? }]`，
- * `relation` = DOCUMENT / ALTERNATE，服务端已按 oid 去重。
+ * `relation` = DOCUMENT / ENG_DOCUMENT / ALTERNATE，服务端已按 oid 去重。
  */
 export function listRelatedChangeObjects(entityOids) {
   return request.get('/plm/change-requests/related-objects', {
@@ -3270,6 +3281,14 @@ export function assignChangeAffectedTask(oid, affectedOid, taskOid) {
   return request.put(`/plm/change-notices/${oid}/affected-objects/${affectedOid}/task`, { taskOid: taskOid || '' })
 }
 
+/**
+ * 按当前更改事项重写派发清单变量 changeTaskList。
+ * 「变更任务确认与派发」节点的办理页在提交前调它 —— 下游多实例子流程读的是这个变量。
+ */
+export function syncChangeNoticeDispatchList(oid) {
+  return request.post(`/plm/change-notices/${oid}/dispatch-list`)
+}
+
 /** 我的任务（assignee 缺省 = 当前用户） */
 export function listMyChangeTasks(params = {}) {
   return request.get('/plm/change-tasks/my', { params })
@@ -3295,6 +3314,21 @@ export function updateChangeTask(oid, data) {
 /** 流转 { action, comment }；START / SUBMIT 仅任务责任人可执行 */
 export function transitionChangeTask(oid, payload) {
   return request.post(`/plm/change-tasks/${oid}/transition`, payload)
+}
+
+/** 变更任务详情 → { task, activities } */
+export function getChangeTask(oid) {
+  return request.get(`/plm/change-tasks/${oid}`)
+}
+
+/**
+ * 执行变更任务：服务端对任务下的受影响对象逐个修订（出新大版本）并回填
+ * `resultIterationOid / resultVersion / executedAt`，返回执行后的对象清单。
+ *
+ * <p>`affectedOids` 省略 = 该任务下全部未执行的对象；已执行的行幂等跳过。
+ */
+export function executeChangeTask(oid, affectedOids) {
+  return request.post(`/plm/change-tasks/${oid}/execute`, { affectedOids: affectedOids || [] })
 }
 
 /**

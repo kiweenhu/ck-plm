@@ -9,11 +9,32 @@
              "该流程未关联业务实体"已经把 0 说清楚了，写成"业务实体（0）"是同一句话两处说 -->
         <span v-if="entities.length" class="tcv-block-count">（{{ entities.length }}）</span>
       </div>
-      <a-empty v-if="!entities.length" :image-style="{ height: '32px' }"
+      <a-empty v-if="!entities.length && !changeDoc" :image-style="{ height: '32px' }"
         description="该流程未关联业务实体" />
+      <!-- 变更类流程（请求 / 通告 / 任务）：单据不是软类型实例，发起时不写 ck_process_entity_set，
+           实体引用恒为空 —— 但"办的是哪张单"就藏在 businessKey 里（见 composables/useChangeDoc）。
+           两者互斥（有实体引用就不再查单据），所以复用同一套行样式 -->
+      <div v-else-if="!entities.length && changeDoc" class="tcv-entities">
+        <div class="tcv-entity">
+          <a-tag color="geekblue">{{ changeDoc.kindLabel }}</a-tag>
+          <span class="tcv-entity-name">{{ changeDoc.name }}</span>
+          <span v-if="changeDoc.code" class="tcv-entity-code">{{ changeDoc.code }}</span>
+          <a-tag v-if="changeDoc.status" size="small" :color="changeDoc.statusColor">
+            {{ changeDoc.status }}
+          </a-tag>
+          <a-button
+            v-if="changeDoc.path"
+            type="link" size="small" class="tcv-entity-detail"
+            @click="router.push(changeDoc.path)"
+          >
+            <template #icon><FileSearchOutlined /></template>
+            查看单据
+          </a-button>
+        </div>
+      </div>
       <!-- 一个实体一行看着清爽，但"一个流程带一批对象走审批"时 4 条就占掉半屏；
            多于一条即排成两列（`is-multi`），每条仍是同一套内容 -->
-      <div class="tcv-entities" :class="{ 'is-multi': entities.length > 1 }">
+      <div v-else class="tcv-entities" :class="{ 'is-multi': entities.length > 1 }">
         <div v-for="entity in entities" :key="entity.entityOid" class="tcv-entity">
           <a-tag color="geekblue">{{ entity.typeCode || entity.rootTypeCode || '未知类型' }}</a-tag>
           <span class="tcv-entity-name">{{ labelOf(entity) }}</span>
@@ -120,6 +141,11 @@ const props = defineProps({
   context: { type: Object, default: () => ({}) },
   /** entityOid → { code, name }：办理页回查后下传（缺省时退化为只显示引用） */
   entityInfos: { type: Object, default: () => ({}) },
+  /**
+   * 变更单据（请求 / 通告 / 任务）的展示信息：这类单据没有实体关联行，
+   * 由办理页按 businessKey 回查后下传（见 composables/useChangeDoc）。
+   */
+  changeDoc: { type: Object, default: null },
 })
 
 const labelStyle = { width: '84px', color: '#8c8c8c' }

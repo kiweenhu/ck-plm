@@ -5,6 +5,12 @@
       <span class="panel-head__sub">{{ headSub }}</span>
     </div>
 
+    <!-- 节点类型说明：属性面板是「我正在配什么」的第一现场。
+         左侧节点库只有名称，选中后不解释这类活动干什么，使用者只能靠猜
+         （审批 vs 会签、设置审批人 vs 变更任务设置参与者尤其容易混）。
+         来源是契约层的 NODE_TYPE_DESCRIPTION，与标签同源。 -->
+    <div v-if="headDesc" class="panel-head__desc">{{ headDesc }}</div>
+
     <a-empty v-if="!target" description="选中节点、连线或模板以编辑属性" :image-style="{ height: '46px' }" />
 
     <template v-else>
@@ -117,6 +123,7 @@ import { computed, reactive } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   BUILTIN_VARIABLES,
+  NODE_TYPE_DESCRIPTION,
   NODE_TYPE_LABEL,
   builtinVariableTypeLabel,
   isBuiltinVariableName,
@@ -247,6 +254,17 @@ const headSub = computed(() => {
   return props.dsl.meta.key
 })
 
+/**
+ * 当前节点类型的说明。
+ *
+ * <p>只有节点有「类型」这一层语义：连线与模板各自只有一种形态，写说明反而占地方。
+ * 未知类型（老数据里的新节点）取不到文案时整块不渲染，不留一行空白。
+ */
+const headDesc = computed(() => {
+  if (mode.value !== 'node' || !selectedNode.value) return ''
+  return NODE_TYPE_DESCRIPTION[selectedNode.value.type] ?? ''
+})
+
 const issues = computed(() => {
   if (!props.report) return []
   if (mode.value === 'node' && selectedNode.value) {
@@ -291,6 +309,15 @@ function onFieldChange(path, value) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 说明块：与变量行的 note 同一套观感（灰底小字），目的是可读而不是抢字段的注意力 */
+.panel-head__desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8c8c8c;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #fafafa;
 }
 .panel-group {
   border-top: 1px solid #f5f5f5;
