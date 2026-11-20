@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -166,7 +168,34 @@ public class ResourceLibraryServiceImpl implements ResourceLibraryService {
         String code = resolveCode(resourceCode);
         String kw = (keyword == null || keyword.trim().isEmpty()) ? null : keyword.trim();
         List<String> oids = (clsOids == null || clsOids.isEmpty()) ? new ArrayList<>() : clsOids;
-        return mapper.selectLibraryItems(oids, kw, resolveTypeCode(code));
+        // 必须按当前资源子库容器过滤：标准件/通用件与产品结构下的结构件同为 STRUCTURAL 软类型，
+        // 只按 typeCode 会把产品里的结构件也列进标准件/通用件库（2026-11-18 反馈）。
+        // 库容器未初始化时返回空列表，而不是退化成全表扫描。
+        Map<String, Object> ctx = getResourceContext(code);
+        Object containerOid = ctx.get("containerOid");
+        if (!(containerOid instanceof String) || ((String) containerOid).isEmpty()) {
+            return new ArrayList<>();
+        }
+        return mapper.selectLibraryItems(oids, kw, resolveTypeCodes(code), (String) containerOid);
+    }
+
+    /**
+     * 资源库清单允许的对象软类型集合。
+     *
+     * <p>历史数据里标准件 / 通用件都以 STRUCTURAL 入库；通用件升级服务落库后类型改为 GEN_PART
+     * （标准件同理允许 STD_PART）。两种口径都要能在各自库里看到 —— 容器条件仍然限定，
+     * 不会把产品结构下的 STRUCTURAL 串进来。{@link #resolveTypeCode(String)} 继续给创建表单用，
+     * 保持返回 STRUCTURAL，避免前端按新 code 找不到默认类型。
+     */
+    private List<String> resolveTypeCodes(String resourceCode) {
+        switch (resourceCode) {
+            case ResourceContainer.STD_PART:
+                return Arrays.asList("STRUCTURAL", "STD_PART");
+            case ResourceContainer.GEN_PART:
+                return Arrays.asList("STRUCTURAL", "GEN_PART");
+            default:
+                return Collections.singletonList("ELECTRONIC");
+        }
     }
 
     /**

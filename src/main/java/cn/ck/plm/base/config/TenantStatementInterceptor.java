@@ -67,6 +67,8 @@ public class TenantStatementInterceptor implements Interceptor {
             // CAD 转换器对接配置：单行表、整个部署共享一套（转换器不属于任何租户）。
             // 不加进来会被租户条件过滤掉，页面永远读不到那条配置
             "ck_cad_forge_config",
+            // 二维图纸转换器对接配置：同上，单行表、整个部署共享一套
+            "ck_drawing_forge_config",
             // 用户（通过 username 全局唯一查询，不受租户隔离限制）
             "ck_user",
             // 注：属性定义 ck_attribute_definition 已按**租户隔离**：2026-10-10 起不在任何共享名单

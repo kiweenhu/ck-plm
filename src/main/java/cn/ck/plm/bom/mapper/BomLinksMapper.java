@@ -11,6 +11,7 @@ import cn.ck.plm.bom.dto.BomMaterialVO;
 import cn.ck.plm.bom.entity.BomLinks;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * BomLinks 数据访问接口，定义数据库无关的持久化契约。
@@ -54,4 +55,18 @@ public interface BomLinksMapper {
      * <p>只取父件<b>最新迭代</b>上的 BOM 行：历史版本的结构已经作废，一并统计会让用量虚高。
      */
     List<BomMaterialVO> selectMaterialsByContainerOid(String containerOid);
+
+    /**
+     * 按零件 oid 集合查物料清单行 —— 用于把同名根件的 BOM 子孙补进清单。
+     * 字段口径与 {@link #selectMaterialsByContainerOid(String)} 完全一致，只是不过滤容器。
+     */
+    List<BomMaterialVO> selectMaterialsByPartOids(List<String> partOids);
+
+    /**
+     * 通用件阈值统计：某零件在统计窗口内的 BOM 引用行数，以及沿 where-used 链向上覆盖到的
+     * 不同产品型号数（父件 container_type = PRODUCT_MODEL 的 container_oid 去重）。
+     *
+     * @return { usageCount, modelCount }
+     */
+    Map<String, Object> selectGenPartUsage(String partOid, String tenantOid, Integer months);
 }

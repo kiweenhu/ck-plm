@@ -42,7 +42,9 @@ import java.util.UUID;
  * <h3>硬约束（用户要求：只允许关联对象类别与模板一致）</h3>
  * <ul>
  *   <li>{@code objectType} 非空（模板给了 object_type）→ 只允许 type_definition_code 等于它的对象；
- *       其宿主（查 ck_type_definition.root_type_code）决定候选查哪张表。</li>
+ *       其宿主（查 ck_type_definition.root_type_code）决定候选查哪张表。
+ *       多个类型可用英文逗号分隔（如 {@code THREE_D,TWO_D,ENG_DOCUMENT}），最后一项用于兼容
+ *       历史数据里直接挂 ENG_DOCUMENT 的数模；不会自动放开到封装 / 符号等其它子类型。</li>
  *   <li>{@code objectType} 为空 → 按 {@code bindMode}：DOCUMENT → 文档宿主；PART_SET → 零组件宿主；
  *       其它 → 三类都可（兜底，不静默放宽类型）。</li>
  * </ul>
@@ -267,22 +269,27 @@ public class DeliverableArtifactLinkController {
         String kw = trim(keyword);
         String objectType = trim(deliverable.getObjectType());
         List<Map<String, Object>> result = new ArrayList<>();
+        List<String> objectTypes = splitTypes(objectType);
 
-        if (objectType != null) {
-            // 硬约束：只认 objectType 对应的类型；宿主决定查哪张表
-            String root = linkMapper.selectRootTypeCode(objectType);
-            if ("ENG_DOCUMENT".equals(root)) {
-                result.addAll(linkMapper.searchEngDocCandidates(objectType, kw));
-            } else if ("PART".equals(root)) {
-                result.addAll(linkMapper.searchPartCandidates(objectType, kw));
-            } else if ("DOCUMENT".equals(root)) {
-                result.addAll(linkMapper.searchDocumentCandidates(kw));
-            } else {
-                // 未登记的类型 code（自定义）：三类都查、按类型过滤，至少不会查空
-                result.addAll(linkMapper.searchDocumentCandidates(kw));
-                result.addAll(linkMapper.searchEngDocCandidates(objectType, kw));
-                result.addAll(linkMapper.searchPartCandidates(objectType, kw));
+        if (!objectTypes.isEmpty()) {
+            // 硬约束：objectType 可写多个类型；逐个解析宿主并查候选，最后按 oid 去重
+            for (String type : objectTypes) {
+                String root = linkMapper.selectRootTypeCode(type);
+                if ("ENG_DOCUMENT".equals(root)) {
+                    // 精确匹配列出的类型：ENG_DOCUMENT 只兼容历史数模，不放开到封装 / 符号
+                    result.addAll(linkMapper.searchEngDocCandidates(type, kw));
+                } else if ("PART".equals(root)) {
+                    result.addAll(linkMapper.searchPartCandidates(type, kw));
+                } else if ("DOCUMENT".equals(root)) {
+                    result.addAll(linkMapper.searchDocumentCandidates(kw));
+                } else {
+                    // 未登记的类型 code（自定义）：三类都查、按类型过滤，至少不会查空
+                    result.addAll(linkMapper.searchDocumentCandidates(kw));
+                    result.addAll(linkMapper.searchEngDocCandidates(type, kw));
+                    result.addAll(linkMapper.searchPartCandidates(type, kw));
+                }
             }
+            result = dedupeCandidates(result);
         } else {
             // 无 objectType：按 bindMode 落到宿主级；都空则三类全查
             String bindMode = trim(deliverable.getBindMode());
@@ -456,12 +463,13 @@ public class DeliverableArtifactLinkController {
      */
     private String validateArtifact(Deliverable deliverable, String entityType, String typeCode) {
         String objectType = trim(deliverable.getObjectType());
-        if (objectType != null) {
-            if (!objectType.equalsIgnoreCase(typeCode)) {
-                return "该交付件的产出物必须是「" + objectType + "」类型的对象（当前对象类型为："
-                        + (typeCode == null ? "未知" : typeCode) + "）";
+        List<String> objectTypes = splitTypes(objectType);
+        if (!objectTypes.isEmpty()) {
+            for (String allowed : objectTypes) {
+                if (allowed.equalsIgnoreCase(typeCode)) return null;
             }
-            return null;
+            return "该交付件的产出物必须是「" + String.join(" / ", objectTypes) + "」类型的对象（当前对象类型为："
+                    + (typeCode == null ? "未知" : typeCode) + "）";
         }
         String bindMode = trim(deliverable.getBindMode());
         if ("DOCUMENT".equalsIgnoreCase(bindMode) && !"DOCUMENT".equals(entityType)) {
@@ -483,5 +491,26 @@ public class DeliverableArtifactLinkController {
         if (s == null) return null;
         String t = s.trim();
         return t.isEmpty() ? null : t;
+    }
+
+    /** objectType 支持英文/中文逗号、分号、竖线分隔；保持书写顺序并去重 */
+    private static List<String> splitTypes(String objectType) {
+        if (objectType == null) return List.of();
+        LinkedHashSet<String> types = new LinkedHashSet<>();
+        for (String part : objectType.split("[,，;；|]")) {
+            String t = trim(part);
+            if (t != null) types.add(t);
+        }
+        return new ArrayList<>(types);
+    }
+
+    /** 多个类型可能命中同一宿主查询，按 entityType + oid 去重 */
+    private static List<Map<String, Object>> dedupeCandidates(List<Map<String, Object>> rows) {
+        Map<String, Map<String, Object>> unique = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String key = str(row.get("entityType")) + "|" + str(row.get("oid"));
+            unique.putIfAbsent(key, row);
+        }
+        return new ArrayList<>(unique.values());
     }
 }

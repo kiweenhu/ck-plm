@@ -45,6 +45,18 @@ public interface TenantService {
     void reject(String tenantOid, String rejectedBy, String reason);
 
     /**
+     * 更新企业基本信息（名称 / 联系人 / 联系邮箱）—— 由「企业信息」页调用。
+     *
+     * @param oid          租户 oid（调用方须已校验其属于当前登录用户所属租户）
+     * @param name         企业名称，必填
+     * @param contactName  联系人，可空
+     * @param contactEmail 联系邮箱，可空
+     * @param updater      操作人用户名
+     * @return 更新后的租户信息
+     */
+    Tenant updateProfile(String oid, String name, String contactName, String contactEmail, String updater);
+
+    /**
      * 根据 oid 获取租户信息。
      */
     Tenant getByOid(String oid);

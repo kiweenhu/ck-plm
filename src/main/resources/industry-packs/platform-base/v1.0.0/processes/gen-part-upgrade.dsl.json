@@ -1,0 +1,200 @@
+{
+  "key": "gen-part-upgrade",
+  "name": "通用件升级认定流程",
+  "displayName": "升级为通用件认定流程",
+  "category": "资源管理",
+  "description": "通用件认定流程：发起人指定评审人 → 部门领导审批 → 工程会签（全票通过）→ 办理人确认 → 自动服务 part.upgradeToGenPart 把零件软类型改为 GEN_PART 并迁入通用件资源库；任一环节驳回即结束认定。由「通用件阈值配置」的流程模板引用，物料清单里「升级为通用件」按该模板发起。",
+  "enabled": true,
+  "dsl": {
+    "dslVersion": "1.0",
+    "meta": {
+      "key": "gen-part-upgrade",
+      "name": "通用件升级认定流程",
+      "displayName": "升级为通用件认定流程",
+      "category": "资源管理",
+      "description": "结构件跨型号复用达阈值后发起通用件认定：指定评审人 → 领导审批 → 工程会签 → 确认后自动改类型为通用件并迁库；驳回即结束。",
+      "notifications": {
+        "channel": "CK_PLM"
+      }
+    },
+    "variables": [],
+    "nodes": [
+      {
+        "id": "start_1",
+        "name": "开始：发起通用件认定",
+        "description": "从物料清单「升级为通用件」入口发起；流程关联的业务对象是当前结构件零件",
+        "type": "START",
+        "initiator": {
+          "strategy": "INITIATOR"
+        },
+        "binding": {
+          "objectType": "PART",
+          "requiredFields": ["code", "name"]
+        }
+      },
+      {
+        "id": "setup_1",
+        "name": "设置评审人",
+        "description": "发起人指定本次认定的审批人与会签成员；未指定时按下游静态角色兜底",
+        "type": "SET_ASSIGNEE",
+        "assignee": {
+          "strategy": "INITIATOR"
+        },
+        "formRef": "CKPLM_SETUP_ASSIGNEE"
+      },
+      {
+        "id": "approve_leader",
+        "name": "领导审批",
+        "description": "部门 / 项目负责人确认该零件的跨型号复用价值与升级必要性",
+        "type": "APPROVAL",
+        "assignee": {
+          "strategy": "INITIATOR_LEADER"
+        },
+        "approvalMode": "SINGLE",
+        "commentRequired": true,
+        "formRef": "gen-part-upgrade-approval"
+      },
+      {
+        "id": "countersign_gen",
+        "name": "通用件认定会签",
+        "description": "系统 / 质量 / 项目三方会签：全员通过方为通过，一票否决即认定不通过。默认阵容取上述岗位，实际人员以上一步指定为准",
+        "type": "COUNTERSIGN_APPROVAL",
+        "assignee": {
+          "strategy": "ROLE",
+          "roleCodes": [
+            "SYSTEM_ENGINEER",
+            "QUALITY_ENGINEER",
+            "PROJECT_MANAGER"
+          ]
+        },
+        "passRule": {
+          "mode": "PERCENT",
+          "percent": 100,
+          "abstain": "IGNORE"
+        },
+        "commentRequired": true,
+        "formRef": "gen-part-upgrade-countersign"
+      },
+      {
+        "id": "task_upgrade",
+        "name": "确认升级为通用件",
+        "description": "认定通过后由办理人确认升级（办理人在「设置评审人」节点指定，默认发起人）。本节点只做确认留痕，不改数据；零件类型与资源库容器的实际变更由下游自动服务完成",
+        "type": "TASK",
+        "assignee": {
+          "strategy": "INITIATOR"
+        }
+      },
+      {
+        "id": "svc_upgrade_gen",
+        "name": "自动升级为通用件",
+        "description": "自动服务 part.upgradeToGenPart：把当前零件的软类型从 STRUCTURAL 改为 GEN_PART，并迁入本租户通用件资源库容器；重复执行幂等，失败时节点回滚并在流程日志留下原因",
+        "type": "SERVICE",
+        "serviceRef": "part.upgradeToGenPart"
+      },
+      {
+        "id": "end_pass",
+        "name": "结束：认定通过",
+        "type": "END"
+      },
+      {
+        "id": "end_reject",
+        "name": "结束：认定未通过",
+        "type": "END"
+      }
+    ],
+    "edges": [
+      {
+        "id": "e0",
+        "source": "start_1",
+        "target": "setup_1",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e1",
+        "source": "setup_1",
+        "target": "approve_leader",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e2",
+        "source": "approve_leader",
+        "target": "countersign_gen",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e3",
+        "source": "approve_leader",
+        "target": "end_reject",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e4",
+        "source": "countersign_gen",
+        "target": "task_upgrade",
+        "kind": "NORMAL",
+        "name": "通过",
+        "route": "PASS"
+      },
+      {
+        "id": "e5",
+        "source": "countersign_gen",
+        "target": "end_reject",
+        "kind": "NORMAL",
+        "name": "驳回",
+        "route": "REJECT"
+      },
+      {
+        "id": "e6",
+        "source": "task_upgrade",
+        "target": "svc_upgrade_gen",
+        "kind": "NORMAL"
+      },
+      {
+        "id": "e7",
+        "source": "svc_upgrade_gen",
+        "target": "end_pass",
+        "kind": "NORMAL"
+      }
+    ],
+    "layout": {
+      "nodes": {
+        "start_1": {
+          "x": 276,
+          "y": -8
+        },
+        "setup_1": {
+          "x": 220,
+          "y": 66
+        },
+        "approve_leader": {
+          "x": 220,
+          "y": 156
+        },
+        "countersign_gen": {
+          "x": 220,
+          "y": 246
+        },
+        "task_upgrade": {
+          "x": 220,
+          "y": 356
+        },
+        "svc_upgrade_gen": {
+          "x": 220,
+          "y": 456
+        },
+        "end_pass": {
+          "x": 276,
+          "y": 556
+        },
+        "end_reject": {
+          "x": 552,
+          "y": 163
+        }
+      }
+    }
+  }
+}

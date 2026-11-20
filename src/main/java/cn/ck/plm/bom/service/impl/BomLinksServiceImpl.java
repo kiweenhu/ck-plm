@@ -104,6 +104,10 @@ public class BomLinksServiceImpl implements BomLinksService {
     @Autowired
     private ProductModelService productModelService;
 
+    /** 资源库容器：判断物料是否来自元器件/标准件/通用件库（外购库件不在 BOM 页操作） */
+    @Autowired
+    private cn.ck.plm.resource.mapper.ResourceContainerMapper resourceContainerMapper;
+
     @Override
     public BomLinks create(BomLinks bomLinks) {
         LocalDateTime now = LocalDateTime.now();
@@ -447,8 +451,69 @@ public class BomLinksServiceImpl implements BomLinksService {
         if (containerOid == null || containerOid.trim().isEmpty()) {
             return new ArrayList<>();
         }
-        // 只认当前容器：型号页不混入父系列零件（父子容器各看各的）
-        List<BomMaterialVO> rows = bomLinksMapper.selectMaterialsByContainerOid(containerOid.trim());
+        String oid = containerOid.trim();
+        // 基础清单：容器直属零件（保持原口径：刚建好零件、BOM 还没搭时也有清单）
+        List<BomMaterialVO> rows = bomLinksMapper.selectMaterialsByContainerOid(oid);
+
+        // 2026-11-18：物料清单要展示"型号/系列同名 Part 下的所有子、孙物料"。
+        // 容器直属零件只能覆盖第一层；孙件往往挂在别的容器（资源库/父系列），按容器查根本取不到。
+        // 这里从容器内的每个零件沿 BOM 向下递归（含防环/深度上限），把不在基础清单里的后代补进来。
+        Set<String> inList = new HashSet<>();
+        for (BomMaterialVO r : rows) {
+            if (r.getChildPartOid() != null) {
+                inList.add(r.getChildPartOid());
+            }
+        }
+        // partOid -> {层级, 直接父件编码}。种子（容器零件）记为 0 级，其 BOM 子件 1 级、孙件 2 级…
+        // 同一个零件可能是多个父件的子件，也可能本身是容器零件：取**最大**层级 —— 离根越远越贴近
+        // 「子/孙」语义，避免把它自己当根、它的子反而被标成更高层。
+        Map<String, int[]> descendantLevels = new HashMap<>();
+        Map<String, String> descendantParents = new HashMap<>();
+        for (BomMaterialVO seed : rows) {
+            String seedOid = seed.getChildPartOid();
+            if (seedOid == null || seedOid.isEmpty()) {
+                continue;
+            }
+            // putIfAbsent：若它已被别的种子递归算成子件（层级>0），别用 0 冲掉
+            descendantLevels.putIfAbsent(seedOid, new int[]{0, 0});
+            PartIteration seedIter = partService.findLatestIteration(seedOid);
+            if (seedIter != null) {
+                collectDescendantMaterials(seedIter.getOid(), seed.getNumber(), 1,
+                        new HashSet<>(), descendantLevels, descendantParents);
+            }
+        }
+        // 不在容器清单里的后代，批量补齐完整字段
+        List<String> missing = new ArrayList<>();
+        for (String partOid : descendantLevels.keySet()) {
+            if (!inList.contains(partOid)) {
+                missing.add(partOid);
+            }
+        }
+        if (!missing.isEmpty()) {
+            rows.addAll(bomLinksMapper.selectMaterialsByPartOids(missing));
+            inList.addAll(missing);
+        }
+        // 回填所有行的层级/父件（容器零件里也是 BOM 子件的，同样按递归结果标 1/2…级）
+        for (BomMaterialVO row : rows) {
+            int[] lv = descendantLevels.get(row.getChildPartOid());
+            row.setLevel(lv == null ? 0 : lv[0]);
+            row.setParentNumber(descendantParents.get(row.getChildPartOid()));
+        }
+        rows.sort((a, b) -> {
+            int c = Integer.compare(a.getLevel() == null ? 0 : a.getLevel(),
+                    b.getLevel() == null ? 0 : b.getLevel());
+            if (c != 0) {
+                return c;
+            }
+            String an = a.getNumber() == null ? "" : a.getNumber();
+            String bn = b.getNumber() == null ? "" : b.getNumber();
+            return an.compareTo(bn);
+        });
+
+        // 标记"来自资源库(元器件/标准件/通用件)"的物料：这类是外购/库件，由资源库统一维护，
+        // 不在产品 BOM 页做检出/检入/修订/删除（2026-11-18 用户要求，前端据此隐藏操作列）
+        fillResourceLibraryFlags(rows);
+
         // mapper 只拿得到状态 code：显示名与「能否修订」要按对象固化模板解析，
         // 与研发资料列表同一套口径（否则这两列会直接显示 WORKING 之类）
         Map<String, Map<String, Boolean>> revisableCache = new HashMap<>();
@@ -466,6 +531,77 @@ public class BomLinksServiceImpl implements BomLinksService {
         // 缩略图：零件关联了工程数据（CAD 描述）且转换器已出图，清单里就直接显示形状
         fillThumbnails(rows);
         return rows;
+    }
+
+    /**
+     * 沿 BOM 递归收集某迭代下的所有后代零件 oid，记录最小层级与直接父件编码。
+     * 与 {@link #buildTree(String)} 同款防环（按当前路径的迭代集合）+ 深度上限。
+     */
+    private void collectDescendantMaterials(String parentIterationOid, String parentNumber, int level,
+                                            Set<String> pathVisited,
+                                            Map<String, int[]> levels,
+                                            Map<String, String> parents) {
+        if (parentIterationOid == null || parentIterationOid.isEmpty()
+                || level > MAX_TREE_DEPTH || !pathVisited.add(parentIterationOid)) {
+            return;
+        }
+        for (BomLinks link : bomLinksMapper.selectByParentIterationOid(parentIterationOid)) {
+            String childPartOid = link.getChildPartOid();
+            if (childPartOid != null && !childPartOid.isEmpty()) {
+                int[] lv = levels.get(childPartOid);
+                if (lv == null || level > lv[0]) {
+                    levels.put(childPartOid, new int[]{level, level});
+                    parents.put(childPartOid, parentNumber);
+                }
+            }
+            // 子件迭代：精确引用 → 解析缓存 → 最新迭代
+            String childIter = link.getChildIterationOid();
+            if (childIter == null || childIter.isEmpty()) {
+                childIter = link.getResolvedIterationOid();
+            }
+            if (childIter == null || childIter.isEmpty()) {
+                PartIteration pi = partService.findLatestIteration(childPartOid);
+                childIter = pi == null ? null : pi.getOid();
+            }
+            String childNumber = childPartOid == null ? null : partNumber(childPartOid);
+            if (childIter != null) {
+                collectDescendantMaterials(childIter, childNumber, level + 1,
+                        new HashSet<>(pathVisited), levels, parents);
+            }
+        }
+    }
+
+    /** 取零件编码（递归里只用于展示父件编码，取不到就留空） */
+    private String partNumber(String partOid) {
+        Part p = partService.findByOid(partOid);
+        return p == null ? null : p.getNumber();
+    }
+
+    /**
+     * 标记物料是否来自元器件库 / 标准件库 / 通用件库（外购/库件）。
+     *
+     * <p>按<b>容器 oid</b>判断而不是 typeCode：标准件与通用件在类型上都是 STRUCTURAL，
+     * 单看类型会把产品自制结构件也误判成库件。资源库容器按租户各一份，这里按当前租户取。
+     */
+    private void fillResourceLibraryFlags(List<BomMaterialVO> rows) {
+        Set<String> libOids = new HashSet<>();
+        try {
+            String tenantOid = cn.ck.plm.base.util.TenantContext.get();
+            cn.ck.plm.resource.entity.ResourceContainer root = resourceContainerMapper.selectRoot(tenantOid);
+            if (root != null) {
+                for (cn.ck.plm.resource.entity.ResourceContainer child
+                        : resourceContainerMapper.selectChildren(root.getOid(), tenantOid)) {
+                    if (child != null && cn.ck.plm.resource.entity.ResourceContainer.supportsCategoryBinding(child.getCode())) {
+                        libOids.add(child.getOid());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询资源库容器以标记物料来源失败，按非库件处理: {}", e.getMessage());
+        }
+        for (BomMaterialVO row : rows) {
+            row.setFromResourceLibrary(libOids.contains(row.getContainerOid()));
+        }
     }
 
     @Override

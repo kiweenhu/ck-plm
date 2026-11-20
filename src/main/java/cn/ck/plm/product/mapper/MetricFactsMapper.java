@@ -91,4 +91,14 @@ public interface MetricFactsMapper {
      */
     String selectGateDecidedDate(@Param("ownerOid") String ownerOid,
                                  @Param("gateCode") String gateCode);
+
+    /**
+     * 批量判定 BOM 子件是否为「复用件」（通用件 / 标准件）—— {@code REUSE_GAIN} 的取数依据。
+     *
+     * <p>两种口径都算：升级后的类型 {@code GEN_PART / STD_PART}，以及历史数据里仍是
+     * {@code STRUCTURAL} 但已迁入 GEN_PART / STD_PART 资源子库的零件。返回行
+     * {@code partOid, reuse}。
+     */
+    List<Map<String, Object>> selectReuseFlags(@Param("tenantOid") String tenantOid,
+                                               @Param("partOids") List<String> partOids);
 }

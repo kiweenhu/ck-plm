@@ -210,7 +210,7 @@ export const WIDGETS = [
     category: 'media',
     icon: shallowRef(CloudUploadOutlined),
     dataType: 'STRING',
-    description: 'CKFile 主文档上传，支持本地上传和网络 URL 两种来源。ENG_DOCUMENT 表单中按 CAD 三维数模格式筛选：STEP / IGES / STL 可转轻量化预览，CATIA / Creo / NX / SolidWorks 原生数模仅归档',
+    description: 'CKFile 主文档上传，支持本地上传和网络 URL 两种来源。ENG_DOCUMENT 表单中按 CAD 三维数模格式筛选：STEP / IGES / STL 可转轻量化预览，CATIA / Creo / NX / SolidWorks 原生数模仅归档；也可以是电子设计相关工程数据，如：符号、封装、datasheet、原理图和布板图',
     bindFields: ['ckfileOid'],
     defaults: { uiComponent: 'ckfile-upload', required: false, placeholder: '上传主文档或录入URL' }
   },

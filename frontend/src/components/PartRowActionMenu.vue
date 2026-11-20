@@ -44,7 +44,7 @@
           <a-menu-item v-if="!isCheckedOut" key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
           <!-- 元器件（ELECTRONIC / IPN）语境叫「发起器件认证」—— 与元器件引入（认定）流程
                component-introduction 的语义对齐；其余类型（结构件 / 标准件 / 工程数据…）保持「发起流程」 -->
-          <a-menu-item v-if="!isCheckedOut" key="workflow"><SendOutlined /> {{ workflowLabel }}</a-menu-item>
+          <a-menu-item v-if="!isCheckedOut && canStartProcess" key="workflow"><SendOutlined /> {{ workflowLabel }}</a-menu-item>
           <a-menu-divider />
           <a-menu-item v-if="!isCheckedOut" key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
         </a-menu>
@@ -217,12 +217,20 @@
       title="删除"
       ok-text="确认删除"
       cancel-text="取消"
-      :ok-button-props="{ danger: true }"
+      :ok-button-props="{ danger: true, disabled: refCount > 0 }"
       :confirm-loading="saving"
       @ok="confirmDelete"
       width="480px"
     >
       <p style="margin-bottom:16px">对象：<b>{{ record.code || record.name }}</b></p>
+      <a-alert
+        v-if="refCount > 0"
+        type="error"
+        show-icon
+        style="margin-bottom:16px"
+        :message="`该对象已被 ${refCount} 个零件版本引用，不可删除`"
+        :description="`请先到关联该对象的${refHintText}中解除关联，再重试删除。`"
+      />
       <a-radio-group v-model:value="deleteScope">
         <a-space direction="vertical">
           <a-radio value="all">删除所有版本（彻底删除该对象及其全部历史版本）</a-radio>
@@ -279,7 +287,7 @@ import {
   checkoutEngineeringDocument, checkinEngineeringDocument, undoCheckoutEngineeringDocument,
   deleteEngineeringDocument, deleteEngineeringDocumentLatestIteration,
   updateEngineeringDocument, getEngineeringDocumentIterations,
-  resolveEntityApiPath,
+  resolveEntityApiPath, getEngDocPartLinks,
   // 修订：与检出/检入同构的通用入口（后端按 entityType 路由）
   reviseObject, resolveReviseEntityType,
 } from '@/api'
@@ -307,6 +315,14 @@ const moveLabel = computed(() => (props.moveMode === 'category' ? '变更分类'
  */
 const isElectronic = computed(() => (props.record?.typeDefinitionCode || '').toUpperCase() === 'ELECTRONIC')
 const workflowLabel = computed(() => (isElectronic.value ? '发起器件认证' : '发起流程'))
+/**
+ * 符号 / 封装是 CAD 设计数据，走入库与检出检入留痕即可，不单独发起业务流程
+ * （2026-11-18 用户要求）。其余类型保持原来的发起入口。
+ */
+const canStartProcess = computed(() => {
+  const code = (props.record?.typeDefinitionCode || '').toUpperCase()
+  return code !== 'SYMBOL' && code !== 'FOOTPRINT'
+})
 const saving = ref(false)
 
 // ==================== 宿主分派（Part / 工程数据）====================
@@ -730,13 +746,35 @@ function doRevise() {
 
 const deleteVisible = ref(false)
 const deleteScope = ref('all')
+const refCount = ref(0)
+/** 引用提示文案：符号/封装挂在电子元器件的「符号.封装」页签，三维等挂在结构件「CAD 描述」 */
+const refHintText = computed(() => {
+  const code = String(props.record?.typeDefinitionCode || '').toUpperCase()
+  if (['SYMBOL', 'FOOTPRINT', 'DATASHEET'].includes(code)) {
+    return '电子元器件「符号.封装」'
+  }
+  return '零件「CAD 描述」'
+})
 
-function openDelete() {
+async function openDelete() {
   deleteScope.value = 'all'
+  refCount.value = 0
   deleteVisible.value = true
+  // 工程数据（封装/图符/Datasheet 等）被零件引用时不允许删除：先预检，禁用确认并说明原因。
+  if (isEngDoc.value && props.record?.oid) {
+    try {
+      const res = await getEngDocPartLinks({ engDocumentOid: props.record.oid })
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+      refCount.value = list.length
+    } catch { /* 预检失败不阻断，后端删除时仍会兜底校验 */ }
+  }
 }
 
 async function confirmDelete() {
+  if (refCount.value > 0) {
+    message.error('该对象已被零件引用，请先解除关联后再删除')
+    return
+  }
   saving.value = true
   try {
     const isLatest = deleteScope.value === 'latest'

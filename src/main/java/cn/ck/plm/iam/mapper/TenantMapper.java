@@ -19,6 +19,14 @@ public interface TenantMapper {
 
     int update(Tenant tenant);
 
+    /**
+     * 只更新企业基本信息（名称 / 联系人 / 联系邮箱），不触碰状态、审核与行业引导字段。
+     *
+     * <p>{@link #update(Tenant)} 是审核与引导流程专用的，刻意不含这三列；企业信息编辑走本方法，
+     * 避免把行业、onboarding 等状态用"只带三个字段的对象"覆盖成空值。
+     */
+    int updateProfile(Tenant tenant);
+
     Tenant selectByOid(String oid);
 
     Tenant selectByTenantId(String tenantId);

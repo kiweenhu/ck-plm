@@ -10,8 +10,8 @@
   "executiveLayer": [
     { "code": "TIME_TO_MARKET_DEV", "name": "上市时间偏差", "source": "TARGET_LAUNCH_DATE / LDCP", "level": "B",
       "note": "= LDCP（上市决策评审）通过日 − 目标上市日期（IBA TARGET_LAUNCH_DATE，electronics-core 的 LAUNCH_TARGET 组），单位天，正数延期、负数提前。原注说需 Project 实体 —— 现在用「门 + 目标日期」替代：平台没有项目基线，但上市这道门本身就是时点。任一侧缺即显示「暂未评估」，不估算" },
-    { "code": "REUSE_GAIN", "name": "复用收益", "level": "B",
-      "note": "与通用件认定（genPartThreshold / GEN_PART 库）配套：跨型号复用被认定为通用件后省下的重复开发与采购量" },
+    { "code": "REUSE_GAIN", "name": "复用收益", "source": "ReuseGainCalculator", "level": "B",
+      "note": "Σ(复用件在本产品 BOM 中的本层金额 × (全历史覆盖型号数 − 1))；复用件 = GEN_PART/STD_PART 类型或已迁入对应资源子库的零件，只覆盖 1 个型号的不计。单位成本是单次开发投入的代理口径，不是财务核算；成本缺失时显示暂未评估" },
     { "code": "QUALITY_LOSS_COST", "name": "质量损失成本", "level": "C",
       "note": "返修 / 退货 / 客诉的金额化；前置是现场质量数据（交付物 DLV-FIELD-QUALITY）与问题结构化" }
   ]

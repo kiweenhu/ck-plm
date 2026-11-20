@@ -8,6 +8,8 @@
 package cn.ck.plm.process.controller;
 
 import cn.ck.plm.iam.dto.ApiResponse;
+import cn.ck.plm.part.dto.GenPartEligibility;
+import cn.ck.plm.part.service.GenPartEligibilityService;
 import cn.ck.plm.process.dto.ProcessActivityFormVO;
 import cn.ck.plm.process.dto.ProcessActivityVO;
 import cn.ck.plm.process.dto.ProcessInstanceVO;
@@ -87,15 +89,19 @@ public class ProcessInstanceController {
     private final ProcessEntitySetService entitySetService;
     /** 节点执行日志：自动服务/通知节点后台跑了什么（详见 /node-logs 端点说明） */
     private final ProcessNodeLogService nodeLogService;
+    /** 通用件认定阈值闸门（防绕过：前端可改，发起接口必须自己判） */
+    private final GenPartEligibilityService genPartEligibilityService;
 
     public ProcessInstanceController(ProcessService workflowService,
                                      ProcessStartOptionService startOptionService,
                                      ProcessEntitySetService entitySetService,
-                                     ProcessNodeLogService nodeLogService) {
+                                     ProcessNodeLogService nodeLogService,
+                                     GenPartEligibilityService genPartEligibilityService) {
         this.workflowService = workflowService;
         this.startOptionService = startOptionService;
         this.entitySetService = entitySetService;
         this.nodeLogService = nodeLogService;
+        this.genPartEligibilityService = genPartEligibilityService;
     }
 
     /** 运行中流程实例（本租户全部） */
@@ -366,7 +372,18 @@ public class ProcessInstanceController {
             List<Map<String, Object>> entityInputs = entityInputsOf(body);
             List<ProcessEntitySet> links = new ArrayList<>(entityInputs.size());
             List<Map<String, Object>> entries = new ArrayList<>(entityInputs.size());
+            // 通用件阈值闸门按"配置绑定的流程模板"识别（不硬编码流程 key）；
+            // 只拦这一条流程，其它流程发起不受影响。
+            boolean genPartFlow = genPartEligibilityService.isConfiguredFlow(processKey);
             for (Map<String, Object> input : entityInputs) {
+                if (genPartFlow) {
+                    GenPartEligibility eligibility = genPartEligibilityService.check(str(input, "entityOid"));
+                    if (!eligibility.isEligible()) {
+                        String prefix = entityInputs.size() > 1
+                                ? "[" + str(input, "entityCode") + "] " : "";
+                        return ApiResponse.fail(409, prefix + eligibility.getReason());
+                    }
+                }
                 // 闸门：同一业务对象的【同一个大版本】同时只允许一个流程在执行（大版本之间独立）。
                 // 弹框已按 start-options 的结果预先禁用，这里是服务端兜底 —— 前端可绕过，
                 // 且"连点两次""两人同时点"这类竞态只有服务端拦得住（并发窗口很小，未加分布式锁）。

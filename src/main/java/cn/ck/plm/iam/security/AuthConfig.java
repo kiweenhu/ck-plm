@@ -60,6 +60,8 @@ public class AuthConfig implements WebMvcConfigurer {
                         // CAD 转换器回调：调用方是转换器进程，没有用户会话。
                         // 不走 token 校验，改用服务间共享令牌在控制器内校验（见 CadConvertCallbackController）。
                         "/api/internal/cad/**",
+                        // 二维图纸转换器回调/源件：同上，控制器内用共享令牌 + 签名双重校验
+                        "/api/internal/drawing/**",
                         "/error"
                 );
     }

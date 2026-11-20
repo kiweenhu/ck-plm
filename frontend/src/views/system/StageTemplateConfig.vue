@@ -228,19 +228,22 @@ const INDUSTRY_OPTIONS = [
 const INDUSTRY_COLOR = { TRADITIONAL: 'blue', IPD: 'purple', MILITARY: 'red', AUTOMOTIVE: 'green' }
 // 标签映射：**全量**（含 FUNCTIONAL）—— 历史阶段模板里已配 FUNCTIONAL 的行仍要显示中文名。
 const MANAGED_OBJECT_LABEL = {
-  FUNCTIONAL: '功能 (Functional)',
-  PART:       '零组件 (Part)',
-  DOCUMENT:   '文档 (Document)',
+  FUNCTIONAL:   '功能 (Functional)',
+  PART:         '零组件 (Part)',
+  DOCUMENT:     '文档 (Document)',
+  ENG_DOCUMENT: '工程数据 (EngDocument)',
 }
 // 下拉可选项：按能力账本过滤 —— FUNCTIONAL 随 military-gjb / automotive-apqp 两个行业包而来
 // （platform-base 已不含它），没装包的企业不给这个选项。标签映射仍取全量，见上。
 // 2026-11-03：零件不再作为阶段的管理对象 —— 零组件统一在「物料清单」页签创建与维护，
 // 阶段下的资料区只放文档 / 功能架构。已配了 PART 的历史模板仍按标签显示（见上），只是不能再选。
+// ENG_DOCUMENT（工程数据/三维数模）：平台自带类型，无条件可选。
 const MANAGED_OBJECT_OPTIONS = computed(() => [
   ...(has('FUNCTIONAL_ARCHITECTURE')
     ? [{ value: 'FUNCTIONAL', label: MANAGED_OBJECT_LABEL.FUNCTIONAL }]
     : []),
   { value: 'DOCUMENT', label: MANAGED_OBJECT_LABEL.DOCUMENT },
+  { value: 'ENG_DOCUMENT', label: MANAGED_OBJECT_LABEL.ENG_DOCUMENT },
 ])
 
 function industryLabel(code) { return (INDUSTRY_OPTIONS.find(o => o.value === code) || {}).label || code || '通用' }

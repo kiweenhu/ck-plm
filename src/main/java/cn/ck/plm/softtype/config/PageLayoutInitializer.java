@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -37,6 +38,47 @@ import java.util.Map;
 public class PageLayoutInitializer implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(PageLayoutInitializer.class);
+
+    /**
+     * 产品系列 / 型号的目标成本与上市日期字段。
+     *
+     * <p>fieldName 必须与 IBA 落库的 attr_code 完全一致（大写）—— 早期布局里写成小写，
+     * 后端读回来的是 TARGET_COST / TARGET_LAUNCH_DATE，RenderFields 按 fieldName 取值
+     * 自然永远拿到空串，编辑弹窗就只剩占位符。两个常量都带尾逗号，直接拼在描述字段后面。
+     */
+    private static final String TARGET_FIELDS_PRODUCT_LINE =
+            "{" +
+                "\"id\": \"fld-target-launch\"," +
+                "\"label\": \"目标上市日期\"," +
+                "\"fieldName\": \"TARGET_LAUNCH_DATE\"," +
+                "\"uiComponent\": \"datepicker\"," +
+                "\"valueFormat\": \"YYYY-MM-DD\"," +
+                "\"placeholder\": \"选择目标上市日期（「上市时间偏差」= LDCP 通过日 − 此日期）\"" +
+            "}," +
+            "{" +
+                "\"id\": \"fld-target-cost\"," +
+                "\"label\": \"目标成本(元)\"," +
+                "\"fieldName\": \"TARGET_COST\"," +
+                "\"uiComponent\": \"input-number\"," +
+                "\"placeholder\": \"人民币元；留空 = 未设定，不写默认值\"" +
+            "},";
+
+    private static final String TARGET_FIELDS_PRODUCT_MODEL =
+            "{" +
+                "\"id\": \"fld-target-launch\"," +
+                "\"label\": \"目标上市日期\"," +
+                "\"fieldName\": \"TARGET_LAUNCH_DATE\"," +
+                "\"uiComponent\": \"datepicker\"," +
+                "\"valueFormat\": \"YYYY-MM-DD\"," +
+                "\"placeholder\": \"选择目标上市日期（型号不继承系列）\"" +
+            "}," +
+            "{" +
+                "\"id\": \"fld-target-cost\"," +
+                "\"label\": \"目标成本(元)\"," +
+                "\"fieldName\": \"TARGET_COST\"," +
+                "\"uiComponent\": \"input-number\"," +
+                "\"placeholder\": \"人民币元；型号不继承系列，留空 = 未设定\"" +
+            "},";
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -169,6 +211,10 @@ public class PageLayoutInitializer implements CommandLineRunner {
 
             // ==== Part 子类型继承 PART 刚刚确定的布局 ====
             clonePartLayoutToSoftTypes();
+
+            // 存量布局里目标字段曾写成小写，IBA 读回来是大写 → 编辑弹窗永远空着；
+            // 幂等修正所有租户的产品线 / 型号布局，不动其它自定义配置。
+            normalizeProductTargetFieldNames();
 
         } catch (Exception e) {
             log.error("初始化页面布局失败: {}", e.getMessage(), e);
@@ -442,6 +488,7 @@ public class PageLayoutInitializer implements CommandLineRunner {
                         "\"rows\": 3," +
                         "\"placeholder\": \"请输入产品线描述（可选）\"" +
                     "}," +
+                    TARGET_FIELDS_PRODUCT_LINE +
                     "{" +
                         "\"id\": \"fld-parent\"," +
                         "\"fieldName\": \"parentOid\"," +
@@ -491,6 +538,7 @@ public class PageLayoutInitializer implements CommandLineRunner {
                         "\"rows\": 3," +
                         "\"placeholder\": \"请输入产品线描述（可选）\"" +
                     "}," +
+                    TARGET_FIELDS_PRODUCT_LINE +
                     "{" +
                         "\"id\": \"fld-parent\"," +
                         "\"fieldName\": \"parentOid\"," +
@@ -631,6 +679,7 @@ public class PageLayoutInitializer implements CommandLineRunner {
                         "\"rows\": 3," +
                         "\"placeholder\": \"请输入产品型号描述（可选）\"" +
                     "}," +
+                    TARGET_FIELDS_PRODUCT_MODEL +
                     "{" +
                         "\"id\": \"fld-parentOid\"," +
                         "\"fieldName\": \"parentOid\"," +
@@ -681,6 +730,7 @@ public class PageLayoutInitializer implements CommandLineRunner {
                         "\"rows\": 3," +
                         "\"placeholder\": \"请输入产品型号描述（可选）\"" +
                     "}," +
+                    TARGET_FIELDS_PRODUCT_MODEL +
                     "{" +
                         "\"id\": \"fld-parentOid\"," +
                         "\"fieldName\": \"parentOid\"," +
@@ -1240,6 +1290,66 @@ public class PageLayoutInitializer implements CommandLineRunner {
                   }
                 }
                 """;
+    }
+
+    /**
+     * 存量布局自愈：产品系列 / 型号布局里的目标字段 code 由小写改成与 IBA attr_code 一致的大写。
+     *
+     * <p>只改 fieldName 的大小写，不动顺序、控件、只读、占位文案等任何用户自定义配置；
+     * 幂等，启动时跑多少次都只在第一次真正写库。
+     */
+    private void normalizeProductTargetFieldNames() {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT oid, layout_json::text AS layout_json FROM ck_type_page_layout "
+                        + "WHERE entity_code IN ('PRODUCT_LINE','PRODUCT_MODEL') AND tenant_oid IS NOT NULL");
+        ObjectMapper om = new ObjectMapper();
+        int fixed = 0;
+        for (Map<String, Object> row : rows) {
+            String oid = row.get("oid") == null ? null : row.get("oid").toString();
+            String json = (String) row.get("layout_json");
+            if (oid == null || json == null || json.isEmpty()) {
+                continue;
+            }
+            try {
+                JsonNode root = om.readTree(json);
+                boolean[] changed = { false };
+                normalizeFieldNameCase(root, changed);
+                if (changed[0]) {
+                    jdbcTemplate.update(
+                            "UPDATE ck_type_page_layout SET layout_json = ?::jsonb, updated_at = now() WHERE oid = ?",
+                            om.writeValueAsString(root), oid);
+                    fixed++;
+                }
+            } catch (Exception e) {
+                log.warn("产品目标字段布局自愈失败 layout={}: {}", oid, e.getMessage());
+            }
+        }
+        if (fixed > 0) {
+            log.info("产品目标字段布局自愈完成: 修正 {} 条（TARGET_COST / TARGET_LAUNCH_DATE 统一大写）", fixed);
+        }
+    }
+
+    private static void normalizeFieldNameCase(JsonNode node, boolean[] changed) {
+        if (node == null) {
+            return;
+        }
+        if (node.isObject()) {
+            JsonNode fieldName = node.get("fieldName");
+            if (fieldName != null && fieldName.isTextual()) {
+                String value = fieldName.asText();
+                String upper = value.toUpperCase(Locale.ROOT);
+                if (("TARGET_COST".equals(upper) || "TARGET_LAUNCH_DATE".equals(upper))
+                        && !upper.equals(value)) {
+                    ((ObjectNode) node).put("fieldName", upper);
+                    changed[0] = true;
+                }
+            }
+            node.fields().forEachRemaining(entry -> normalizeFieldNameCase(entry.getValue(), changed));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                normalizeFieldNameCase(child, changed);
+            }
+        }
     }
 
     // ==================== 表单套「布局行」 ====================

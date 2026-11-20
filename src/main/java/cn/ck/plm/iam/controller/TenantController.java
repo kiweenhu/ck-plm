@@ -73,6 +73,44 @@ public class TenantController {
     }
 
     /**
+     * 更新当前用户所属企业的基本信息 —— 企业管理员接口（供「企业信息」页保存）。
+     *
+     * <p>{@code ck_tenant} 是共享表（{@code TenantStatementInterceptor} 不注入 tenant_oid），
+     * 所以必须在这里显式校验 oid 就是当前登录用户自己的租户，否则任意租户都能改别家信息。
+     */
+    @PutMapping("/{oid}")
+    public ApiResponse<Tenant> updateTenant(@PathVariable String oid, @RequestBody Map<String, Object> body) {
+        String username = UserContext.get();
+        if (username == null) {
+            return ApiResponse.fail(401, "未登录");
+        }
+        try {
+            User user = userService.findByUsername(username);
+            if (user == null) {
+                return ApiResponse.fail(401, "用户不存在");
+            }
+            if (user.getTenantOid() == null || !user.getTenantOid().equals(oid)) {
+                return ApiResponse.fail(403, "只能修改本企业信息");
+            }
+            if (!isEnterpriseAdmin(user.getOid())) {
+                return ApiResponse.fail(403, "仅企业管理员可修改企业信息");
+            }
+            String name = str(body == null ? null : body.get("name"));
+            if (name == null || name.trim().isEmpty()) {
+                return ApiResponse.fail(400, "企业名称不能为空");
+            }
+            Tenant updated = tenantService.updateProfile(oid, name,
+                    str(body.get("contactName")), str(body.get("contactEmail")), username);
+            return ApiResponse.ok(updated);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
+        } catch (Exception e) {
+            log.error("更新企业信息失败: oid={}", oid, e);
+            return ApiResponse.fail(500, "更新企业信息失败");
+        }
+    }
+
+    /**
      * 提交租户注册申请 —— 公开接口。
      */
     @PostMapping("/register")
@@ -178,6 +216,29 @@ public class TenantController {
             log.error("驳回失败: oid={}", oid, e);
             return ApiResponse.fail(500, "操作失败");
         }
+    }
+
+    /**
+     * 企业信息编辑权限 —— 与前端「企业组织」菜单口径一致（TENANT_ADMIN / ADMIN / PLATFORM_ADMIN）。
+     * 角色按租户隔离，必须限定角色与成员同租户，否则会命中别家的角色副本。
+     */
+    private boolean isEnterpriseAdmin(String userOid) {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM ck_role_member rm " +
+                    "INNER JOIN ck_role r ON rm.role_oid = r.oid " +
+                    "WHERE rm.user_oid = ? AND r.code IN ('TENANT_ADMIN', 'ADMIN', 'PLATFORM_ADMIN') " +
+                    "AND r.tenant_oid = rm.tenant_oid",
+                    Integer.class, userOid);
+            return count != null && count > 0;
+        } catch (Exception e) {
+            log.warn("企业信息编辑权限校验失败: userOid={}, {}", userOid, e.getMessage());
+            return false;
+        }
+    }
+
+    private static String str(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     /**

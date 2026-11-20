@@ -8,7 +8,7 @@
       <a-button type="primary" @click="openForm()">
         <PlusOutlined /> 新增制造商
       </a-button>
-      <span class="mpn-hint">该制造商被 AML 引用后不能删，只能「停用」—— 历史 AML 需要保留引用</span>
+      <span class="mpn-hint">该制造商被 AML 引用（含其下 AVL 行）后不能删，只能「停用」—— 历史 AML / AVL 需要保留引用</span>
     </div>
 
     <a-table
@@ -42,7 +42,18 @@
           <a-col :span="12"><a-form-item label="代码" required><a-input v-model:value="form.code" placeholder="如 TI / MURATA" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item label="名称" required><a-input v-model:value="form.name" placeholder="如 德州仪器" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item label="英文名"><a-input v-model:value="form.englishName" placeholder="如 Texas Instruments" /></a-form-item></a-col>
-          <a-col :span="12"><a-form-item label="原产地"><a-input v-model:value="form.country" /></a-form-item></a-col>
+          <a-col :span="12">
+            <a-form-item label="原产地">
+              <a-select
+                v-model:value="form.country"
+                show-search
+                allow-clear
+                placeholder="请选择国家 / 地区"
+                :options="countryOptions"
+                style="width:100%"
+              />
+            </a-form-item>
+          </a-col>
           <a-col :span="12"><a-form-item label="官网"><a-input v-model:value="form.website" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item label="显示顺序"><a-input-number v-model:value="form.sortOrder" style="width:100%" /></a-form-item></a-col>
           <a-col :span="24"><a-form-item label="备注"><a-textarea v-model:value="form.note" :rows="2" /></a-form-item></a-col>
@@ -59,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlusOutlined } from '@ant-design/icons-vue'
 import { listManufacturers, createManufacturer, updateManufacturer, deleteManufacturer } from '@/api'
@@ -76,6 +87,21 @@ const emptyForm = () => ({
   website: '', note: '', disabled: false, sortOrder: 0
 })
 const form = ref(emptyForm())
+
+/** 常用国家 / 地区（电子制造供应链口径）；历史数据里的其它值会临时补进选项，避免编辑时丢失 */
+const COUNTRY_NAMES = [
+  '中国', '中国香港', '中国台湾', '中国澳门', '美国', '韩国', '日本', '德国', '英国', '法国',
+  '意大利', '荷兰', '瑞士', '瑞典', '芬兰', '丹麦', '挪威', '比利时', '奥地利', '爱尔兰',
+  '西班牙', '葡萄牙', '波兰', '捷克', '匈牙利', '土耳其', '俄罗斯', '乌克兰', '以色列',
+  '新加坡', '马来西亚', '越南', '泰国', '菲律宾', '印度尼西亚', '印度', '墨西哥', '巴西',
+  '加拿大', '澳大利亚', '新西兰', '南非', '埃及', '阿联酋', '沙特阿拉伯',
+]
+const countryOptions = computed(() => {
+  const values = [...COUNTRY_NAMES]
+  const current = String(form.value.country || '').trim()
+  if (current && !values.includes(current)) values.unshift(current)
+  return values.map(v => ({ value: v, label: v }))
+})
 
 const columns = [
   { title: '代码', dataIndex: 'code', key: 'code', width: 120 },

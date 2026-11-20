@@ -9,6 +9,8 @@ package cn.ck.plm.product.service.impl;
 
 import cn.ck.plm.base.util.TenantContext;
 import cn.ck.plm.bom.dto.BomCostReportVO;
+import cn.ck.plm.bom.dto.BomTreeNode;
+import cn.ck.plm.bom.mapper.BomLinksMapper;
 import cn.ck.plm.bom.service.api.BomLinksService;
 import cn.ck.plm.product.entity.Metric;
 import cn.ck.plm.product.mapper.MetricFactsMapper;
@@ -23,9 +25,13 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 指标评估器 —— 把 {@code ck_metric} 里 11 项指标的数值真正算出来并写回（2026-10-26）。
@@ -45,12 +51,13 @@ import java.util.Map;
  *   <tr><td>EOL_RISK_COUNT</td><td>PART_LIFE_CYCLE∈{EOL,OBSOLETE} 的器件数</td></tr>
  *   <tr><td>COST_ACHIEVE</td><td>目标成本（IBA {@code TARGET_COST}）/ 实际成本（BOM 卷积）× 100，≥100% 为达成；任一侧缺 → 不算</td></tr>
  *   <tr><td>TIME_TO_MARKET_DEV</td><td>LDCP（上市决策评审）通过日 − 目标上市日期（IBA {@code TARGET_LAUNCH_DATE}），单位天，正数延期；任一侧缺 → 不算</td></tr>
+ *   <tr><td>REUSE_GAIN</td><td>Σ(复用件在本产品 BOM 中的本层金额 × (覆盖型号数 − 1))；覆盖型号数走全历史 where-used，单位成本是"单次开发投入"的代理口径，不是财务核算</td></tr>
  * </table>
  *
- * <h3>两项不碰</h3>
- * <p>{@code REUSE_GAIN} / {@code QUALITY_LOSS_COST} 的 source 在行业包里
- * 就是 {@code "-"}（C 级，无取数依据）—— 评估器跳过它们，库里保持空白，界面显示「暂未评估」。
- * 给它们编个算法，正是文档第 16 节禁止的事。
+ * <h3>一项不碰</h3>
+ * <p>{@code QUALITY_LOSS_COST} 仍没有取数依据（C 级）—— 评估器跳过，库里保持空白，
+ * 界面显示「暂未评估」。返修 / 退货 / 客诉的金额要等现场质量数据落地，不能在这里编。
+ * REUSE_GAIN 已由本评估器实现（B 级，source = ReuseGainCalculator）。
  *
  * <h3>为什么"未填"有时不算 0</h3>
  * <p>停产风险看的是 IBA（{@code PART_LIFE_CYCLE}）：没人填过就无从判断，所以显示
@@ -88,13 +95,16 @@ public class MetricEvaluator {
     private final MetricMapper metricMapper;
     private final MetricFactsMapper factsMapper;
     private final BomLinksService bomLinksService;
+    private final BomLinksMapper bomLinksMapper;
 
     public MetricEvaluator(MetricMapper metricMapper,
                            MetricFactsMapper factsMapper,
-                           BomLinksService bomLinksService) {
+                           BomLinksService bomLinksService,
+                           BomLinksMapper bomLinksMapper) {
         this.metricMapper = metricMapper;
         this.factsMapper = factsMapper;
         this.bomLinksService = bomLinksService;
+        this.bomLinksMapper = bomLinksMapper;
     }
 
     /**
@@ -173,6 +183,7 @@ public class MetricEvaluator {
             f.preferredParts = factsMapper.countCertifiablePartsWithAmlStatus(ownerOid, AML_PREFERRED);
         }
 
+        String tenantOid = TenantContext.getOrNull();
         String bomRoot = factsMapper.selectBomRootIteration(ownerOid);
         if (bomRoot != null) {
             BomCostReportVO report = bomLinksService.costReport(bomRoot);
@@ -180,6 +191,7 @@ public class MetricEvaluator {
                 f.bomLines = report.getTotalLines() == null ? 0 : report.getTotalLines();
                 f.missingCostLines = report.getMissingCostLines() == null ? 0 : report.getMissingCostLines();
                 f.totalCost = report.getTotalCost();
+                collectReuseFacts(f, report, tenantOid);
             }
         }
 
@@ -213,7 +225,6 @@ public class MetricEvaluator {
         f.actualLaunchDate = parseDate(factsMapper.selectGateDecidedDate(ownerOid, GATE_LAUNCH),
                 "LDCP 通过日期", ownerOid);
 
-        String tenantOid = TenantContext.getOrNull();
         if (tenantOid != null) {
             List<Map<String, Object>> rows = factsMapper.countIssueStatusByProduct(tenantOid, ownerOid);
             if (rows != null) {
@@ -229,6 +240,103 @@ public class MetricEvaluator {
             }
         }
         return f;
+    }
+
+    /**
+     * 复用收益事实：
+     * <ol>
+     *   <li>BOM 卷积树里每个子件的本层金额（不含它自己的下级），按子件 oid 合并；</li>
+     *   <li>批量标记其中哪些是通用件 / 标准件（类型或资源库容器）；</li>
+     *   <li>对这些复用件查<b>全历史</b> where-used，拿到覆盖的不同型号数；只覆盖 1 个型号的不算复用。</li>
+     * </ol>
+     * 单位成本是唯一可得的"单次投入"代理（{@code ck_part} 没有成本字段），
+     * 所以结果是<b>估算收益</b>，valueText 里必须把口径写出来，不能伪装成财务数字。
+     */
+    private void collectReuseFacts(Facts f, BomCostReportVO report, String tenantOid) {
+        if (report.getLines() == null || report.getLines().isEmpty() || tenantOid == null) {
+            return;
+        }
+        List<BomTreeNode> nodes = new ArrayList<>();
+        flatten(report.getLines(), nodes);
+        Set<String> partOids = new LinkedHashSet<>();
+        Map<String, Double> costByPart = new HashMap<>();
+        for (BomTreeNode node : nodes) {
+            String partOid = node.getChildPartOid();
+            if (partOid == null) {
+                continue;
+            }
+            partOids.add(partOid);
+            Double cost = node.getExtendedCost();
+            if (cost != null) {
+                costByPart.merge(partOid, cost, Double::sum);
+            }
+        }
+        if (partOids.isEmpty()) {
+            return;
+        }
+        List<Map<String, Object>> flags = factsMapper.selectReuseFlags(tenantOid, new ArrayList<>(partOids));
+        if (flags == null) {
+            return;
+        }
+        for (Map<String, Object> row : flags) {
+            if (!isTrue(pick(row, "reuse"))) {
+                continue;
+            }
+            String partOid = text(pick(row, "partOid"));
+            if (partOid == null) {
+                continue;
+            }
+            f.reuseCandidates++;
+            Double cost = costByPart.get(partOid);
+            if (cost != null) {
+                f.reuseCostFilled = true;
+            }
+            Map<String, Object> counts = bomLinksMapper.selectGenPartUsage(partOid, tenantOid, 0);
+            int models = counts == null ? 0 : intValue(pick(counts, "modelCount"));
+            if (models < 2 || cost == null) {
+                continue;
+            }
+            f.reuseParts++;
+            f.reuseCost += cost;
+            f.reuseModelTimes += models - 1;
+            f.reuseGain += cost * (models - 1);
+        }
+    }
+
+    private static void flatten(List<BomTreeNode> nodes, List<BomTreeNode> out) {
+        if (nodes == null) {
+            return;
+        }
+        for (BomTreeNode node : nodes) {
+            if (node == null) {
+                continue;
+            }
+            out.add(node);
+            flatten(node.getChildren(), out);
+        }
+    }
+
+    private static boolean isTrue(Object value) {
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        String s = text(value);
+        return "t".equalsIgnoreCase(s) || "true".equalsIgnoreCase(s) || "1".equals(s);
+    }
+
+    private static int intValue(Object value) {
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        String s = text(value);
+        if (s == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     // ==================== 逐项评估 ====================
@@ -341,9 +449,26 @@ public class MetricEvaluator {
                 }
                 return true;
             }
+            case "REUSE_GAIN" -> {
+                if (f.bomLines == 0) {
+                    write(m, null, "无 BOM 结构（复用件从 BOM 卷积树里取）");
+                } else if (f.reuseCandidates == 0) {
+                    write(m, null, "本产品 BOM 中没有通用件 / 标准件");
+                } else if (!f.reuseCostFilled) {
+                    write(m, null, "复用件所在 BOM 行缺单位成本，无法估算（成本来自 BOM 行 unit_cost）");
+                } else if (f.reuseParts == 0) {
+                    write(m, null, "BOM 中的通用件 / 标准件目前只被 1 个型号引用，尚不构成跨型号复用");
+                } else {
+                    String text = f.reuseParts + " 个复用件、避免 " + f.reuseModelTimes
+                            + " 次重复开发；复用件本层成本 "
+                            + money(BigDecimal.valueOf(f.reuseCost))
+                            + "，按 Σ(成本 × (型号数 − 1)) 估算（单位成本为代理口径）";
+                    write(m, pct(f.reuseGain), text);
+                }
+                return true;
+            }
             default -> {
-                // TIME_TO_MARKET_DEV / REUSE_GAIN / QUALITY_LOSS_COST：行业包里 source 就是 "-"，
-                // 没有取数依据 → 不写，保持「暂未评估」
+                // QUALITY_LOSS_COST：行业包里没有取数依据 → 不写，保持「暂未评估」
                 return false;
             }
         }
@@ -428,6 +553,18 @@ public class MetricEvaluator {
         private BigDecimal targetCost;
         /** 容器当前卷积总成本（系列并入旗下型号）；没有可计价顶层件 = null */
         private Double actualCost;
+        /** REUSE_GAIN：BOM 中通用件 / 标准件的种类数（不管是否跨型号、是否有成本） */
+        private int reuseCandidates;
+        /** REUSE_GAIN：真正跨 ≥2 个型号且有成本的复用件数 */
+        private int reuseParts;
+        /** REUSE_GAIN：这些复用件累计避免的重复开发次数 Σ(型号数 − 1) */
+        private int reuseModelTimes;
+        /** REUSE_GAIN：复用件在本产品 BOM 中的本层金额合计 */
+        private double reuseCost;
+        /** REUSE_GAIN：估算收益 Σ(本层金额 × (型号数 − 1)) */
+        private double reuseGain;
+        /** 复用件里至少有一个带单位成本；全缺时不出数，避免把"没填"当成 0 收益 */
+        private boolean reuseCostFilled;
         private long issueTotal;
         private final Map<String, Long> issues = new java.util.HashMap<>();
     }

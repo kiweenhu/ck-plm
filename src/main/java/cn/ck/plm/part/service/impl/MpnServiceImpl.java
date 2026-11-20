@@ -262,18 +262,35 @@ public class MpnServiceImpl implements MpnService {
     @Override
     public Map<String, Object> summarize(String partOid) {
         int amlCount = mapper.countAmlByPart(partOid);
-        int supplierCount = mapper.countDistinctSuppliersByPart(partOid);
+        int totalSupplierCount = mapper.countDistinctSuppliersByPart(partOid);
+        int activeSupplierCount = mapper.countActiveDistinctSuppliersByPart(partOid);
+        int disabledSupplierCount = mapper.countDisabledDistinctSuppliersByPart(partOid);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("partOid", partOid);
         summary.put("amlCount", amlCount);
-        summary.put("supplierCount", supplierCount);
-        summary.put("singleSource", supplierCount == 1);
-        summary.put("riskNote", supplierCount == 1
-                ? "单一来源风险：该内部件全部认可料号合计只有 1 家供应商（检查规则 R-SH-11）"
-                : null);
+        // supplierCount 保持"有效来源"语义：已停用供应商不能算可用渠道
+        summary.put("supplierCount", activeSupplierCount);
+        summary.put("totalSupplierCount", totalSupplierCount);
+        summary.put("disabledSupplierCount", disabledSupplierCount);
+        summary.put("singleSource", amlCount > 0 && activeSupplierCount <= 1);
+        String riskNote = null;
+        if (amlCount > 0) {
+            if (activeSupplierCount == 0 && disabledSupplierCount > 0) {
+                riskNote = "渠道风险：该内部件 " + disabledSupplierCount + " 家引用中的供应商均已停用，"
+                        + "当前无有效供货渠道（检查规则 R-SH-11）";
+            } else if (activeSupplierCount == 1 && disabledSupplierCount > 0) {
+                riskNote = "单一来源风险：仅 1 家有效供应商，另有 " + disabledSupplierCount
+                        + " 家已停用供应商仍被历史 AVL 引用（检查规则 R-SH-11）";
+            } else if (activeSupplierCount == 1) {
+                riskNote = "单一来源风险：该内部件全部认可料号合计只有 1 家有效供应商（检查规则 R-SH-11）";
+            } else if (activeSupplierCount == 0) {
+                riskNote = "渠道风险：该内部件尚无有效供货渠道（检查规则 R-SH-11）";
+            }
+        }
+        summary.put("riskNote", riskNote);
         summary.put("derivation",
-                "supplierCount = count(distinct ck_part_avl.supplier_oid) —— 对应 electronics-core/attributes.json "
-                        + "里 supplierCount 的 derivedBy=count(distinct supplierRefs)");
+                "supplierCount = count(distinct ck_part_avl.supplier_oid where supplier 未停用)；"
+                        + "disabledSupplierCount 统计已停用但仍被历史 AVL 引用的供应商");
         return summary;
     }
 

@@ -1,43 +1,649 @@
 {
   "types": [
-    { "code": "FOOTPRINT", "name": "封装", "displayName": "封装", "kind": "SOFT_TYPE", "source": "OOTB",
-      "icon": "BorderOutlined", "sortOrder": 31, "parentCode": "ENG_DOCUMENT", "hostCode": "ENG_DOCUMENT",
+    {
+      "code": "FOOTPRINT",
+      "name": "封装",
+      "displayName": "封装",
+      "kind": "SOFT_TYPE",
+      "source": "OOTB",
+      "icon": "BorderOutlined",
+      "sortOrder": 31,
+      "parentCode": "ENG_DOCUMENT",
+      "hostCode": "ENG_DOCUMENT",
       "description": "电子元器件封装（PCB 焊盘图形 / Land Pattern），遵循 IPC-7351 命名，如 RESC1608X55N；属 EDA 设计数据，宿主为工程数据 ENG_DOCUMENT",
-      "numberRule": "ENG_DOC_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
-      "domain": "ECAD_DOMAIN" },
-    { "code": "SYMBOL", "name": "原理图图符", "displayName": "原理图图符", "kind": "SOFT_TYPE", "source": "OOTB",
-      "icon": "BlockOutlined", "sortOrder": 32, "parentCode": "ENG_DOCUMENT", "hostCode": "ENG_DOCUMENT",
+      "numberRule": "ENG_DOC_NUMBER",
+      "versionRule": "LETTER_26",
+      "lifecycleTemplate": "STANDARD",
+      "domain": "ECAD_DOMAIN"
+    },
+    {
+      "code": "SYMBOL",
+      "name": "原理图图符",
+      "displayName": "原理图图符",
+      "kind": "SOFT_TYPE",
+      "source": "OOTB",
+      "icon": "BlockOutlined",
+      "sortOrder": 32,
+      "parentCode": "ENG_DOCUMENT",
+      "hostCode": "ENG_DOCUMENT",
       "description": "原理图符号与引脚定义，供电子元器件在原理图设计中引用；属 EDA 设计数据，宿主为工程数据 ENG_DOCUMENT",
-      "numberRule": "ENG_DOC_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
-      "domain": "ECAD_DOMAIN" },
-    { "code": "ELECTRONIC", "name": "电子元器件", "displayName": "电子元器件", "kind": "SOFT_TYPE", "source": "OOTB",
-      "icon": "ThunderboltOutlined", "sortOrder": 33, "parentCode": "PART", "hostCode": "PART",
+      "numberRule": "ENG_DOC_NUMBER",
+      "versionRule": "LETTER_26",
+      "lifecycleTemplate": "STANDARD",
+      "domain": "ECAD_DOMAIN"
+    },
+    {
+      "code": "DATASHEET",
+      "name": "数据手册",
+      "displayName": "Datasheet",
+      "kind": "SOFT_TYPE",
+      "source": "OOTB",
+      "icon": "FileTextOutlined",
+      "sortOrder": 33,
+      "parentCode": "ENG_DOCUMENT",
+      "hostCode": "ENG_DOCUMENT",
+      "description": "器件数据手册 / 规格书，与图符、封装同属封装·图符库，按 type_definition_code=DATASHEET 区分；宿主为工程数据 ENG_DOCUMENT",
+      "numberRule": "ENG_DOC_NUMBER",
+      "versionRule": "LETTER_26",
+      "lifecycleTemplate": "STANDARD",
+      "domain": "ECAD_DOMAIN"
+    },
+    {
+      "code": "ELECTRONIC",
+      "name": "电子元器件",
+      "displayName": "电子元器件",
+      "kind": "SOFT_TYPE",
+      "source": "OOTB",
+      "icon": "ThunderboltOutlined",
+      "sortOrder": 33,
+      "parentCode": "PART",
+      "hostCode": "PART",
       "description": "电子元器件，如电阻、电容、电感、二极管、IC、连接器等",
-      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "COMPONENT_CODE",
-      "lifecycleStateProcesses": { "DRAFT": "component-introduction" },
+      "numberRule": "PART_NUMBER",
+      "versionRule": "LETTER_26",
+      "lifecycleTemplate": "COMPONENT_CODE",
+      "lifecycleStateProcesses": {
+        "DRAFT": "component-introduction"
+      },
       "clsIdentifier": "tpl-electronic",
-      "domain": "ECAD_DOMAIN" },
-    { "code": "PCBA", "name": "PCBA", "displayName": "PCBA组件", "kind": "SOFT_TYPE", "source": "OOTB",
-      "icon": "AppstoreOutlined", "sortOrder": 34, "parentCode": "PART", "hostCode": "PART",
+      "domain": "ECAD_DOMAIN"
+    },
+    {
+      "code": "PCBA",
+      "name": "PCBA",
+      "displayName": "PCBA组件",
+      "kind": "SOFT_TYPE",
+      "source": "OOTB",
+      "icon": "AppstoreOutlined",
+      "sortOrder": 34,
+      "parentCode": "PART",
+      "hostCode": "PART",
       "description": "印刷电路板组件，已完成电子元器件贴装的电路板",
-      "numberRule": "PART_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
-      "domain": "ECAD_DOMAIN" },
-    { "code": "SCHEMATIC", "name": "原理图", "displayName": "原理图", "kind": "SOFT_TYPE", "source": "OOTB",
-      "icon": "FileTextOutlined", "sortOrder": 35, "parentCode": "ENG_DOCUMENT", "hostCode": "ENG_DOCUMENT",
+      "numberRule": "PART_NUMBER",
+      "versionRule": "LETTER_26",
+      "lifecycleTemplate": "STANDARD",
+      "domain": "ECAD_DOMAIN"
+    },
+    {
+      "code": "SCHEMATIC",
+      "name": "原理图",
+      "displayName": "原理图",
+      "kind": "SOFT_TYPE",
+      "source": "OOTB",
+      "icon": "FileTextOutlined",
+      "sortOrder": 35,
+      "parentCode": "ENG_DOCUMENT",
+      "hostCode": "ENG_DOCUMENT",
       "description": "电子原理图设计文件，含图页与器件实例；属 EDA 设计数据，宿主为工程数据 ENG_DOCUMENT",
-      "numberRule": "ENG_DOC_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
-      "domain": "ECAD_DOMAIN" },
-    { "code": "PCB_LAYOUT", "name": "PCB设计", "displayName": "PCB 设计", "kind": "SOFT_TYPE", "source": "OOTB",
-      "icon": "LayoutOutlined", "sortOrder": 36, "parentCode": "ENG_DOCUMENT", "hostCode": "ENG_DOCUMENT",
+      "numberRule": "ENG_DOC_NUMBER",
+      "versionRule": "LETTER_26",
+      "lifecycleTemplate": "STANDARD",
+      "domain": "ECAD_DOMAIN"
+    },
+    {
+      "code": "PCB_LAYOUT",
+      "name": "PCB设计",
+      "displayName": "PCB 设计",
+      "kind": "SOFT_TYPE",
+      "source": "OOTB",
+      "icon": "LayoutOutlined",
+      "sortOrder": 36,
+      "parentCode": "ENG_DOCUMENT",
+      "hostCode": "ENG_DOCUMENT",
       "description": "PCB 布局布线设计，含层叠、板厚、Gerber 文件集；属 EDA 设计数据，宿主为工程数据 ENG_DOCUMENT",
-      "numberRule": "ENG_DOC_NUMBER", "versionRule": "LETTER_26", "lifecycleTemplate": "STANDARD",
-      "domain": "ECAD_DOMAIN" },
-
-    { "code": "ECAD_PROJECT", "name": "设计项目", "displayName": "设计项目", "kind": "OOTB", "source": "OOTB",
-      "icon": "ProjectOutlined", "sortOrder": 40, "parentCode": null, "hostCode": "ECAD_PROJECT",
+      "numberRule": "ENG_DOC_NUMBER",
+      "versionRule": "LETTER_26",
+      "lifecycleTemplate": "STANDARD",
+      "domain": "ECAD_DOMAIN"
+    },
+    {
+      "code": "ECAD_PROJECT",
+      "name": "设计项目",
+      "displayName": "设计项目",
+      "kind": "OOTB",
+      "source": "OOTB",
+      "icon": "ProjectOutlined",
+      "sortOrder": 40,
+      "parentCode": null,
+      "hostCode": "ECAD_PROJECT",
       "description": "电子设计项目：电子设计任务的容器对象，关联原理图 / PCB 设计、所属产品与项目阶段；拥有独立实体表 ck_ecad_project，非 Part / Document 宿主类型",
-      "numberRule": "ECAD_PROJECT-NUM", "versionRule": null, "lifecycleTemplate": null,
-      "domain": "ECAD_DOMAIN" }
+      "numberRule": "ECAD_PROJECT-NUM",
+      "versionRule": null,
+      "lifecycleTemplate": null,
+      "domain": "ECAD_DOMAIN"
+    }
   ],
-  "note": "电子域类型：4 个 EDA 设计数据（宿主 ENG_DOCUMENT → 数据落工程数据表、用 ENG_DOC_NUMBER 编码，与工程数据同号段）+ 2 个物料类（宿主 PART → 落 ck_part、用 PART_NUMBER）+ 1 个域下独立对象类型（ECAD_PROJECT，能力宿主=自身、有自己的表 ck_ecad_project）。ECAD_PROJECT 继承 BaseEntity 而非 MasterEntity，实体表无迭代/版本/生命周期列，故只绑编码规则、versionRule 与 lifecycleTemplate 留空。"
+  "note": "电子域类型：4 个 EDA 设计数据（宿主 ENG_DOCUMENT → 数据落工程数据表、用 ENG_DOC_NUMBER 编码，与工程数据同号段）+ 2 个物料类（宿主 PART → 落 ck_part、用 PART_NUMBER）+ 1 个域下独立对象类型（ECAD_PROJECT，能力宿主=自身、有自己的表 ck_ecad_project）。ECAD_PROJECT 继承 BaseEntity 而非 MasterEntity，实体表无迭代/版本/生命周期列，故只绑编码规则、versionRule 与 lifecycleTemplate 留空。",
+  "pageLayouts": {
+    "byCode": {
+      "FOOTPRINT": [
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "type": "layout-row",
+                  "label": "布局行",
+                  "columns": 1,
+                  "children": [
+                    {
+                      "id": "fld-owner",
+                      "label": "资源库",
+                      "required": true,
+                      "fieldName": "containerOid",
+                      "bindFields": [
+                        "containerOid",
+                        "containerType"
+                      ],
+                      "description": "企业资源库容器选择：无已知条件时可选择任一资源库（元器件库/标准件库/通用件库等）；已进入某资源库时默认为该库且不可修改",
+                      "placeholder": "选择所属产品",
+                      "uiComponent": "resource-container-select"
+                    },
+                    {
+                      "id": "fld-folder",
+                      "label": "所属文件夹",
+                      "readonly": true,
+                      "fieldName": "folderOid",
+                      "placeholder": "由当前文件夹自动填充",
+                      "uiComponent": "folder-select"
+                    },
+                    {
+                      "id": "fld-number",
+                      "label": "编号",
+                      "readonly": true,
+                      "fieldName": "number",
+                      "placeholder": "系统根据编码规则自动生成",
+                      "uiComponent": "number-preview"
+                    },
+                    {
+                      "id": "fld-name",
+                      "label": "名称",
+                      "required": true,
+                      "fieldName": "name",
+                      "placeholder": "请输入工程数据名称",
+                      "uiComponent": "input"
+                    },
+                    {
+                      "id": "fld-doctype",
+                      "label": "类型",
+                      "required": false,
+                      "fieldName": "typeDefinitionCode",
+                      "placeholder": "选择工程数据类型（工程数据 / 封装 / PCB设计 / 原理图 / 图符）",
+                      "uiComponent": "eng-document-type-select"
+                    },
+                    {
+                      "id": "fld-mainfile",
+                      "label": "封装文件",
+                      "required": false,
+                      "fieldName": "ckfileOid",
+                      "placeholder": "上传 STEP / IGES / STL 等数模文件",
+                      "uiComponent": "ckfile-upload"
+                    },
+                    {
+                      "id": "fld-desc",
+                      "rows": 3,
+                      "label": "描述",
+                      "fieldName": "description",
+                      "bindFields": null,
+                      "description": "富文本编辑器，支持文字排版、图片、链接等丰富内容",
+                      "placeholder": "请输入描述",
+                      "uiComponent": "rich-text"
+                    }
+                  ],
+                  "fieldName": "row_1"
+                }
+              ]
+            }
+          },
+          "operationCode": "create",
+          "operationName": "新建页"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "type": "layout-row",
+                  "label": "布局行",
+                  "columns": 1,
+                  "children": [
+                    {
+                      "id": "fld-owner",
+                      "label": "资源库",
+                      "required": true,
+                      "fieldName": "containerOid",
+                      "bindFields": [
+                        "containerOid",
+                        "containerType"
+                      ],
+                      "description": "企业资源库容器选择：无已知条件时可选择任一资源库（元器件库/标准件库/通用件库等）；已进入某资源库时默认为该库且不可修改",
+                      "placeholder": "选择所属产品",
+                      "uiComponent": "resource-container-select"
+                    },
+                    {
+                      "id": "fld-folder",
+                      "label": "所属文件夹",
+                      "readonly": true,
+                      "fieldName": "folderOid",
+                      "placeholder": "由当前文件夹自动填充",
+                      "uiComponent": "folder-select"
+                    },
+                    {
+                      "id": "fld-number",
+                      "label": "编号",
+                      "readonly": true,
+                      "fieldName": "number",
+                      "placeholder": "系统根据编码规则自动生成",
+                      "uiComponent": "number-preview"
+                    },
+                    {
+                      "id": "fld-name",
+                      "label": "名称",
+                      "required": true,
+                      "fieldName": "name",
+                      "placeholder": "请输入工程数据名称",
+                      "uiComponent": "input"
+                    },
+                    {
+                      "id": "fld-doctype",
+                      "label": "类型",
+                      "required": false,
+                      "fieldName": "typeDefinitionCode",
+                      "placeholder": "选择工程数据类型（工程数据 / 封装 / PCB设计 / 原理图 / 图符）",
+                      "uiComponent": "eng-document-type-select"
+                    },
+                    {
+                      "id": "fld-mainfile",
+                      "label": "封装文件",
+                      "required": false,
+                      "fieldName": "ckfileOid",
+                      "placeholder": "上传 STEP / IGES / STL 等数模文件",
+                      "uiComponent": "ckfile-upload"
+                    },
+                    {
+                      "id": "fld-desc",
+                      "rows": 3,
+                      "label": "描述",
+                      "fieldName": "description",
+                      "bindFields": null,
+                      "description": "富文本编辑器，支持文字排版、图片、链接等丰富内容",
+                      "placeholder": "请输入描述",
+                      "uiComponent": "rich-text"
+                    }
+                  ],
+                  "fieldName": "row_1"
+                }
+              ]
+            }
+          },
+          "operationCode": "update",
+          "operationName": "编辑页"
+        }
+      ],
+      "SYMBOL": [
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "type": "layout-row",
+                  "label": "布局行",
+                  "columns": 1,
+                  "children": [
+                    {
+                      "id": "fld-owner",
+                      "label": "资源库",
+                      "required": true,
+                      "fieldName": "containerOid",
+                      "bindFields": [
+                        "containerOid",
+                        "containerType"
+                      ],
+                      "description": "企业资源库容器选择：无已知条件时可选择任一资源库（元器件库/标准件库/通用件库等）；已进入某资源库时默认为该库且不可修改",
+                      "placeholder": "选择所属产品",
+                      "uiComponent": "resource-container-select"
+                    },
+                    {
+                      "id": "fld-folder",
+                      "label": "所属文件夹",
+                      "readonly": true,
+                      "fieldName": "folderOid",
+                      "placeholder": "由当前文件夹自动填充",
+                      "uiComponent": "folder-select"
+                    },
+                    {
+                      "id": "fld-number",
+                      "label": "编号",
+                      "readonly": true,
+                      "fieldName": "number",
+                      "placeholder": "系统根据编码规则自动生成",
+                      "uiComponent": "number-preview"
+                    },
+                    {
+                      "id": "fld-name",
+                      "label": "名称",
+                      "required": true,
+                      "fieldName": "name",
+                      "placeholder": "请输入工程数据名称",
+                      "uiComponent": "input"
+                    },
+                    {
+                      "id": "fld-doctype",
+                      "label": "类型",
+                      "required": false,
+                      "fieldName": "typeDefinitionCode",
+                      "placeholder": "选择工程数据类型（工程数据 / 封装 / PCB设计 / 原理图 / 图符）",
+                      "uiComponent": "eng-document-type-select"
+                    },
+                    {
+                      "id": "fld-mainfile",
+                      "label": "图符文件",
+                      "required": false,
+                      "fieldName": "ckfileOid",
+                      "placeholder": "上传 STEP / IGES / STL 等数模文件",
+                      "uiComponent": "ckfile-upload"
+                    },
+                    {
+                      "id": "fld-desc",
+                      "rows": 3,
+                      "label": "描述",
+                      "fieldName": "description",
+                      "bindFields": null,
+                      "description": "富文本编辑器，支持文字排版、图片、链接等丰富内容",
+                      "placeholder": "请输入描述",
+                      "uiComponent": "rich-text"
+                    }
+                  ],
+                  "fieldName": "row_1"
+                }
+              ]
+            }
+          },
+          "operationCode": "create",
+          "operationName": "新建页"
+        },
+        {
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "type": "layout-row",
+                  "label": "布局行",
+                  "columns": 1,
+                  "children": [
+                    {
+                      "id": "fld-owner",
+                      "label": "资源库",
+                      "required": true,
+                      "fieldName": "containerOid",
+                      "bindFields": [
+                        "containerOid",
+                        "containerType"
+                      ],
+                      "description": "企业资源库容器选择：无已知条件时可选择任一资源库（元器件库/标准件库/通用件库等）；已进入某资源库时默认为该库且不可修改",
+                      "placeholder": "选择所属产品",
+                      "uiComponent": "resource-container-select"
+                    },
+                    {
+                      "id": "fld-folder",
+                      "label": "所属文件夹",
+                      "readonly": true,
+                      "fieldName": "folderOid",
+                      "placeholder": "由当前文件夹自动填充",
+                      "uiComponent": "folder-select"
+                    },
+                    {
+                      "id": "fld-number",
+                      "label": "编号",
+                      "readonly": true,
+                      "fieldName": "number",
+                      "placeholder": "系统根据编码规则自动生成",
+                      "uiComponent": "number-preview"
+                    },
+                    {
+                      "id": "fld-name",
+                      "label": "名称",
+                      "required": true,
+                      "fieldName": "name",
+                      "placeholder": "请输入工程数据名称",
+                      "uiComponent": "input"
+                    },
+                    {
+                      "id": "fld-doctype",
+                      "label": "类型",
+                      "required": false,
+                      "fieldName": "typeDefinitionCode",
+                      "placeholder": "选择工程数据类型（工程数据 / 封装 / PCB设计 / 原理图 / 图符）",
+                      "uiComponent": "eng-document-type-select"
+                    },
+                    {
+                      "id": "fld-mainfile",
+                      "label": "图符文件",
+                      "required": false,
+                      "fieldName": "ckfileOid",
+                      "placeholder": "上传 STEP / IGES / STL 等数模文件",
+                      "uiComponent": "ckfile-upload"
+                    },
+                    {
+                      "id": "fld-desc",
+                      "rows": 3,
+                      "label": "描述",
+                      "fieldName": "description",
+                      "bindFields": null,
+                      "description": "富文本编辑器，支持文字排版、图片、链接等丰富内容",
+                      "placeholder": "请输入描述",
+                      "uiComponent": "rich-text"
+                    }
+                  ],
+                  "fieldName": "row_1"
+                }
+              ]
+            }
+          },
+          "operationCode": "update",
+          "operationName": "编辑页"
+        }
+      ],
+      "DATASHEET": [
+        {
+          "operationCode": "create",
+          "operationName": "新建页",
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "type": "layout-row",
+                  "label": "布局行",
+                  "columns": 1,
+                  "children": [
+                    {
+                      "id": "fld-owner",
+                      "label": "所属产品",
+                      "required": true,
+                      "fieldName": "ownerOid",
+                      "placeholder": "选择所属产品",
+                      "uiComponent": "product-select"
+                    },
+                    {
+                      "id": "fld-owner",
+                      "label": "资源库",
+                      "required": true,
+                      "fieldName": "containerOid",
+                      "bindFields": [
+                        "containerOid",
+                        "containerType"
+                      ],
+                      "description": "企业资源库容器选择：无已知条件时可选择任一资源库（元器件库/标准件库/通用件库等）；已进入某资源库时默认为该库且不可修改",
+                      "placeholder": "选择所属产品",
+                      "uiComponent": "resource-container-select"
+                    },
+                    {
+                      "id": "fld-folder",
+                      "label": "所属文件夹",
+                      "readonly": true,
+                      "fieldName": "folderOid",
+                      "placeholder": "由当前文件夹自动填充",
+                      "uiComponent": "folder-select"
+                    },
+                    {
+                      "id": "fld-number",
+                      "label": "编号",
+                      "readonly": true,
+                      "fieldName": "number",
+                      "placeholder": "系统根据编码规则自动生成",
+                      "uiComponent": "number-preview"
+                    },
+                    {
+                      "id": "fld-name",
+                      "label": "名称",
+                      "required": true,
+                      "fieldName": "name",
+                      "placeholder": "请输入工程数据名称",
+                      "uiComponent": "input"
+                    },
+                    {
+                      "id": "fld-doctype",
+                      "label": "类型",
+                      "required": false,
+                      "fieldName": "typeDefinitionCode",
+                      "placeholder": "选择工程数据类型（工程数据 / 封装 / PCB设计 / 原理图 / 图符）",
+                      "uiComponent": "eng-document-type-select"
+                    },
+                    {
+                      "id": "fld-mainfile",
+                      "label": "Datasheet文件",
+                      "required": false,
+                      "fieldName": "ckfileOid",
+                      "placeholder": "上传 STEP / IGES / STL 等数模文件",
+                      "uiComponent": "ckfile-upload"
+                    },
+                    {
+                      "id": "fld-desc",
+                      "rows": 3,
+                      "label": "描述",
+                      "fieldName": "description",
+                      "bindFields": null,
+                      "description": "富文本编辑器，支持文字排版、图片、链接等丰富内容",
+                      "placeholder": "请输入描述",
+                      "uiComponent": "rich-text"
+                    }
+                  ],
+                  "fieldName": "row_1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "operationCode": "update",
+          "operationName": "编辑页",
+          "layoutJson": {
+            "form": {
+              "fields": [
+                {
+                  "type": "layout-row",
+                  "label": "布局行",
+                  "columns": 1,
+                  "children": [
+                    {
+                      "id": "fld-owner",
+                      "label": "所属产品",
+                      "required": true,
+                      "fieldName": "ownerOid",
+                      "placeholder": "选择所属产品",
+                      "uiComponent": "product-select"
+                    },
+                    {
+                      "id": "fld-owner",
+                      "label": "资源库",
+                      "required": true,
+                      "fieldName": "containerOid",
+                      "bindFields": [
+                        "containerOid",
+                        "containerType"
+                      ],
+                      "description": "企业资源库容器选择：无已知条件时可选择任一资源库（元器件库/标准件库/通用件库等）；已进入某资源库时默认为该库且不可修改",
+                      "placeholder": "选择所属产品",
+                      "uiComponent": "resource-container-select"
+                    },
+                    {
+                      "id": "fld-folder",
+                      "label": "所属文件夹",
+                      "readonly": true,
+                      "fieldName": "folderOid",
+                      "placeholder": "由当前文件夹自动填充",
+                      "uiComponent": "folder-select"
+                    },
+                    {
+                      "id": "fld-number",
+                      "label": "编号",
+                      "readonly": true,
+                      "fieldName": "number",
+                      "placeholder": "系统根据编码规则自动生成",
+                      "uiComponent": "number-preview"
+                    },
+                    {
+                      "id": "fld-name",
+                      "label": "名称",
+                      "required": true,
+                      "fieldName": "name",
+                      "placeholder": "请输入工程数据名称",
+                      "uiComponent": "input"
+                    },
+                    {
+                      "id": "fld-doctype",
+                      "label": "类型",
+                      "required": false,
+                      "fieldName": "typeDefinitionCode",
+                      "placeholder": "选择工程数据类型（工程数据 / 封装 / PCB设计 / 原理图 / 图符）",
+                      "uiComponent": "eng-document-type-select"
+                    },
+                    {
+                      "id": "fld-mainfile",
+                      "label": "Datasheet文件",
+                      "required": false,
+                      "fieldName": "ckfileOid",
+                      "placeholder": "上传 STEP / IGES / STL 等数模文件",
+                      "uiComponent": "ckfile-upload"
+                    },
+                    {
+                      "id": "fld-desc",
+                      "rows": 3,
+                      "label": "描述",
+                      "fieldName": "description",
+                      "bindFields": null,
+                      "description": "富文本编辑器，支持文字排版、图片、链接等丰富内容",
+                      "placeholder": "请输入描述",
+                      "uiComponent": "rich-text"
+                    }
+                  ],
+                  "fieldName": "row_1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
 }

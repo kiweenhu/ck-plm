@@ -59,6 +59,9 @@
             <template v-else-if="column.key === 'partVersion'">
               <span>{{ record.partVersion || '-' }}</span>
             </template>
+            <template v-else-if="column.key === 'linkType'">
+              <a-tag color="cyan">{{ LINK_TYPE_LABEL[record.linkType] || record.linkType || '工程数据' }}</a-tag>
+            </template>
             <template v-else-if="column.key === 'assocType'">
               <a-tag :color="ASSOC_TYPE_COLOR[record.assocType] || 'default'">
                 {{ ASSOC_TYPE_LABEL[record.assocType] || record.assocType }}
@@ -194,6 +197,40 @@
         </div>
       </template>
 
+      <!-- 二维图纸（DWG / DXF）：服务端转 SVG 后预览，与 3D 同构的异步链路 -->
+      <template v-else-if="isDrawing">
+        <div v-if="drawingReady" class="dv-cad-body">
+          <DrawingViewer
+            :svg-url="drawingSvgUrl"
+            :stats="drawingStats"
+            :warnings="drawingWarnings"
+          />
+        </div>
+        <div v-else class="dv-cad-entry">
+          <template v-if="!drawingAvailable">
+            <a-empty description="未部署二维图纸转换器，无法生成预览">
+              <template #children>
+                <div style="font-size:12px;color:#999;margin-top:8px">
+                  需独立部署 CK-DrawingForge 并在配置中启用
+                </div>
+              </template>
+            </a-empty>
+          </template>
+          <CadConvertProgress
+            v-else-if="drawingWorking"
+            :status="drawingVis?.status || 'QUEUED'"
+            :progress="drawingVis?.progress ?? null"
+            :stage="drawingVis?.stage || ''"
+            :updated-at="drawingVis?.updatedAt"
+          />
+          <template v-else>
+            <a-empty :description="drawingMessage || '该图纸尚未生成预览'">
+              <a-button type="primary" size="small" @click="startDrawingConvert">生成二维预览</a-button>
+            </a-empty>
+          </template>
+        </div>
+      </template>
+
       <!-- 原生数模：只归档，转换器读不了（需要预览就另存 STEP 再上传） -->
       <template v-else-if="isNativeCad">
         <div class="dv-cad-entry">
@@ -245,7 +282,7 @@ import VueOfficeExcel from '@vue-office/excel'
 import VueOfficePptx from '@vue-office/pptx'
 import '@vue-office/docx/lib/index.css'
 import '@vue-office/excel/lib/index.css'
-import { getCKFile, getCadViewerAvailable, convertCadModel, getLatestCadVisualization, ckFileStreamUrl, getEngDocPartLinks, resolveEntityApiPath } from '@/api'
+import { getCKFile, getCadViewerAvailable, convertCadModel, getLatestCadVisualization, ckFileStreamUrl, getEngDocPartLinks, resolveEntityApiPath, getDrawingViewerAvailable, convertDrawing, getLatestDrawingVisualization } from '@/api'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 /**
@@ -256,6 +293,8 @@ import axios from 'axios'
  * 改成异步组件后，three 只在真正打开 CAD 数模时才加载。
  */
 const CadViewer = defineAsyncComponent(() => import('@/components/cad/CadViewer.vue'))
+// 二维图纸预览：<img> 显示服务端生成的 SVG，无重型依赖，静态引入
+import DrawingViewer from '@/components/drawing/DrawingViewer.vue'
 // 进度条很轻（无第三方依赖），静态引入 —— 它恰恰要在"还没拿到模型"时出现
 import CadConvertProgress from '@/components/cad/CadConvertProgress.vue'
 
@@ -273,9 +312,14 @@ const router = useRouter()
 /** 关联类型文案 / 配色：与零件详情「关联文档 → 工程数据」保持一致 */
 const ASSOC_TYPE_LABEL = { OWNER: '主数据', CONTENT: '内容', CONTRIBUTING_IMAGE: '贡献图纸', IMAGE: '附图' }
 const ASSOC_TYPE_COLOR = { OWNER: 'red', CONTENT: 'blue', CONTRIBUTING_IMAGE: 'orange', IMAGE: 'default' }
+/** 对象语义的关系类型（与 EPMBuildRule 的 assocType 正交） */
+const LINK_TYPE_LABEL = {
+  SYMBOL: '符号', FOOTPRINT: '封装', DATASHEET: 'Datasheet', THREE_D: '三维', ENG_DOCUMENT: '工程数据',
+}
 const engPartColumns = [
   { title: '零件', key: 'part', ellipsis: true },
   { title: '版本', key: 'partVersion', width: 90 },
+  { title: '关系类型', key: 'linkType', width: 110 },
   { title: '关联类型', key: 'assocType', width: 110 },
   { title: '构建规则', key: 'buildRules', width: 170 },
 ]
@@ -623,6 +667,120 @@ function stopCadPolling() {
   }
 }
 
+// ==================== 二维图纸预览（DWG / DXF） ====================
+
+/** 是否二维图纸（扩展名或 MIME） */
+const isDrawing = computed(() => {
+  if (['dwg', 'dxf'].includes(fileExtension.value.toLowerCase())) return true
+  return ['application/acad', 'application/dxf', 'image/vnd.dwg'].includes(mimeType.value)
+})
+
+const drawingAvailable = ref(false)
+const drawingVis = ref(null)
+const drawingWorking = ref(false)
+const drawingMessage = ref('')
+let drawingPollTimer = null
+let drawingPollTicks = 0
+const DRAWING_POLL_MAX = 150
+
+const drawingReady = computed(() =>
+  drawingVis.value?.status === 'SUCCESS' && !!drawingVis.value?.svgCkfileOid)
+
+const drawingSvgUrl = computed(() =>
+  drawingReady.value ? ckFileStreamUrl(drawingVis.value.svgCkfileOid) : '')
+
+const drawingStats = computed(() => ({
+  entityCount: drawingVis.value?.entityCount,
+  layerCount: drawingVis.value?.layerCount,
+  dwgVersion: drawingVis.value?.dwgVersion
+}))
+
+/** 保真度警告 + 降级产物提示：LibreDWG 跳过的实体必须让用户看见 */
+const drawingWarnings = computed(() => {
+  const out = []
+  const fidelity = drawingVis.value?.fidelityWarnings
+  if (fidelity) out.push(...String(fidelity).split('|').map(s => s.trim()).filter(Boolean))
+  const degraded = drawingVis.value?.degradedKinds
+  if (degraded) out.push(`部分产物未生成：${degraded}`)
+  return out
+})
+
+async function loadDrawingState() {
+  stopDrawingPolling()
+  drawingVis.value = null
+  drawingMessage.value = ''
+  if (!isDrawing.value || !props.doc?.oid) return
+
+  try {
+    const r = await getDrawingViewerAvailable()
+    drawingAvailable.value = !!(r.code === 200 && r.data?.available)
+  } catch {
+    drawingAvailable.value = false
+  }
+  if (!drawingAvailable.value) return
+
+  try {
+    const res = await getLatestDrawingVisualization(props.doc.oid)
+    if (res.code === 200 && res.data) {
+      drawingVis.value = res.data
+      const st = res.data.status
+      if (st === 'QUEUED' || st === 'RUNNING') {
+        drawingWorking.value = true
+        startDrawingPolling()
+      } else if (st === 'FAILED' || st === 'SKIPPED') {
+        drawingMessage.value = res.data.errorMessage || '上次转换未成功'
+      }
+    }
+  } catch { /* 查询失败不阻断 */ }
+}
+
+function startDrawingConvert() {
+  if (!props.doc?.ckfileOid || !props.doc?.oid) return
+  drawingWorking.value = true
+  drawingMessage.value = ''
+  drawingPollTicks = 0
+  convertDrawing({
+    engDocIterationOid: props.doc.oid,
+    sourceCkfileOid: props.doc.ckfileOid
+  }).then(res => {
+    if (res.code === 200 && res.data) drawingVis.value = res.data
+  }).catch(err => {
+    drawingWorking.value = false
+    drawingMessage.value = '提交转换失败：' + (err?.message || err)
+  })
+  startDrawingPolling()
+}
+
+function startDrawingPolling() {
+  stopDrawingPolling()
+  drawingPollTimer = setInterval(async () => {
+    if (++drawingPollTicks > DRAWING_POLL_MAX) {
+      stopDrawingPolling()
+      drawingWorking.value = false
+      drawingMessage.value = '转换等待超时，请稍后重试'
+      return
+    }
+    try {
+      const res = await getLatestDrawingVisualization(props.doc.oid)
+      if (res.code !== 200 || !res.data) return
+      drawingVis.value = res.data
+      const st = res.data.status
+      if (st === 'SUCCESS' || st === 'FAILED' || st === 'SKIPPED' || st === 'CANCELLED') {
+        stopDrawingPolling()
+        drawingWorking.value = false
+        if (st !== 'SUCCESS') drawingMessage.value = res.data.errorMessage || '转换未成功'
+      }
+    } catch { /* 单次轮询失败不打断 */ }
+  }, 2000)
+}
+
+function stopDrawingPolling() {
+  if (drawingPollTimer) {
+    clearInterval(drawingPollTimer)
+    drawingPollTimer = null
+  }
+}
+
 // ---- 工具函数 ----
 function statusColor(code) {
   const map = { DRAFT: 'default', INWORK: 'processing', REVIEW: 'warning', APPROVED: 'success', RELEASED: 'blue', OBSOLETE: 'error' }
@@ -649,6 +807,7 @@ onBeforeUnmount(() => {
   if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null }
   if (officeTimeoutId) { clearTimeout(officeTimeoutId); officeTimeoutId = null }
   stopCadPolling()
+  stopDrawingPolling()
 })
 
 // ==================== 文档加载入口 ====================
@@ -673,6 +832,7 @@ watch(() => props.doc?.ckfileOid, (newOid) => {
   officeLoadTip.value = '内容加载中，请稍候...'
   if (newOid) loadCKFile(newOid)
   loadCadState()
+  loadDrawingState()
 }, { immediate: true })
 </script>
 

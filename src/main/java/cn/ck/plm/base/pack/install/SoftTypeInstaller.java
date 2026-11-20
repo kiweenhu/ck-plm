@@ -407,14 +407,19 @@ public class SoftTypeInstaller implements ResourceInstaller {
     }
 
     /**
-     * 装 {@code pageLayouts} —— 按能力宿主把标准布局套用给该宿主下的类型。
+     * 装 {@code pageLayouts} —— 声明支持两种，先 {@code byCode}（类型专属）后 {@code byHost}（宿主通用）：
      *
-     * <p><b>为什么要它</b>：在此之前，页面布局只有一条来路 —— 建软类型时从父类型**克隆**
-     * （{@code TypeDefinitionServiceImpl#inheritPageLayouts}）。父链上若都没有布局，新类型就没有任何页面
-     * （而且那段克隆曾因自递归把"新建类型"打成 500）。现在基准写在包声明里，装包按 {@code root_type_code} 补齐。
+     * <pre>"pageLayouts": {
+     *   "byCode": { "FOOTPRINT": [ {operationCode,operationName,layoutJson}, ... ] },
+     *   "byHost": { "ENG_DOCUMENT": [ ... ] }
+     * }</pre>
+     *
+     * <p><b>为什么要有 byCode</b>：byHost 按 {@code root_type_code} 把同一份布局套给该宿主下所有类型，
+     * 无法表达「封装 / 图符各自的页面不同」（2026-11-18 用户在页面设计器里分别改了这两类）。
+     * byCode 精确按类型 code 指定；同一 (类型, 操作) 若 byCode 有声明，byHost 阶段跳过。
      *
      * <p><b>幂等且不覆盖</b>：按 (类型 oid, 操作码) 判存在，已有布局一律跳过 ——
-     * 管理员在低代码设计器里改过的布局不会被下次装包冲掉；库里已有布局的 14 个类型保持原样。
+     * 管理员在低代码设计器里改过的布局不会被下次装包冲掉；只把包声明里新增的字段补进已有布局。
      */
     private void installPageLayouts(InstallContext context, PackManifest.Resource resource,
                                     Map<String, Object> json, List<InstallResult> results) {
@@ -422,22 +427,43 @@ public class SoftTypeInstaller implements ResourceInstaller {
         if (!(section instanceof Map)) {
             return;
         }
-        Object byHost = ((Map<?, ?>) section).get("byHost");
-        if (!(byHost instanceof Map)) {
+        Map<?, ?> sectionMap = (Map<?, ?>) section;
+        Object byCode = sectionMap.get("byCode");
+        Object byHost = sectionMap.get("byHost");
+        if (!(byCode instanceof Map) && !(byHost instanceof Map)) {
             return;
         }
         String tenant = context.getTenantOid();
         // 类型总量只有几十条：一次取回、在内存里按宿主分组（不值得为它新增 Mapper 方法）
-        // 注：预演时本租户还没有类型（不写库），这里会走到下面的"该宿主下没有已注册的类型"跳过 ——
-        // 那是预期内的（跳过不是错），不去借平台那份算：布局明细在真装报告里逐条给，预演不假装精确。
         List<TypeDefinition> allTypes = mapper.selectAll(tenant, tenant);
+        // byCode 已精确声明的 (code, operation)；byHost 阶段跳过，保证类型专属布局优先
+        Set<String> covered = new HashSet<>();
+
+        if (byCode instanceof Map) {
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) byCode).entrySet()) {
+                String typeCode = String.valueOf(entry.getKey());
+                if (!(entry.getValue() instanceof List)) {
+                    continue;
+                }
+                List<TypeDefinition> targets = new ArrayList<>();
+                for (TypeDefinition td : allTypes) {
+                    if (typeCode.equalsIgnoreCase(td.getCode())) {
+                        targets.add(td);
+                    }
+                }
+                applyLayouts(context, tenant, "byCode:" + typeCode, targets,
+                        (List<?>) entry.getValue(), covered, true, results);
+            }
+        }
+        if (!(byHost instanceof Map)) {
+            return;
+        }
 
         for (Map.Entry<?, ?> entry : ((Map<?, ?>) byHost).entrySet()) {
             String host = String.valueOf(entry.getKey());
             if (!(entry.getValue() instanceof List)) {
                 continue;
             }
-            List<?> layouts = (List<?>) entry.getValue();
             List<TypeDefinition> targets = new ArrayList<>();
             for (TypeDefinition td : allTypes) {
                 String root = td.getRootTypeCode() != null && !td.getRootTypeCode().trim().isEmpty()
@@ -446,77 +472,94 @@ public class SoftTypeInstaller implements ResourceInstaller {
                     targets.add(td);
                 }
             }
-            if (targets.isEmpty()) {
-                // 预演时本租户还没有类型（不写库）→ 没有可套布局的对象，属预期内跳过；
-                // 用 skippedPending 显示"跳过"，不冒充"已就绪"（真装报告里布局明细逐条给）
-                results.add(InstallResult.skippedPending(resourceType(), host,
-                        "该宿主下没有已注册的类型，页面布局跳过（宿主 " + host + "）"));
-                continue;
-            }
-            int created = 0;
-            int existed = 0;
-            int patchedFields = 0;
-            List<String> failed = new ArrayList<>();
-            for (TypeDefinition td : targets) {
-                for (Object item : layouts) {
-                    if (!(item instanceof Map)) {
-                        continue;
-                    }
-                    Map<?, ?> one = (Map<?, ?>) item;
-                    String op = text(one.get("operationCode"));
-                    if (op == null) {
-                        continue;
-                    }
-                    if (context.isDryRun()) {
-                        created += 1;
-                        continue;
-                    }
-                    try {
-                        PageLayout existing = pageLayoutMapper.selectByEntityAndOperation(td.getOid(), op, tenant, tenant);
-                        if (existing != null) {
-                            // 已有布局不重建，但**包声明里新增的字段要补进去** ——
-                            // 否则像「所属容器」这种后加的字段，老租户永远等不到：
-                            // 布局已存在 → 整条跳过 → 页面设计器里也拖不出来（2026-10-22 反馈）。
-                            // 只追加缺失字段，已有字段的配置（label / 顺序 / 只读…）一律不动。
-                            int patched = appendMissingFormFields(context, existing, one);
-                            if (patched > 0) {
-                                patchedFields += patched;
-                            } else {
-                                existed += 1;
-                            }
-                            continue;
+            applyLayouts(context, tenant, host, targets, (List<?>) entry.getValue(), covered, false, results);
+        }
+    }
+
+    /**
+     * 把一组布局声明落到目标类型上。byCode 阶段会记入 {@code covered}；
+     * byHost 阶段跳过已覆盖的 (code, operation)，保证类型专属声明优先于宿主通用声明。
+     */
+    private void applyLayouts(InstallContext context, String tenant, String label,
+                              List<TypeDefinition> targets, List<?> layouts,
+                              Set<String> covered, boolean byCodeMode, List<InstallResult> results) {
+        if (targets.isEmpty()) {
+            // 预演时本租户还没有类型（不写库）→ 没有可套布局的对象，属预期内跳过；
+            // 用 skippedPending 显示"跳过"，不冒充"已就绪"（真装报告里布局明细逐条给）
+            results.add(InstallResult.skippedPending(resourceType(), label,
+                    "没有已注册的类型，页面布局跳过（" + label + "）"));
+            return;
+        }
+        int created = 0;
+        int existed = 0;
+        int patchedFields = 0;
+        List<String> failed = new ArrayList<>();
+        for (TypeDefinition td : targets) {
+            for (Object item : layouts) {
+                if (!(item instanceof Map)) {
+                    continue;
+                }
+                Map<?, ?> one = (Map<?, ?>) item;
+                String op = text(one.get("operationCode"));
+                if (op == null) {
+                    continue;
+                }
+                String key = td.getCode() + "/" + op;
+                if (!byCodeMode && covered.contains(key)) {
+                    continue;
+                }
+                if (byCodeMode) {
+                    covered.add(key);
+                }
+                if (context.isDryRun()) {
+                    created += 1;
+                    continue;
+                }
+                try {
+                    PageLayout existing = pageLayoutMapper.selectByEntityAndOperation(td.getOid(), op, tenant, tenant);
+                    if (existing != null) {
+                        // 已有布局不重建，但**包声明里新增的字段要补进去** ——
+                        // 否则像「所属容器」这种后加的字段，老租户永远等不到：
+                        // 布局已存在 → 整条跳过 → 页面设计器里也拖不出来（2026-10-22 反馈）。
+                        // 只追加缺失字段，已有字段的配置（label / 顺序 / 只读…）一律不动。
+                        int patched = appendMissingFormFields(context, existing, one);
+                        if (patched > 0) {
+                            patchedFields += patched;
+                        } else {
+                            existed += 1;
                         }
-                        PageLayout layout = new PageLayout();
-                        layout.setOid(UUID.randomUUID().toString());
-                        layout.setEntityOid(td.getOid());
-                        layout.setEntityCode(td.getCode());
-                        layout.setOperationCode(op);
-                        layout.setOperationName(text(one.get("operationName")));
-                        layout.setLayoutJson(context.getObjectMapper().writeValueAsString(one.get("layoutJson")));
-                        layout.setTenantOid(tenant);
-                        layout.setCreator(cn.ck.plm.base.util.UserContext.get());
-                        pageLayoutMapper.insert(layout);
-                        created += 1;
-                    } catch (Exception e) {
-                        failed.add(td.getCode() + "/" + op);
+                        continue;
                     }
+                    PageLayout layout = new PageLayout();
+                    layout.setOid(UUID.randomUUID().toString());
+                    layout.setEntityOid(td.getOid());
+                    layout.setEntityCode(td.getCode());
+                    layout.setOperationCode(op);
+                    layout.setOperationName(text(one.get("operationName")));
+                    layout.setLayoutJson(context.getObjectMapper().writeValueAsString(one.get("layoutJson")));
+                    layout.setTenantOid(tenant);
+                    layout.setCreator(cn.ck.plm.base.util.UserContext.get());
+                    pageLayoutMapper.insert(layout);
+                    created += 1;
+                } catch (Exception e) {
+                    failed.add(td.getCode() + "/" + op);
                 }
             }
-            StringBuilder why = new StringBuilder();
-            why.append(context.isDryRun() ? "预演：将为 " : "已为 ")
-                    .append(targets.size()).append(" 个类型（").append(host).append(" 宿主）")
-                    .append(context.isDryRun() ? "补 " : "补齐 ").append(created).append(" 条页面布局");
-            if (existed > 0) {
-                why.append("；跳过已有 ").append(existed).append(" 条（不覆盖）");
-            }
-            if (patchedFields > 0) {
-                why.append("；给已有布局补入 ").append(patchedFields).append(" 个新字段");
-            }
-            if (!failed.isEmpty()) {
-                why.append("；失败 ").append(String.join("、", failed));
-            }
-            results.add(InstallResult.skipped(resourceType(), host, why.toString()));
         }
+        StringBuilder why = new StringBuilder();
+        why.append(context.isDryRun() ? "预演：将为 " : "已为 ")
+                .append(targets.size()).append(" 个类型（").append(label).append("）")
+                .append(context.isDryRun() ? "补 " : "补齐 ").append(created).append(" 条页面布局");
+        if (existed > 0) {
+            why.append("；跳过已有 ").append(existed).append(" 条（不覆盖）");
+        }
+        if (patchedFields > 0) {
+            why.append("；给已有布局补入 ").append(patchedFields).append(" 个新字段");
+        }
+        if (!failed.isEmpty()) {
+            why.append("；失败 ").append(String.join("、", failed));
+        }
+        results.add(InstallResult.skipped(resourceType(), label, why.toString()));
     }
 
     /**

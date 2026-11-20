@@ -6,7 +6,7 @@
         <PlusOutlined /> 新增制造商料号
       </a-button>
       <span class="pmp-hint">
-        认可制造商料号（AML）+ 每家料号的供货渠道（AVL）；单一来源风险按检查规则 R-SH-11 提示
+        认可制造商料号（AML）+ 每家料号的供货渠道（AVL）；已停用供应商仍保留历史引用，但不计入有效来源，风险按 R-SH-11 提示
       </span>
     </div>
 
@@ -14,13 +14,16 @@
     <div v-if="summary" class="pmp-summary">
       <span class="pmp-summary-item">认可料号（AML）：<b>{{ summary.amlCount }}</b> 个</span>
       <span class="pmp-summary-item">
-        去重供应商（supplierCount）：<b :class="{ 'pmp-danger': summary.singleSource }">{{ summary.supplierCount }}</b> 家
+        有效供应商：<b :class="{ 'pmp-danger': summary.singleSource }">{{ summary.supplierCount }}</b> 家
       </span>
+      <a-tag v-if="summary.disabledSupplierCount" color="warning">
+        已停用供应商 {{ summary.disabledSupplierCount }} 家（不计入有效来源）
+      </a-tag>
       <a-tag v-if="summary.singleSource" color="error">
-        <WarningOutlined /> 单一来源风险（R-SH-11）
+        <WarningOutlined /> {{ summary.supplierCount === 0 ? '无有效渠道' : '单一来源风险' }}（R-SH-11）
       </a-tag>
       <a-tag v-else-if="summary.amlCount" color="success">多源可控</a-tag>
-      <span class="pmp-hint">{{ summary.derivation }}</span>
+      <span class="pmp-hint">{{ summary.riskNote || summary.derivation }}</span>
     </div>
 
     <!-- AML 表（行可展开 → AVL 供货渠道子表） -->
@@ -176,7 +179,11 @@ async function searchMfrOptions(keyword) {
 }
 async function searchSupOptions(keyword) {
   const res = await listSuppliers(typeof keyword === 'string' ? keyword : '')
-  supOptions.value = (res?.code === 200 ? (res.data || []) : []).map(s => ({ value: s.oid, label: `${s.code} · ${s.name}` }))
+  supOptions.value = (res?.code === 200 ? (res.data || []) : []).map(s => ({
+    value: s.oid,
+    label: `${s.code} · ${s.name}${s.disabled ? '（已停用）' : ''}`,
+    isDisabled: !!s.disabled,
+  }))
 }
 function mfrName(oid) {
   const hit = mfrOptions.value.find(o => o.value === oid)

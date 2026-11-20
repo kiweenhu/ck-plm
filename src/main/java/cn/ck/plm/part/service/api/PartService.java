@@ -45,6 +45,14 @@ public interface PartService extends MasterService {
     Part move(String oid, String containerOid, String containerType, String folderOid, String stageOid,
               String clsOid);
 
+    /**
+     * 通用件认定通过后的落库动作：把结构件改成通用件软类型并迁入通用件资源库容器。
+     *
+     * <p>供流程自动服务 {@code part.upgradeToGenPart} 调用；只会接受 STRUCTURAL（或已是目标态的
+     * GEN_PART），目标容器按当前租户的 GEN_PART 子库解析，重复执行幂等。
+     */
+    Part upgradeToGenPart(String oid);
+
     /** 更新部件最新迭代的 unit/source 属性（迭代级字段） */
     void updateLatestIterationAttributes(String masterOid, String unit, String source);
 

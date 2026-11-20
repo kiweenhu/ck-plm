@@ -58,6 +58,10 @@ import EcnTaskApproveSetupForm from './EcnTaskApproveSetupForm.vue'
 import EcnTaskApprovalForm from './EcnTaskApprovalForm.vue'
 import EcnTaskCountersignForm from './EcnTaskCountersignForm.vue'
 import EcnTaskSummaryForm from './EcnTaskSummaryForm.vue'
+// 通用件升级认定：审批 / 会签上方挂同一块「零件被引用情况」只读面板，
+// 结论区仍复用内置 ApprovalOpinionForm / CountersignForm，规则只认 DSL 一份。
+import GenPartUpgradeApprovalForm from './GenPartUpgradeApprovalForm.vue'
+import GenPartUpgradeCountersignForm from './GenPartUpgradeCountersignForm.vue'
 import GenericApproveForm from './GenericApproveForm.vue'
 
 /** 内置模板：按 **code** 派发视图（code 就是渲染契约，随 platform-base 包装入每个租户） */
@@ -100,6 +104,8 @@ export const FORM_COMPONENT_VIEWS = {
   EcnTaskApprovalForm,
   EcnTaskCountersignForm,
   EcnTaskSummaryForm,
+  GenPartUpgradeApprovalForm,
+  GenPartUpgradeCountersignForm,
 }
 
 /** 兜底模板：没有专属模板时用它（同意 / 驳回 + 意见） */

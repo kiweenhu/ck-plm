@@ -28,16 +28,17 @@ public interface PostgreSqlEngDocPartLinkMapper extends EngDocPartLinkMapper {
 
     @Override
     @Insert("INSERT INTO ck_eng_doc_part_link (oid, eng_document_oid, eng_doc_iteration_oid, part_iteration_oid, " +
-            "assoc_type, build_structure, build_attribute, build_representation, assoc_source, " +
+            "assoc_type, link_type, build_structure, build_attribute, build_representation, assoc_source, " +
             "is_primary, sort_order, tenant_oid, creator, created_at, updater, updated_at) " +
             "VALUES (#{oid}, #{engDocumentOid}, #{engDocIterationOid}, #{partIterationOid}, " +
-            "#{assocType}, #{buildStructure}, #{buildAttribute}, #{buildRepresentation}, #{assocSource}, " +
+            "#{assocType}, #{linkType}, #{buildStructure}, #{buildAttribute}, #{buildRepresentation}, #{assocSource}, " +
             "#{primary}, #{sortOrder}, #{tenantOid}, #{creator}, #{createdAt}, #{updater}, #{updatedAt})")
     int insert(EngDocPartLink link);
 
     @Override
     @Update("UPDATE ck_eng_doc_part_link SET " +
-            "eng_doc_iteration_oid = #{engDocIterationOid}, assoc_type = #{assocType}, " +
+            "eng_document_oid = #{engDocumentOid}, eng_doc_iteration_oid = #{engDocIterationOid}, " +
+            "assoc_type = #{assocType}, link_type = #{linkType}, " +
             "build_structure = #{buildStructure}, build_attribute = #{buildAttribute}, " +
             "build_representation = #{buildRepresentation}, assoc_source = #{assocSource}, " +
             "is_primary = #{primary}, sort_order = #{sortOrder}, " +
@@ -50,7 +51,7 @@ public interface PostgreSqlEngDocPartLinkMapper extends EngDocPartLinkMapper {
     int deleteByOid(@Param("oid") String oid);
 
     String SELECT_COLUMNS = "SELECT oid, eng_document_oid, eng_doc_iteration_oid, part_iteration_oid, " +
-            "assoc_type, build_structure, build_attribute, build_representation, assoc_source, " +
+            "assoc_type, link_type, build_structure, build_attribute, build_representation, assoc_source, " +
             "is_primary, sort_order, tenant_oid, creator, created_at, updater, updated_at " +
             "FROM ck_eng_doc_part_link ";
 
@@ -61,6 +62,7 @@ public interface PostgreSqlEngDocPartLinkMapper extends EngDocPartLinkMapper {
             @Result(property = "engDocIterationOid", column = "eng_doc_iteration_oid"),
             @Result(property = "partIterationOid",   column = "part_iteration_oid"),
             @Result(property = "assocType",          column = "assoc_type"),
+            @Result(property = "linkType",           column = "link_type"),
             @Result(property = "buildStructure",     column = "build_structure"),
             @Result(property = "buildAttribute",     column = "build_attribute"),
             @Result(property = "buildRepresentation", column = "build_representation"),

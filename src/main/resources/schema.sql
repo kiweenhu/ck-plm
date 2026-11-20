@@ -1023,6 +1023,9 @@ CREATE TABLE IF NOT EXISTS ck_eng_doc_part_link (
     eng_doc_iteration_oid  CHAR(36),
     part_iteration_oid     CHAR(36)     NOT NULL,
     assoc_type             VARCHAR(30)  NOT NULL DEFAULT 'CONTENT',
+    -- 关系类型（对象语义）：ENG_DOCUMENT / SYMBOL / FOOTPRINT / DATASHEET / THREE_D。
+    -- 与 assoc_type（Windchill EPMBuildRule 语义：OWNER/CONTENT/…）是两个正交维度。
+    link_type              VARCHAR(30)  NOT NULL DEFAULT 'ENG_DOCUMENT',
     build_structure        BOOLEAN      NOT NULL DEFAULT FALSE,
     build_attribute        BOOLEAN      NOT NULL DEFAULT FALSE,
     build_representation   BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -1042,6 +1045,16 @@ CREATE TABLE IF NOT EXISTS ck_eng_doc_part_link (
 ALTER TABLE ck_eng_doc_part_link ADD COLUMN IF NOT EXISTS eng_doc_iteration_oid CHAR(36);
 ALTER TABLE ck_eng_doc_part_link ADD COLUMN IF NOT EXISTS part_iteration_oid CHAR(36);
 ALTER TABLE ck_eng_doc_part_link ALTER COLUMN part_oid DROP NOT NULL;
+-- 兼容旧库：关系类型列 + 迭代列回填（只填最新版本，精确迭代由业务创建时写入）
+ALTER TABLE ck_eng_doc_part_link ADD COLUMN IF NOT EXISTS link_type VARCHAR(30) NOT NULL DEFAULT 'ENG_DOCUMENT';
+UPDATE ck_eng_doc_part_link l SET eng_doc_iteration_oid = ei.oid
+  FROM ck_eng_document_iteration ei
+ WHERE ei.master_oid = l.eng_document_oid AND ei.latest = TRUE
+   AND (l.eng_doc_iteration_oid IS NULL OR l.eng_doc_iteration_oid = '');
+UPDATE ck_eng_doc_part_link l SET link_type = d.type_definition_code
+  FROM ck_eng_document d
+ WHERE d.oid = l.eng_document_oid
+   AND d.type_definition_code IN ('SYMBOL','FOOTPRINT','DATASHEET');
 
 CREATE INDEX IF NOT EXISTS idx_engpl_doc ON ck_eng_doc_part_link(eng_document_oid);
 CREATE INDEX IF NOT EXISTS idx_engpl_doc_iter ON ck_eng_doc_part_link(eng_doc_iteration_oid);
@@ -1055,16 +1068,16 @@ DROP INDEX IF EXISTS idx_engpl_part;
 -- 同一零件版本对同一份工程数据只允许一条构建规则
 CREATE UNIQUE INDEX IF NOT EXISTS uk_engpl_doc_part_iter
     ON ck_eng_doc_part_link(eng_document_oid, part_iteration_oid);
--- 基数约束（2026-10-26 用户口径）：一个零件版本**有且只有一份**工程数据 —— 不是"每种关联类型各一份"，
--- 而是整体只允许一条（要换对象先解除原有关系）。服务层先拦并给可读提示，这里用唯一索引兜并发。
--- 注意：若存量库里已存在同一零件版本的多条关联，本索引会创建失败（启动报错）—— 需先人工清理重复行。
-CREATE UNIQUE INDEX IF NOT EXISTS uk_engpl_part_iter
-    ON ck_eng_doc_part_link(part_iteration_oid);
--- 下面两个按关联类型的部分唯一索引已被上面的整体唯一索引覆盖，保留只为兼容旧库（不再起约束作用）
-CREATE UNIQUE INDEX IF NOT EXISTS uk_engpl_part_iter_owner
-    ON ck_eng_doc_part_link(part_iteration_oid) WHERE assoc_type = 'OWNER';
-CREATE UNIQUE INDEX IF NOT EXISTS uk_engpl_part_iter_contrib
-    ON ck_eng_doc_part_link(part_iteration_oid) WHERE assoc_type = 'CONTRIBUTING_IMAGE';
+-- 2026-11-18 用户口径修正：Part↔Eng 是 iteration↔iteration 的关系，且按关系类型分别建关联。
+-- 一个零件版本可同时挂「符号 + 封装 + Datasheet + 三维 + 二维 + 工程图」，但每一类至多一条：
+-- 同类型再次提交由服务层做「更换」（更新已有那条），DB 用「零件迭代 + 关系类型」唯一约束兜底。
+DROP INDEX IF EXISTS uk_engpl_part_iter;
+DROP INDEX IF EXISTS uk_engpl_part_iter_owner;
+DROP INDEX IF EXISTS uk_engpl_part_iter_contrib;
+DROP INDEX IF EXISTS uk_engpl_iter_pair_type;
+CREATE INDEX IF NOT EXISTS idx_engpl_link_type ON ck_eng_doc_part_link(link_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_engpl_iter_type
+    ON ck_eng_doc_part_link(part_iteration_oid, link_type);
 
 -- 工程数据 ↔ 工程数据：装配成员 / BOM 结构（对应 Windchill EPMMemberLink）
 -- 注：该表的索引已收全（idx_engml_usedby_iter / idx_engml_uses_master / uk_engml_iter_master），见文件末尾索引段。
@@ -1243,6 +1256,78 @@ CREATE TABLE IF NOT EXISTS ck_ecad_pcb_ext (
     updater            VARCHAR(100),
     updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ==================== ECAD 原理图（Cadence 集成）====================
+-- 两级对象模型：ck_ecad_project（.opj 设计项目容器）1 ── N ck_ecad_schematic（.DSN 原理图对象）。
+-- 原理图对象走 master/iteration 两级版本控制（对应 Windchill EPMDocumentMaster/EPMDocument 的电子版），
+-- 检出/检入经 EcadSchematicCheckoutProvider 自动接入统一检出体系（checkout 模块）。
+CREATE TABLE IF NOT EXISTS ck_ecad_schematic (
+    oid                   CHAR(36)     PRIMARY KEY,
+    number                VARCHAR(100) NOT NULL,
+    name                  VARCHAR(200) NOT NULL,
+    description           VARCHAR(1000),
+    project_oid           CHAR(36)     NOT NULL,
+    eda_tool              VARCHAR(100) NOT NULL DEFAULT 'Cadence OrCAD Capture',
+    file_format           VARCHAR(20)  NOT NULL DEFAULT 'DSN',
+    latest_iteration_oid  CHAR(36),
+    tenant_oid            CHAR(36),
+    creator               VARCHAR(100),
+    created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater               VARCHAR(100),
+    updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delete_mark           BOOLEAN      NOT NULL DEFAULT FALSE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ecad_schematic_number ON ck_ecad_schematic(number);
+CREATE INDEX IF NOT EXISTS idx_ecadsch_project ON ck_ecad_schematic(project_oid);
+
+CREATE TABLE IF NOT EXISTS ck_ecad_schematic_iteration (
+    oid                  CHAR(36)     PRIMARY KEY,
+    master_oid           CHAR(36)     NOT NULL,
+    revision             VARCHAR(20)  NOT NULL DEFAULT 'A',
+    iteration            INTEGER      NOT NULL DEFAULT 1,
+    display_version      VARCHAR(30),
+    latest               BOOLEAN      NOT NULL DEFAULT FALSE,
+    checked_out          BOOLEAN      NOT NULL DEFAULT FALSE,
+    checked_out_by       VARCHAR(100),
+    checked_out_comment  VARCHAR(1000),
+    derived_from_oid     CHAR(36),
+    derived_at           TIMESTAMP,
+    status               VARCHAR(50),
+    ckfile_oid           CHAR(36),
+    sheet_count          INTEGER,
+    component_count      INTEGER,
+    bom_json             JSONB,
+    tenant_oid           CHAR(36),
+    creator              VARCHAR(100),
+    created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater              VARCHAR(100),
+    updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delete_mark          BOOLEAN      NOT NULL DEFAULT FALSE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_ecadschit_version
+    ON ck_ecad_schematic_iteration(master_oid, revision, iteration);
+CREATE INDEX IF NOT EXISTS idx_ecadschit_master ON ck_ecad_schematic_iteration(master_oid);
+CREATE INDEX IF NOT EXISTS idx_ecadschit_coby ON ck_ecad_schematic_iteration(checked_out_by);
+
+-- BOM 同步日志（Capture BOM 同步的差异留痕，diff_json 存当次增/删/改清单）
+CREATE TABLE IF NOT EXISTS ck_ecad_bom_sync_log (
+    oid            CHAR(36)     PRIMARY KEY,
+    schematic_oid  CHAR(36)     NOT NULL,
+    iteration_oid  CHAR(36),
+    added_count    INTEGER      NOT NULL DEFAULT 0,
+    removed_count  INTEGER      NOT NULL DEFAULT 0,
+    changed_count  INTEGER      NOT NULL DEFAULT 0,
+    diff_json      JSONB,
+    tenant_oid     CHAR(36),
+    creator        VARCHAR(100),
+    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater        VARCHAR(100),
+    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ecadsynlog_schematic ON ck_ecad_bom_sync_log(schematic_oid);
 
 -- ==================== 元器件 ↔ 封装 / 图符 关联表 ====================
 CREATE TABLE IF NOT EXISTS ck_component_footprint_link (
@@ -3616,3 +3701,78 @@ ALTER TABLE ck_feedback ADD COLUMN IF NOT EXISTS replier_name VARCHAR(100);
 CREATE INDEX IF NOT EXISTS idx_feedback_created  ON ck_feedback (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feedback_reporter ON ck_feedback (reporter_oid);
 CREATE INDEX IF NOT EXISTS idx_feedback_status   ON ck_feedback (status);
+
+-- ==================== 二维图纸轻量化（CK-DrawingForge） ====================
+-- 一次「DWG/DXF 源图纸 → Web 可渲染资产」的转换任务。本表只记编排与状态；
+-- 产物（SVG / 缩略图 / 结构 JSON / DXF）各自作为独立 ck_file 记录落盘，
+-- 复用既有下载、权限与清理通道。转换器 CK-DrawingForge 是独立进程、独立仓库
+-- （GPL-3.0，依赖 LibreDWG），与 Apache-2.0 的本工程只能经 HTTP 协作。
+CREATE TABLE IF NOT EXISTS ck_drawing_visualization (
+    oid                     CHAR(36)     PRIMARY KEY,
+    tenant_oid              CHAR(36),
+    eng_doc_iteration_oid   CHAR(36)     NOT NULL,
+    source_ckfile_oid       CHAR(36)     NOT NULL,
+    source_sha1             VARCHAR(40),
+    source_file_name        VARCHAR(500),
+    source_size             BIGINT,
+    status                  VARCHAR(24)  NOT NULL,
+    progress                INTEGER      NOT NULL DEFAULT 0,
+    stage                   VARCHAR(64),
+    forge_job_id            VARCHAR(64),
+    -- 产物 ck_file 引用
+    svg_ckfile_oid          CHAR(36),
+    thumbnail_ckfile_oid    CHAR(36),
+    structure_ckfile_oid    CHAR(36),
+    dxf_ckfile_oid          CHAR(36),
+    -- 指标
+    dwg_version             VARCHAR(16),
+    entity_count            INTEGER,
+    layer_count             INTEGER,
+    skipped_entity_types    VARCHAR(500),
+    fidelity_warnings       TEXT,
+    degraded_kinds          VARCHAR(500),
+    output_size             BIGINT,
+    duration_ms             BIGINT,
+    converter_version       VARCHAR(32),
+    error_code              VARCHAR(64),
+    error_message           TEXT,
+    attempt_count           INTEGER      NOT NULL DEFAULT 0,
+    submitted_at            TIMESTAMP,
+    converted_at            TIMESTAMP,
+    creator                 VARCHAR(100),
+    created_at              TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updater                 VARCHAR(100),
+    updated_at              TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- 同一迭代 + 同一内容指纹只保留一条，重复上传不重复转换
+CREATE UNIQUE INDEX IF NOT EXISTS uk_drawvis_iter_sha1
+    ON ck_drawing_visualization(eng_doc_iteration_oid, source_sha1);
+CREATE INDEX IF NOT EXISTS idx_drawvis_status   ON ck_drawing_visualization(status);
+CREATE INDEX IF NOT EXISTS idx_drawvis_forgejob ON ck_drawing_visualization(forge_job_id);
+CREATE INDEX IF NOT EXISTS idx_drawvis_iter     ON ck_drawing_visualization(eng_doc_iteration_oid);
+
+-- CK-DrawingForge 服务配置（单行）。与 ck_cad_forge_config 分开：
+-- 两个服务独立部署、独立地址、独立令牌，混在一张表会造成语义耦合。
+CREATE TABLE IF NOT EXISTS ck_drawing_forge_config (
+    oid                       VARCHAR(64)  PRIMARY KEY,
+    enabled                   BOOLEAN      DEFAULT false,
+    base_url                  VARCHAR(512) DEFAULT 'http://localhost:8091',
+    callback_token            VARCHAR(256),
+    callback_url              VARCHAR(512) DEFAULT 'http://localhost:8082/api/internal/drawing/convert/callback',
+    engine                    VARCHAR(32)  DEFAULT 'libredwg',
+    connect_timeout_ms        INTEGER      DEFAULT 3000,
+    read_timeout_ms           INTEGER      DEFAULT 10000,
+    artifact_read_timeout_ms  BIGINT       DEFAULT 120000,
+    max_source_size_mb        INTEGER      DEFAULT 50,
+    supported_extensions      VARCHAR(255) DEFAULT '.dwg,.dxf',
+    source_url_ttl_minutes    INTEGER      DEFAULT 60,
+    max_attempts              INTEGER      DEFAULT 3,
+    watchdog_enabled          BOOLEAN      DEFAULT true,
+    stale_after_minutes       INTEGER      DEFAULT 12,
+    watchdog_batch_size       INTEGER      DEFAULT 50,
+    watchdog_interval_ms      BIGINT       DEFAULT 120000,
+    creator                   VARCHAR(64),
+    created_at                TIMESTAMP,
+    updater                   VARCHAR(64),
+    updated_at                TIMESTAMP
+);

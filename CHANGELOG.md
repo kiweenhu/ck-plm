@@ -1,5 +1,46 @@
 # 更新日志
 
+## [v0.3.6] - 2026-11-21
+
+**ECAD 电子设计接入** —— Cadence OrCAD 原理图纳入 PLM 版本体系，电子与结构设计在同一平台管理。
+
+### ECAD 电子设计（新增模块）
+
+- **ECAD 原理图对象**：`EcadSchematic` / `EcadSchematicIteration` —— Cadence OrCAD Capture 设计文件（`.DSN`）作为原理图主文件，走 master/iteration 两级版本控制；挂在电子设计项目（`ck_ecad_project`，`.opj` 容器）之下
+- **接入统一检出体系**：`EcadSchematicCheckoutProvider` —— 原理图与部件/文档共用同一套检出/检入流程，而不是另造一套
+- **ECAD BOM 同步**：`EcadBomSyncLog` 记录原理图 BOM 与 PLM 部件结构的同步过程与结果
+- **设计实例**：`EcadDesignInstance` 承载原理图在具体产品上下文中的实例
+- **API**：`EcadProjectController` / `EcadSchematicController`
+- **Cadence Capture 集成插件**（`integration/cadence/`）：TCL 菜单 + Python CLI + 安装与使用手册，设计端可直接调 PLM
+
+### 图纸转换（新增模块）
+
+- **CK-DrawingForge 对接**：`plm.drawing.forge.*` 配置，二维图纸（`.dwg` / `.dxf`）轻量化转换
+- 与 CK-CADForge **完全对称**的设计：独立进程、令牌认证、源件签名 URL、看门狗
+- 默认端口 `8091`，内核 LibreDWG，**默认关闭**（`PLM_DRAWING_FORGE_ENABLED=false`）
+- 注：转换器本身是独立项目（GPL-3.0），不随本仓库分发
+
+### 通用件升版（GenPart）
+
+- `GenPartEligibility` / `GenPartEligibilityService`：通用件资格判定
+- `UpgradeToGenPartHandler`：流程节点自动执行升版
+- 新增 `gen-part-upgrade` 流程（BPMN + DSL）
+- 前端：`GenPartUpgradeApprovalForm` / `GenPartUpgradeCountersignForm`（升版审批与会签）、`PartUsedByPanel`（部件被引用面板）
+- `GenPartThresholdConfig` 阈值配置完善
+
+### 其他改进
+
+- **IAM**：Tenant 服务与认证配置调整
+- **Document**：`EngDocPartLink` 关联增强
+- **Part / MPN**：`MpnMapper` / `MpnService` 查询与校验改进
+- **BOM**：`BomMaterialVO` / `BomLinksMapper` / `BomLinksService` 调整
+- **Product**：`MetricFacts` / `MetricEvaluator` 指标取数改进
+- **Resource**：`ResourceLibrary` 查询优化
+- **行业包**：6 个包的 `stages` / `softtypes` / `forms` / `pack` 元信息更新，适配 ECAD 软类型与阶段
+- **schema.sql**：新增 ECAD 相关表结构
+
+---
+
 ## [v0.3.5] - 2026-11-14
 
 **变更管理走向执行闭环** —— ECR → ECN → 变更任务执行 → 结果记录，全链路打通。

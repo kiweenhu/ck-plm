@@ -20,7 +20,8 @@ import cn.ck.plm.base.entity.TenantEntity;
  * <p>关系挂在<b>零件迭代</b>（{@link #partIterationOid} → {@code ck_part_iteration.oid}）上，
  * 与 BOM、零件-文档关联保持同一粒度：同一零件的不同版本可以指向不同版本的数模。
  * 工程数据侧同时保留主对象（{@link #engDocumentOid}）与精确迭代
- * （{@link #engDocIterationOid}，可空）：为空表示「跟随最新」，非空表示锁定到某一版。
+ * （{@link #engDocIterationOid}）：关系是 <b>iteration ↔ iteration</b>，新建时必须解析到具体迭代；
+ * 仅迁移遗留数据允许为空（SQL 按「跟随最新」兜底），新代码不再写空值。
  *
  * <h3>与 ck_doc_part_link 的区别</h3>
  * <ul>
@@ -58,6 +59,37 @@ public class EngDocPartLink extends BaseEntity implements TenantEntity {
             ASSOC_OWNER, ASSOC_CONTENT, ASSOC_CONTRIBUTING_IMAGE, ASSOC_IMAGE
     };
 
+    // ==================== 关系类型（对象语义，与 assocType 正交） ====================
+
+    /** 通用工程数据 / 三维数模（默认） */
+    public static final String LINK_ENG_DOCUMENT = "ENG_DOCUMENT";
+    /** 原理图图符 */
+    public static final String LINK_SYMBOL = "SYMBOL";
+    /** 封装 */
+    public static final String LINK_FOOTPRINT = "FOOTPRINT";
+    /** Datasheet */
+    public static final String LINK_DATASHEET = "DATASHEET";
+    /** 三维数模类别（前端三维卡片使用） */
+    public static final String LINK_THREE_D = "THREE_D";
+    /** 二维图纸类别（前端二维图纸卡片使用） */
+    public static final String LINK_TWO_D = "TWO_D";
+    /** 工程图类别（前端工程图卡片使用） */
+    public static final String LINK_DRAWING = "DRAWING";
+
+    private static final String[] LINK_TYPES = {
+            LINK_ENG_DOCUMENT, LINK_SYMBOL, LINK_FOOTPRINT, LINK_DATASHEET,
+            LINK_THREE_D, LINK_TWO_D, LINK_DRAWING
+    };
+
+    /** 关系类型是否合法 */
+    public static boolean isValidLinkType(String linkType) {
+        if (linkType == null) return false;
+        for (String type : LINK_TYPES) {
+            if (type.equals(linkType)) return true;
+        }
+        return false;
+    }
+
     // ==================== 关联两端 ====================
 
     /** 工程数据主对象 oid（关联 ck_eng_document.oid） */
@@ -71,8 +103,11 @@ public class EngDocPartLink extends BaseEntity implements TenantEntity {
 
     // ==================== 构建规则 ====================
 
-    /** 关联类型，取值见 {@link #ASSOC_OWNER} 等常量 */
+    /** 关联类型，取值见 {@link #ASSOC_OWNER} 等常量（EPMBuildRule 语义） */
     private String assocType = ASSOC_CONTENT;
+
+    /** 关系类型：这是什么对象关系（符号 / 封装 / Datasheet / 三维 / 通用工程数据） */
+    private String linkType = LINK_ENG_DOCUMENT;
 
     /** 构建结构（BOM 由该份数模驱动） */
     private boolean buildStructure;
@@ -137,6 +172,9 @@ public class EngDocPartLink extends BaseEntity implements TenantEntity {
 
     public String getAssocType() { return assocType; }
     public void setAssocType(String assocType) { this.assocType = assocType; }
+
+    public String getLinkType() { return linkType; }
+    public void setLinkType(String linkType) { this.linkType = linkType; }
 
     public boolean isBuildStructure() { return buildStructure; }
     public void setBuildStructure(boolean buildStructure) { this.buildStructure = buildStructure; }

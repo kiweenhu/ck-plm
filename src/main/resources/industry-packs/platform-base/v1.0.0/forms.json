@@ -1,5 +1,5 @@
 {
-  "note": "平台内置的流程表单（引擎与前端的渲染契约）。这三张是约定：前端 dsl-core/forms.ts 按 code 派发到同名 Vue 组件，DSL 的 formRef、编译出的 flowable:formKey、运行期渲染都用同一个 code —— 故 code 一经发布不可改。component 与 code 同值（表示有专属 Vue 渲染器）；builtin=true 表示系统内置（不可删除、契约字段不可改，但租户可停用自己那张）。\n\n2026-10-10 起：本资源由空数组改为承载这三张内置表单 —— 原先由后端 ProcessFormTemplateInitializer 在启动时登记平台租户，现改为随本包播种（与生命周期 / 编码规则 / 计量单位 / 视图同一模式），由 IndustryPackBootstrap 在启动时装到平台租户；租户在引导装包时各得一份（表已按租户隔离）。本文件与前端 dsl-core/forms.ts 是同一契约的两端，code 必须一字不差。",
+  "note": "平台内置的流程表单（引擎与前端的渲染契约）。这三张是约定：前端 dsl-core/forms.ts 按 code 派发到同名 Vue 组件，DSL 的 formRef、编译出的 flowable:formKey、运行期渲染都用同一个 code —— 故 code 一经发布不可改。component 与 code 同值（表示有专属 Vue 渲染器）；builtin=true 表示系统内置（不可删除、契约字段不可改，但租户可停用自己那张）。\n\n2026-10-10 起：本资源由空数组改为承载这三张内置表单 —— 原先由后端 ProcessFormTemplateInitializer 在启动时登记平台租户，现改为随本包播种（与生命周期 / 编码规则 / 计量单位 / 视图同一模式），由 IndustryPackBootstrap 在启动时装到平台租户；租户在引导装包时各得一份（表已按租户隔离）。本文件与前端 dsl-core/forms.ts 是同一契约的两端，code 必须一字不差。\n\n2026-11-18 通用件升级认定补两张行业表单（gen-part-upgrade-approval / gen-part-upgrade-countersign）：共用前端 PartUsedByPanel 只读展示待认定零件的反向 BOM（可逐层上溯到顶层型号），结论区分别复用内置审批意见 / 会签表单。两张表单的 code 写进 gen-part-upgrade 流程对应节点的 formRef，编进 BPMN 的 flowable:formKey；只装包不改 DSL 不会生效。",
   "forms": [
     {
       "code": "CKPLM_SETUP_ASSIGNEE",
@@ -117,6 +117,24 @@
       "builtin": false,
       "sortOrder": 98,
       "description": "行业表单（component 指向前端 EcnTaskSummaryForm）：变更通告在「派发变更任务」子流程之后、结束之前的汇总节点 —— 只读展示通告全貌、受影响对象执行状态与全部更改事项的状态/完成时间；提交前先校验任务是否都已完成、对象是否都已执行（真正的门槛在后端 ChangeNoticeService#completeByProcess），确认通过后由 change.completeNotice 把通告落「已完成」"
+    },
+    {
+      "code": "gen-part-upgrade-approval",
+      "name": "通用件升级认定审批",
+      "nodeTypes": "APPROVAL",
+      "component": "GenPartUpgradeApprovalForm",
+      "builtin": false,
+      "sortOrder": 110,
+      "description": "行业表单（component 指向前端 GenPartUpgradeApprovalForm）：通用件升级认定流程的领导审批节点 —— 上方只读展示待认定零件的被引用情况（直接父件、BOM 用量、引用方式，可逐层向上追溯到顶层型号），审批人据此判断是否跨型号复用；下方同意 / 驳回与意见复用内置审批意见表单，驳回目标与意见必填仍按 DSL 节点声明解释"
+    },
+    {
+      "code": "gen-part-upgrade-countersign",
+      "name": "通用件升级认定会签",
+      "nodeTypes": "COUNTERSIGN_APPROVAL",
+      "component": "GenPartUpgradeCountersignForm",
+      "builtin": false,
+      "sortOrder": 111,
+      "description": "行业表单（component 指向前端 GenPartUpgradeCountersignForm）：通用件升级认定流程的工程会签节点 —— 与领导审批看同一块「零件被引用情况」只读面板，会签人据此判断复用价值；会签通过规则、他人进度与本人一票复用内置会签表单，聚合规则按 DSL 节点声明解释"
     }
   ]
 }

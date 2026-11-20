@@ -59,6 +59,12 @@ public interface PostgreSqlTenantMapper extends TenantMapper {
     int update(Tenant tenant);
 
     @Override
+    @Update("UPDATE ck_tenant SET name = #{name}, contact_name = #{contactName}, "
+            + "contact_email = #{contactEmail}, updater = #{updater}, updated_at = now() "
+            + "WHERE oid = #{oid}")
+    int updateProfile(Tenant tenant);
+
+    @Override
     @Select("SELECT " + COLUMNS + " FROM ck_tenant WHERE oid = #{oid}")
     @Results(id = "tenantResult", value = {
             @Result(property = "oid",            column = "oid"),

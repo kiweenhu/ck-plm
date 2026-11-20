@@ -10,6 +10,11 @@ package cn.ck.plm.part.entity;
 import cn.ck.plm.base.entity.BaseEntity;
 import cn.ck.plm.base.entity.TenantEntity;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * 通用件阈值配置（<b>一个租户一行</b>）。
  *
@@ -37,7 +42,10 @@ public class GenPartThresholdConfig extends BaseEntity implements TenantEntity {
     /** 统计窗口（月）：只看近 N 个月的引用；0 或空 = 不限时间 */
     private Integer statWindowMonths;
 
-    /** 适用类型 code（默认 STRUCTURAL：认定只针对企业自研结构件，不动电子件/标准件） */
+    /**
+     * 适用类型 code（默认 STRUCTURAL）。界面多选，库里以逗号分隔存一列，
+     * 不新增列 —— 老数据（单值）天然兼容；对外再暴露 {@code scopeTypeCodes} 数组视图。
+     */
     private String scopeTypeCode;
 
     /** 认定流程模板 oid（软引用 ck_process_template.oid；空 = 只通知不自动发起） */
@@ -78,6 +86,31 @@ public class GenPartThresholdConfig extends BaseEntity implements TenantEntity {
 
     public String getScopeTypeCode() { return scopeTypeCode; }
     public void setScopeTypeCode(String scopeTypeCode) { this.scopeTypeCode = scopeTypeCode; }
+
+    /** 界面用的多选视图：CSV → 去重后的类型 code 列表 */
+    public List<String> getScopeTypeCodes() {
+        if (scopeTypeCode == null || scopeTypeCode.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(scopeTypeCode.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    /** Jackson 用这个 setter 接前端的 {@code scopeTypeCodes: [...]}，落库仍是 CSV */
+    public void setScopeTypeCodes(List<String> scopeTypeCodes) {
+        if (scopeTypeCodes == null) {
+            this.scopeTypeCode = null;
+            return;
+        }
+        this.scopeTypeCode = scopeTypeCodes.stream()
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.joining(","));
+    }
 
     public String getProcessTemplateOid() { return processTemplateOid; }
     public void setProcessTemplateOid(String processTemplateOid) { this.processTemplateOid = processTemplateOid; }

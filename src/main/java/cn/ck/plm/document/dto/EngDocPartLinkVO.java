@@ -51,8 +51,10 @@ public class EngDocPartLinkVO {
 
     // ==================== 构建规则 ====================
 
-    /** 关联类型：OWNER / CONTENT / CONTRIBUTING_IMAGE / IMAGE */
+    /** 关联类型：OWNER / CONTENT / CONTRIBUTING_IMAGE / IMAGE（EPMBuildRule 语义） */
     private String assocType;
+    /** 关系类型：SYMBOL / FOOTPRINT / DATASHEET / THREE_D / ENG_DOCUMENT（对象语义） */
+    private String linkType;
     private boolean buildStructure;
     private boolean buildAttribute;
     private boolean buildRepresentation;
@@ -103,6 +105,9 @@ public class EngDocPartLinkVO {
 
     public String getAssocType() { return assocType; }
     public void setAssocType(String assocType) { this.assocType = assocType; }
+
+    public String getLinkType() { return linkType; }
+    public void setLinkType(String linkType) { this.linkType = linkType; }
 
     public boolean isBuildStructure() { return buildStructure; }
     public void setBuildStructure(boolean buildStructure) { this.buildStructure = buildStructure; }

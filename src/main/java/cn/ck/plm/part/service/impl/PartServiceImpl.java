@@ -9,6 +9,8 @@ import cn.ck.plm.part.service.api.PartService;
 import cn.ck.plm.softtype.entity.TypeDefinition;
 import cn.ck.plm.cls.service.api.ClsIbaDataService;
 import cn.ck.plm.cls.service.impl.ClsIbaDataSupport;
+import cn.ck.plm.resource.entity.ResourceContainer;
+import cn.ck.plm.resource.service.api.ResourceLibraryService;
 import cn.ck.plm.softtype.dto.SoftTypeInstanceResult;
 import cn.ck.plm.softtype.entity.TypeDefinition;
 import cn.ck.plm.softtype.mapper.TypeDefinitionMapper;
@@ -66,6 +68,7 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
     private final IbaDataSupport ibaDataSupport;
     private final ClsIbaDataSupport clsIbaDataSupport;
     private final ClsIbaDataService clsIbaDataService;
+    private final ResourceLibraryService resourceLibraryService;
     private final ObjectMapper objectMapper;
 
     public PartServiceImpl(PartMapper partMapper,
@@ -80,6 +83,7 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
                             IbaDataSupport ibaDataSupport,
                             ClsIbaDataSupport clsIbaDataSupport,
                             ClsIbaDataService clsIbaDataService,
+                            ResourceLibraryService resourceLibraryService,
                             ObjectMapper objectMapper) {
         this.partMapper = partMapper;
         this.iterationMapper = iterationMapper;
@@ -93,6 +97,7 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
         this.ibaDataSupport = ibaDataSupport;
         this.clsIbaDataSupport = clsIbaDataSupport;
         this.clsIbaDataService = clsIbaDataService;
+        this.resourceLibraryService = resourceLibraryService;
         this.objectMapper = objectMapper;
     }
 
@@ -424,6 +429,42 @@ public class PartServiceImpl implements PartService, SoftTypeInstanceCapability 
         existing.setUpdatedAt(LocalDateTime.now());
         partMapper.update(existing);
         return existing;
+    }
+
+    @Override
+    @Transactional
+    public Part upgradeToGenPart(String oid) {
+        Part part = partMapper.selectByOid(oid);
+        if (part == null) {
+            throw new IllegalArgumentException("部件不存在: " + oid);
+        }
+        String current = part.getTypeDefinitionCode();
+        // 只有结构件（及其子类型通用件本身，重复执行时）才允许走这条升级路径
+        if (!"STRUCTURAL".equals(current) && !"GEN_PART".equals(current)) {
+            throw new IllegalArgumentException("只有结构件可以升级为通用件，当前类型: " + current);
+        }
+        Map<String, Object> context = resourceLibraryService.getResourceContext(ResourceContainer.GEN_PART);
+        Object containerOid = context.get("containerOid");
+        if (!(containerOid instanceof String) || ((String) containerOid).isEmpty()) {
+            throw new IllegalStateException("当前租户未初始化通用件资源库容器，无法迁入");
+        }
+        // 幂等：已经升级过就直接返回，流程重跑不会写第二遍
+        if ("GEN_PART".equals(current) && containerOid.equals(part.getContainerOid())) {
+            return part;
+        }
+        part.setTypeDefinitionCode("GEN_PART");
+        part.setContainerOid((String) containerOid);
+        Object containerType = context.get("containerType");
+        part.setContainerType(containerType instanceof String
+                ? (String) containerType : ResourceContainer.CONTAINER_TYPE);
+        Object stageOid = context.get("stageOid");
+        part.setStageOid(stageOid instanceof String ? (String) stageOid : null);
+        part.setUpdatedAt(LocalDateTime.now());
+        // 分类（clsOid）保持不变：通用件类型没有默认分类绑定，擅自换分类会丢失原分类 IBA；
+        // 资源库清单按「容器 + 类型」双条件过滤，分类不变不影响它在通用件库里出现。
+        partMapper.update(part);
+        log.info("结构件升级为通用件: oid={} from={} containerOid={}", oid, current, containerOid);
+        return part;
     }
 
     @Override

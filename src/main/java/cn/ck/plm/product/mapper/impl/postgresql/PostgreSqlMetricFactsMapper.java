@@ -120,4 +120,18 @@ public interface PostgreSqlMetricFactsMapper extends MetricFactsMapper {
             + "ORDER BY g.decided_at DESC LIMIT 1")
     String selectGateDecidedDate(@Param("ownerOid") String ownerOid,
                                  @Param("gateCode") String gateCode);
+
+    @Override
+    @Select("<script>"
+            + "SELECT p.oid AS \"partOid\", "
+            + "  CASE WHEN p.type_definition_code IN ('GEN_PART','STD_PART') "
+            + "            OR rc.code IN ('GEN_PART','STD_PART') THEN TRUE ELSE FALSE END AS \"reuse\" "
+            + "FROM ck_part p "
+            + "LEFT JOIN ck_resource_container rc "
+            + "  ON rc.oid = p.container_oid AND rc.tenant_oid = p.tenant_oid "
+            + "WHERE p.tenant_oid = #{tenantOid} AND p.oid IN "
+            + "<foreach collection='partOids' item='oid' open='(' separator=',' close=')'>#{oid}</foreach>"
+            + "</script>")
+    List<Map<String, Object>> selectReuseFlags(@Param("tenantOid") String tenantOid,
+                                               @Param("partOids") List<String> partOids);
 }

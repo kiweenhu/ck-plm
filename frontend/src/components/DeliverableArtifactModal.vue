@@ -25,7 +25,7 @@
     <div v-else class="dam-list">
       <div v-for="l in links" :key="l.oid" class="dam-row">
         <a-tag size="small" :color="hostColor(l.entityType)">{{ hostLabel(l.entityType) }}</a-tag>
-        <a-tag size="small">{{ l.typeCode }}</a-tag>
+        <a-tag size="small">{{ typeLabel(l.typeCode) }}</a-tag>
         <!-- 编码/名称可点开产出物自己的详情（用户口径 2026-10-29：从交付件要能一路点到产出物的详情）：
              零组件走零件详情页，文档/工程数据走统一的详情抽屉 -->
         <a v-if="detailable(l)" class="dam-code dam-link" :title="`查看「${l.entityName || l.entityCode}」详情`"
@@ -77,7 +77,7 @@
         <div v-else class="dam-list dam-cand">
           <div v-for="c in candidates" :key="c.entityType + c.oid" class="dam-row">
             <a-tag size="small" :color="hostColor(c.entityType)">{{ hostLabel(c.entityType) }}</a-tag>
-            <a-tag size="small">{{ c.typeCode }}</a-tag>
+            <a-tag size="small">{{ typeLabel(c.typeCode) }}</a-tag>
             <code class="dam-code">{{ c.code }}</code>
             <span class="dam-name" :title="c.name">{{ c.name }}</span>
             <span v-if="c.containerOid === ownerOid" class="dam-self">本型号</span>
@@ -153,8 +153,35 @@ const linkingKey = ref('')
 
 
 
-/** 约束展示：objectType 优先（硬约束到具体类型），否则退到 bindMode 宿主级 */
-const requiredType = computed(() => (props.deliverable?.objectType || '').trim() || null)
+/** 类型 code → 中文名（约束标签与候选标签共用，避免再显示裸 code） */
+const TYPE_LABELS = {
+  ENG_DOCUMENT: '工程数据',
+  THREE_D: '三维数模',
+  TWO_D: '二维图纸',
+  DRAWING: '工程图',
+  SCHEMATIC: '原理图',
+  PCB_LAYOUT: 'PCB 设计文件',
+  SYMBOL: '原理图图符',
+  FOOTPRINT: '封装',
+  DATASHEET: 'Datasheet',
+  DOCUMENT: '文档',
+  STRUCTURAL: '结构件',
+  SOFTWARE: '软件/固件',
+}
+function typeLabel(code) {
+  return TYPE_LABELS[code] || code || '-'
+}
+
+/** 约束展示：objectType 可写多个（逗号/分号/竖线分隔），优先它，否则退到 bindMode 宿主级 */
+const requiredTypes = computed(() =>
+  String(props.deliverable?.objectType || '')
+    .split(/[,，;；|]/)
+    .map(s => s.trim())
+    .filter(Boolean)
+)
+const requiredType = computed(() =>
+  requiredTypes.value.length ? requiredTypes.value.map(typeLabel).join(' / ') : null
+)
 const requiredHost = computed(() => {
   if (requiredType.value) return null
   const bm = (props.deliverable?.bindMode || '').trim().toUpperCase()

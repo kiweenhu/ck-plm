@@ -15,10 +15,12 @@ import cn.ck.plm.base.service.api.NumberService;
 import cn.ck.plm.base.service.api.VersionRuleService;
 import cn.ck.plm.base.service.impl.RevisionRuleGuard;
 import cn.ck.plm.document.dto.EngineeringDocumentVO;
+import cn.ck.plm.document.entity.EngDocPartLink;
 import cn.ck.plm.document.entity.EngineeringDocument;
 import cn.ck.plm.document.entity.EngineeringDocumentIteration;
 import cn.ck.plm.document.mapper.EngineeringDocumentIterationMapper;
 import cn.ck.plm.document.mapper.EngineeringDocumentMapper;
+import cn.ck.plm.document.service.EngDocPartLinkService;
 import cn.ck.plm.document.service.api.EngineeringDocumentService;
 import cn.ck.plm.softtype.entity.TypeDefinition;
 import cn.ck.plm.base.entity.LifecycleStatus;
@@ -81,6 +83,7 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
     private final ClsIbaDataSupport clsIbaDataSupport;
     private final ClsIbaDataService clsIbaDataService;
     private final ObjectMapper objectMapper;
+    private final EngDocPartLinkService engDocPartLinkService;
 
     public EngineeringDocumentServiceImpl(EngineeringDocumentMapper engDocumentMapper,
                                           EngineeringDocumentIterationMapper iterationMapper,
@@ -93,7 +96,8 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
                                           IbaDataSupport ibaDataSupport,
                                           ClsIbaDataSupport clsIbaDataSupport,
                                           ClsIbaDataService clsIbaDataService,
-                                          ObjectMapper objectMapper) {
+                                          ObjectMapper objectMapper,
+                                          EngDocPartLinkService engDocPartLinkService) {
         this.engDocumentMapper = engDocumentMapper;
         this.iterationMapper = iterationMapper;
         this.numberService = numberService;
@@ -106,6 +110,7 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
         this.clsIbaDataSupport = clsIbaDataSupport;
         this.clsIbaDataService = clsIbaDataService;
         this.objectMapper = objectMapper;
+        this.engDocPartLinkService = engDocPartLinkService;
     }
 
     // ==================== 能力宿主策略（SoftTypeInstanceCapability）====================
@@ -394,6 +399,20 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
 
     // ==================== 删除 ====================
 
+    /**
+     * 被零件（含电子元器件）引用的工程数据不允许删除。
+     *
+     * <p>封装 / 图符 / Datasheet 一旦被零件 CAD 卡片关联（ck_eng_doc_part_link），
+     * 删除会留下悬空引用。这里按主对象 oid 查全部引用，命中直接拒绝。
+     */
+    private void assertNotReferencedByPart(String engDocOid) {
+        List<EngDocPartLink> refs = engDocPartLinkService.findByEngDocument(engDocOid);
+        if (refs != null && !refs.isEmpty()) {
+            throw new IllegalArgumentException("该对象已被 " + refs.size()
+                    + " 个零件版本引用，请先解除关联后再删除");
+        }
+    }
+
     @Override
     @Transactional
     public void delete(String oid) {
@@ -401,6 +420,7 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
         if (existing == null) {
             return;
         }
+        assertNotReferencedByPart(oid);
         for (EngineeringDocumentIteration iter : iterationMapper.selectByMasterOid(oid)) {
             iterationMapper.deleteByOid(iter.getOid());
         }
@@ -414,6 +434,7 @@ public class EngineeringDocumentServiceImpl implements EngineeringDocumentServic
         if (latest == null) {
             return;
         }
+        assertNotReferencedByPart(oid);
         iterationMapper.deleteByOid(latest.getOid());
 
         List<EngineeringDocumentIteration> remaining = iterationMapper.selectByMasterOid(oid);

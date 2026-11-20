@@ -67,8 +67,13 @@ public class GenPartThresholdConfigService {
         if (config.getEnabled() == null) {
             config.setEnabled(Boolean.TRUE);
         }
-        if (isBlank(config.getScopeTypeCode())) {
-            config.setScopeTypeCode("STRUCTURAL");
+        if (config.getScopeTypeCodes().isEmpty()) {
+            config.setScopeTypeCodes(java.util.List.of("STRUCTURAL"));
+        } else {
+            // 多选统一大写去重，避免 "structural,STRUCTURAL" 这种脏值
+            config.setScopeTypeCodes(config.getScopeTypeCodes().stream()
+                    .map(code -> code.trim().toUpperCase(java.util.Locale.ROOT))
+                    .collect(java.util.stream.Collectors.toList()));
         }
 
         String tenant = TenantContext.get();
@@ -108,9 +113,5 @@ public class GenPartThresholdConfigService {
             throw new IllegalArgumentException(label + "至少为 " + MIN_THRESHOLD);
         }
         return value;
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
     }
 }

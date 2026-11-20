@@ -8,6 +8,8 @@
 package cn.ck.plm.process.service.impl;
 
 import cn.ck.plm.base.util.TenantContext;
+import cn.ck.plm.part.dto.GenPartEligibility;
+import cn.ck.plm.part.service.GenPartEligibilityService;
 import cn.ck.plm.process.dto.ProcessStartConflictVO;
 import cn.ck.plm.process.dto.ProcessStartOptionVO;
 import cn.ck.plm.process.entity.ProcessTemplate;
@@ -53,6 +55,8 @@ public class ProcessStartOptionServiceImpl implements ProcessStartOptionService 
      * 非项目对象（器件 / 文档…）不受此限。
      */
     private final ProductTeamRoleResolver roleResolver;
+    /** 通用件认定阈值闸门：直传流程 key 时按配置绑定的模板识别，不硬编码流程编码 */
+    private final GenPartEligibilityService genPartEligibilityService;
 
     public ProcessStartOptionServiceImpl(TypeDefinitionMapper typeDefinitionMapper,
                                          TypeLifecycleStateProcessService typeLifecycleStateProcessService,
@@ -60,7 +64,8 @@ public class ProcessStartOptionServiceImpl implements ProcessStartOptionService 
                                          ProcessTemplateVersionMapper versionMapper,
                                          RepositoryService repositoryService,
                                          ProcessEntitySetService entitySetService,
-                                         ProductTeamRoleResolver roleResolver) {
+                                         ProductTeamRoleResolver roleResolver,
+                                         GenPartEligibilityService genPartEligibilityService) {
         this.typeDefinitionMapper = typeDefinitionMapper;
         this.typeLifecycleStateProcessService = typeLifecycleStateProcessService;
         this.templateMapper = templateMapper;
@@ -68,6 +73,7 @@ public class ProcessStartOptionServiceImpl implements ProcessStartOptionService 
         this.repositoryService = repositoryService;
         this.entitySetService = entitySetService;
         this.roleResolver = roleResolver;
+        this.genPartEligibilityService = genPartEligibilityService;
     }
 
     @Override
@@ -160,6 +166,15 @@ public class ProcessStartOptionServiceImpl implements ProcessStartOptionService 
             vo.setStartable(false);
             vo.setReason("流程模板在当前租户下不存在: " + key + "（可能已被删除，或它属于其他租户）");
             return vo;
+        }
+        // 通用件阈值闸门：只拦配置里绑定的那张流程模板，流程 key 由配置模板 oid 反查，不写死
+        if (genPartEligibilityService.isConfiguredFlow(key) && trimToNull(entityOid) != null) {
+            GenPartEligibility eligibility = genPartEligibilityService.check(entityOid);
+            if (!eligibility.isEligible()) {
+                vo.setStartable(false);
+                vo.setReason(eligibility.getReason());
+                return vo;
+            }
         }
         return fillTemplateAndVersion(vo, template, trimToNull(typeCode), trimToNull(statusCode));
     }

@@ -159,6 +159,7 @@ const hintLines = computed(() => {
     return [
       'STEP / IGES / STL：上传后可由系统转换成轻量化文件，生成三维预览',
       'CATIA（.CATPart/.CATProduct）、Creo / NX（.prt/.asm）、SolidWorks（.sldprt/.sldasm）：仅归档保存，需要预览请另存 STEP 后再上传',
+      '也可以是电子设计相关工程数据，如：符号、封装、datasheet、原理图和布板图',
     ]
   }
   return effectiveAccept.value ? [acceptHint.value] : []

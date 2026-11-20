@@ -8,10 +8,13 @@
 package cn.ck.plm.part.controller;
 
 import cn.ck.plm.iam.dto.ApiResponse;
+import cn.ck.plm.part.dto.GenPartEligibility;
 import cn.ck.plm.part.entity.GenPartThresholdConfig;
+import cn.ck.plm.part.service.GenPartEligibilityService;
 import cn.ck.plm.part.service.GenPartThresholdConfigService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +31,18 @@ public class GenPartThresholdConfigController {
 
     @Autowired
     private GenPartThresholdConfigService service;
+    @Autowired
+    private GenPartEligibilityService eligibilityService;
+
+    /** 某零件是否达到通用件认定阈值（物料清单「升级为通用件」入口与流程发起前共用） */
+    @GetMapping("/eligibility/{partOid}")
+    public ApiResponse<GenPartEligibility> eligibility(@PathVariable String partOid) {
+        try {
+            return ApiResponse.ok(eligibilityService.check(partOid));
+        } catch (Exception e) {
+            return ApiResponse.fail(500, "通用件阈值判定失败: " + e.getMessage());
+        }
+    }
 
     /** 读取当前租户的阈值配置（未配置时返回默认值） */
     @GetMapping

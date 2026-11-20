@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:ckplm="http://www.ck.com/plm/workflow/dsl"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.ck.com/plm/workflow">
+  <process id="gen-part-upgrade" name="通用件升级认定流程" isExecutable="true">
+    <documentation>结构件跨型号复用达阈值后发起通用件认定：指定评审人 → 领导审批 → 工程会签 → 确认后自动改类型为通用件并迁库；驳回即结束。</documentation>
+    <startEvent id="start_1" name="开始：发起通用件认定" ckplm:nodeType="START" flowable:initiator="initiator" ckplm:initiator="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" ckplm:binding="{&quot;objectType&quot;:&quot;PART&quot;,&quot;requiredFields&quot;:[&quot;code&quot;,&quot;name&quot;]}"/>
+    <userTask id="setup_1" name="设置评审人" ckplm:nodeType="SET_ASSIGNEE" flowable:assignee="${initiator}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}" flowable:formKey="CKPLM_SETUP_ASSIGNEE" ckplm:formRef="CKPLM_SETUP_ASSIGNEE"/>
+    <userTask id="approve_leader" name="领导审批" ckplm:nodeType="APPROVAL" flowable:assignee="${ckplmSetupAssignees_approve_leader}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR_LEADER&quot;}" ckplm:approvalMode="&quot;SINGLE&quot;" ckplm:commentRequired="true" flowable:formKey="gen-part-upgrade-approval" ckplm:formRef="gen-part-upgrade-approval"/>
+    <userTask id="countersign_gen" name="通用件认定会签" ckplm:nodeType="COUNTERSIGN_APPROVAL" flowable:assignee="${ckplmApprover}" ckplm:assignee="{&quot;strategy&quot;:&quot;ROLE&quot;,&quot;roleCodes&quot;:[&quot;SYSTEM_ENGINEER&quot;,&quot;QUALITY_ENGINEER&quot;,&quot;PROJECT_MANAGER&quot;]}" ckplm:approvalMode="&quot;COUNTERSIGN&quot;" ckplm:passRule="{&quot;mode&quot;:&quot;PERCENT&quot;,&quot;percent&quot;:100,&quot;abstain&quot;:&quot;IGNORE&quot;}" ckplm:commentRequired="true" flowable:formKey="gen-part-upgrade-countersign" ckplm:formRef="gen-part-upgrade-countersign">  <multiInstanceLoopCharacteristics isSequential="false" flowable:collection="${ckplmSetupAssignees_countersign_gen}" flowable:elementVariable="ckplmApprover"><completionCondition>${nrOfCompletedInstances * 100 &gt;= nrOfInstances * 100 || ckplmVetoed}</completionCondition></multiInstanceLoopCharacteristics></userTask>
+    <userTask id="task_upgrade" name="确认升级为通用件" ckplm:nodeType="TASK" flowable:candidateUsers="${ckplmSetupAssignees_task_upgrade}" ckplm:assignee="{&quot;strategy&quot;:&quot;INITIATOR&quot;}"/>
+    <serviceTask id="svc_upgrade_gen" name="自动升级为通用件" ckplm:nodeType="SERVICE" flowable:delegateExpression="${plmServiceDelegate}" ckplm:serviceRef="part.upgradeToGenPart">  <extensionElements><flowable:field name="serviceId"><flowable:string>part.upgradeToGenPart</flowable:string></flowable:field></extensionElements></serviceTask>
+    <endEvent id="end_pass" name="结束：认定通过" ckplm:nodeType="END"/>
+    <endEvent id="end_reject" name="结束：认定未通过" ckplm:nodeType="END"/>
+    <sequenceFlow id="e0" sourceRef="start_1" targetRef="setup_1"/>
+    <sequenceFlow id="e1" sourceRef="setup_1" targetRef="approve_leader"/>
+    <sequenceFlow id="e2" sourceRef="approve_leader" targetRef="countersign_gen" name="通过" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e3" sourceRef="approve_leader" targetRef="end_reject" name="驳回" ckplm:route="REJECT"><conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e4" sourceRef="countersign_gen" targetRef="task_upgrade" name="通过" ckplm:route="PASS"><conditionExpression xsi:type="tFormalExpression">${approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e5" sourceRef="countersign_gen" targetRef="end_reject" name="驳回" ckplm:route="REJECT"><conditionExpression xsi:type="tFormalExpression">${!approved}</conditionExpression></sequenceFlow>
+    <sequenceFlow id="e6" sourceRef="task_upgrade" targetRef="svc_upgrade_gen"/>
+    <sequenceFlow id="e7" sourceRef="svc_upgrade_gen" targetRef="end_pass"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="gen-part-upgrade">
+    <bpmndi:BPMNShape id="Shape_start_1" bpmnElement="start_1">
+      <omgdc:Bounds x="276" y="-8" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_setup_1" bpmnElement="setup_1">
+      <omgdc:Bounds x="220" y="66" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_approve_leader" bpmnElement="approve_leader">
+      <omgdc:Bounds x="220" y="156" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_countersign_gen" bpmnElement="countersign_gen">
+      <omgdc:Bounds x="220" y="246" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_task_upgrade" bpmnElement="task_upgrade">
+      <omgdc:Bounds x="220" y="356" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_svc_upgrade_gen" bpmnElement="svc_upgrade_gen">
+      <omgdc:Bounds x="220" y="456" width="142" height="44"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_end_pass" bpmnElement="end_pass">
+      <omgdc:Bounds x="276" y="556" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNShape id="Shape_end_reject" bpmnElement="end_reject">
+      <omgdc:Bounds x="552" y="163" width="30" height="30"/>
+    </bpmndi:BPMNShape>
+    <bpmndi:BPMNEdge id="Edge_e0" bpmnElement="e0">
+      <omgdi:waypoint x="291" y="22"/>
+      <omgdi:waypoint x="291" y="66"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e1" bpmnElement="e1">
+      <omgdi:waypoint x="291" y="110"/>
+      <omgdi:waypoint x="291" y="156"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e2" bpmnElement="e2">
+      <omgdi:waypoint x="291" y="200"/>
+      <omgdi:waypoint x="291" y="246"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e3" bpmnElement="e3">
+      <omgdi:waypoint x="291" y="200"/>
+      <omgdi:waypoint x="567" y="163"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e4" bpmnElement="e4">
+      <omgdi:waypoint x="291" y="290"/>
+      <omgdi:waypoint x="291" y="356"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e5" bpmnElement="e5">
+      <omgdi:waypoint x="291" y="290"/>
+      <omgdi:waypoint x="567" y="163"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e6" bpmnElement="e6">
+      <omgdi:waypoint x="291" y="400"/>
+      <omgdi:waypoint x="291" y="456"/>
+    </bpmndi:BPMNEdge>
+    <bpmndi:BPMNEdge id="Edge_e7" bpmnElement="e7">
+      <omgdi:waypoint x="291" y="500"/>
+      <omgdi:waypoint x="291" y="556"/>
+    </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

@@ -1079,6 +1079,7 @@ const MANAGED_OBJECT_LABELS = {
   FUNCTIONAL: '功能架构 (Functional)',
   PART: '零组件 (Part)',
   DOCUMENT: '文档 (Document)',
+  ENG_DOCUMENT: '工程数据 (EngDocument)',
 }
 
 // 下拉可选项：按能力账本过滤 —— FUNCTIONAL 随 military-gjb / automotive-apqp 而来，没装包就不给这个选项。
@@ -1089,6 +1090,7 @@ const managedObjectOptions = computed(() => [
     ? [{ value: 'FUNCTIONAL', label: MANAGED_OBJECT_LABELS.FUNCTIONAL }]
     : []),
   { value: 'DOCUMENT', label: MANAGED_OBJECT_LABELS.DOCUMENT },
+  { value: 'ENG_DOCUMENT', label: MANAGED_OBJECT_LABELS.ENG_DOCUMENT },
 ])
 
 /** 解析后端返回的 managedObjectTypes JSON 字符串为数组 */

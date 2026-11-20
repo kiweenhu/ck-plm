@@ -8,7 +8,7 @@
       <a-button type="primary" @click="openForm()">
         <PlusOutlined /> 新增供应商
       </a-button>
-      <span class="mpn-hint">供应商是 AVL 的引用端；与制造商是两个独立对象（一家代理多家原厂）</span>
+      <span class="mpn-hint">供应商被 AVL 引用后不能删，只能「停用」；与制造商是两个独立对象（一家代理多家原厂）</span>
     </div>
 
     <a-table

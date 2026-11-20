@@ -184,6 +184,24 @@ plm:
       watchdog-enabled: ${PLM_CAD_FORGE_WATCHDOG:true}
       stale-after-minutes: ${PLM_CAD_FORGE_STALE_MINUTES:15}
       watchdog-interval-ms: ${PLM_CAD_FORGE_WATCHDOG_INTERVAL:120000}
+  # 二维图纸轻量化转换器 CK-DrawingForge（独立进程，GPL-3.0，依赖 LibreDWG）。
+  # 与 cad.forge 完全对称，只是前缀 drawing、端口 8091。库里有 ck_drawing_forge_config
+  # 行时以库为准，这里只作首次启动种子 + 库不可用时兜底。
+  drawing:
+    forge:
+      enabled: ${PLM_DRAWING_FORGE_ENABLED:false}
+      base-url: ${PLM_DRAWING_FORGE_BASE_URL:http://localhost:8091}
+      callback-token: ${PLM_DRAWING_FORGE_CALLBACK_TOKEN:}
+      callback-url: ${PLM_DRAWING_FORGE_CALLBACK_URL:http://localhost:8082/api/internal/drawing/convert/callback}
+      engine: ${PLM_DRAWING_FORGE_ENGINE:libredwg}
+      source-url-ttl-minutes: ${PLM_DRAWING_FORGE_SOURCE_URL_TTL:60}
+      artifact-read-timeout-ms: ${PLM_DRAWING_FORGE_ARTIFACT_READ_TIMEOUT:120000}
+      max-source-size-bytes: ${PLM_DRAWING_FORGE_MAX_SOURCE_SIZE:52428800}
+      supported-extensions: ${PLM_DRAWING_FORGE_EXTS:.dwg,.dxf}
+      max-attempts: ${PLM_DRAWING_FORGE_MAX_ATTEMPTS:3}
+      watchdog-enabled: ${PLM_DRAWING_FORGE_WATCHDOG:true}
+      stale-after-minutes: ${PLM_DRAWING_FORGE_STALE_MINUTES:12}
+      watchdog-interval-ms: ${PLM_DRAWING_FORGE_WATCHDOG_INTERVAL:120000}
 
 # Springdoc OpenAPI 配置
 springdoc:

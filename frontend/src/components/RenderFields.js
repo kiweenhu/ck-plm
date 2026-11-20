@@ -483,22 +483,28 @@ const RenderFields = {
           })
 
         case 'document-type-select':
+          // 与 eng-document-type-select 同理：表单字段 typeDefinitionCode 存的是类型编码（DOCUMENT …），
+          // 按 code 绑定才能显示类型名称并把 code 写回表单（按 oid 绑定会直接显示原始 code）
           return h(DocumentTypeSelect, {
             modelValue: value,
             disabled: isReadonly,
             placeholder: placeholder || '请选择文档类型',
             rootCode: 'DOCUMENT',
+            valueField: 'code',
             'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
           })
 
         // 工程数据（ENG_DOCUMENT）的类型选择：树根取 ENG_DOCUMENT，
         // 否则只能选到文档类型（见 DocumentTypeSelect 的 rootCode）
         case 'eng-document-type-select':
+          // 表单字段 typeDefinitionCode 存的是类型编码（FOOTPRINT / SYMBOL …），
+          // 必须按 code 绑定才能显示类型名称并把 code 写回表单（按 oid 绑定会直接显示原始 code）
           return h(DocumentTypeSelect, {
             modelValue: value,
             disabled: isReadonly,
             placeholder: placeholder || '请选择工程数据类型',
             rootCode: 'ENG_DOCUMENT',
+            valueField: 'code',
             'onUpdate:modelValue': (val) => this.$emit('update', fieldName, val),
           })
 

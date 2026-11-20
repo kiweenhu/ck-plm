@@ -146,6 +146,8 @@ public class EngineeringDocumentController {
         try {
             engDocumentService.delete(oid);
             return ApiResponse.ok();
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail(500, "删除工程数据失败: " + e.getMessage());
         }
@@ -157,6 +159,8 @@ public class EngineeringDocumentController {
         try {
             engDocumentService.deleteLatestIteration(oid);
             return ApiResponse.ok();
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.fail(400, e.getMessage());
         } catch (Exception e) {
             return ApiResponse.fail(500, "删除最新版本失败: " + e.getMessage());
         }

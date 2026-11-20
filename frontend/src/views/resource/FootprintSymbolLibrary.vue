@@ -63,30 +63,39 @@
             </div>
           </template>
           <template #toolbar>
-            <a-button type="primary" size="small" :disabled="!ctx?.containerOid" @click="openCreateModal">
-              <PlusOutlined /> 新建
-            </a-button>
+            <a-space>
+              <a-button type="primary" size="small" :disabled="!ctx?.containerOid" @click="openCreateModal('SYMBOL')">
+                <PlusOutlined /> 图符入库
+              </a-button>
+              <a-button type="primary" size="small" :disabled="!ctx?.containerOid" @click="openCreateModal('FOOTPRINT')">
+                <PlusOutlined /> 封装入库
+              </a-button>
+              <a-button type="primary" size="small" :disabled="!ctx?.containerOid" @click="openCreateModal('DATASHEET')">
+                <PlusOutlined /> Datasheet 入库
+              </a-button>
+            </a-space>
           </template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'typeDefinitionCode'">
-              <a-tag :color="record.typeDefinitionCode === 'FOOTPRINT' ? 'blue' : 'green'" size="small">
-                {{ record.typeDefinitionCode === 'FOOTPRINT' ? '封装' : '图符' }}
+              <a-tag :color="{ FOOTPRINT: 'blue', SYMBOL: 'green', DATASHEET: 'purple' }[record.typeDefinitionCode] || 'default'" size="small">
+                {{ { FOOTPRINT: '封装', SYMBOL: '图符', DATASHEET: 'Datasheet' }[record.typeDefinitionCode] || record.typeDefinitionCode }}
               </a-tag>
             </template>
             <template v-else-if="column.key === 'number'">
-              <router-link
+              <a
                 class="psl-link"
-                :to="`/part/${record.oid}`"
                 :title="`查看 ${record.name || ''} 详情`"
-              >{{ record.number || '-' }}</router-link>
+                @click="openDocDetail(record)"
+              >{{ record.number || '-' }}</a>
             </template>
             <template v-else-if="column.key === 'spec'">
               <span v-if="record.typeDefinitionCode === 'FOOTPRINT'">
                 {{ record.ipcName || '-' }}　·　{{ record.padCount ?? '-' }} 焊盘　·　{{ record.mountType || '-' }}
               </span>
-              <span v-else>
+              <span v-else-if="record.typeDefinitionCode === 'SYMBOL'">
                 {{ record.pinCount ?? '-' }} 引脚　·　{{ record.symbolCategory || '-' }}
               </span>
+              <span v-else style="color:#8c8c8c">数据手册</span>
             </template>
             <template v-else-if="column.key === 'displayVersion'">
               <a-tag color="blue" size="small">{{ record.displayVersion || '-' }}</a-tag>
@@ -113,10 +122,10 @@
       </div>
     </div>
 
-    <!-- 新建弹窗：先选类型（封装/图符），再渲染对应动态表单 -->
+    <!-- 新建弹窗：入库按钮决定类型，各自取该类型的 pagelayout -->
     <a-modal
       v-model:visible="createModalVisible"
-      :title="createType === 'FOOTPRINT' ? '新建封装' : '新建图符'"
+      :title="{ FOOTPRINT: '封装入库', SYMBOL: '图符入库', DATASHEET: 'Datasheet 入库' }[createType]"
       ok-text="创建"
       cancel-text="取消"
       :confirm-loading="createSaving"
@@ -130,27 +139,13 @@
         封装·图符库容器尚未初始化，请联系平台管理员检查后端初始化日志。
       </div>
 
-      <div class="psl-create-type">
-        <span class="psl-create-type-label">类型</span>
-        <a-select
-          v-model:value="createType"
-          size="small"
-          style="width:160px"
-          :options="[
-            { value: 'FOOTPRINT', label: '封装' },
-            { value: 'SYMBOL', label: '图符' },
-          ]"
-        />
-        <span class="psl-create-type-hint">编码留空时按编码规则自动生成</span>
-      </div>
-
       <DynamicForm
         v-if="createModalVisible && ctx?.containerOid"
         ref="dynamicFormRef"
         :key="createType"
         :entity-code="createType"
+        fallback-entity-code="ENG_DOCUMENT"
         operation-code="create"
-        fallback-entity-code="PART"
         :current-container-oid="ctx.containerOid"
         v-model="form"
       />
@@ -179,6 +174,13 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 工程数据详情（封装/图符/Datasheet 无独立详情路由，复用产品线 DocumentViewer 抽屉） -->
+    <DocumentViewer
+      v-model:visible="docViewerVisible"
+      :doc="docViewerDoc"
+      @close="docViewerVisible = false"
+    />
   </div>
 </template>
 
@@ -190,9 +192,10 @@ import DataTable from '@/components/DataTable.vue'
 import DynamicForm from '@/components/DynamicForm.vue'
 import PartRowActionMenu from '@/components/PartRowActionMenu.vue'
 import FolderTreeNode from '@/views/product/FolderTreeNode.vue'
+import DocumentViewer from '@/views/product/DocumentViewer.vue'
 import {
   getFolderTree, createSoftTypeInstance, getPackageSymbols, getPackageSymbolContext,
-  createFolder,
+  createFolder, getEngineeringDocument,
 } from '@/api'
 
 const aEmptyImage = Empty
@@ -208,10 +211,33 @@ const typeFilterOptions = [
   { value: 'ALL', label: '全部' },
   { value: 'FOOTPRINT', label: '封装' },
   { value: 'SYMBOL', label: '图符' },
+  { value: 'DATASHEET', label: 'Datasheet' },
 ]
 
 const itemList = ref([])
 const loading = ref(false)
+
+// ==================== 工程数据详情（复用产品线 DocumentViewer 抽屉） ====================
+const docViewerVisible = ref(false)
+const docViewerDoc = ref(null)
+
+/** 封装/图符/Datasheet 是工程数据，没有 /part 详情路由；按 oid 取 master 后在抽屉里展示 */
+async function openDocDetail(record) {
+  if (!record?.oid) return
+  try {
+    const res = await getEngineeringDocument(record.oid)
+    const data = res?.data || res
+    if (res?.code !== undefined && res.code !== 200) {
+      message.error(res.message || '加载详情失败')
+      return
+    }
+    if (!data) { message.error('未找到该对象'); return }
+    docViewerDoc.value = { ...data, oid: data.oid || record.oid, code: data.code || data.number || record.number }
+    docViewerVisible.value = true
+  } catch (e) {
+    message.error(e?.response?.data?.message || e?.message || '加载详情失败')
+  }
+}
 
 const itemColumns = [
   { title: '类型', key: 'typeDefinitionCode', width: 70, align: 'center' },
@@ -377,11 +403,16 @@ const createType = ref('FOOTPRINT')
 const dynamicFormRef = ref(null)
 const form = ref({})
 
-function openCreateModal() {
+/**
+ * 打开入库弹窗。type 由工具栏按钮给定：SYMBOL → 图符入库，FOOTPRINT → 封装入库。
+ * 两种类型各自取自己的 pagelayout（ck_type_page_layout 中 entity_code=FOOTPRINT/SYMBOL 的 create 布局）。
+ */
+function openCreateModal(type = 'FOOTPRINT') {
   if (!ctx.value?.containerOid) {
     message.warning('封装·图符库容器未就绪，请检查后端初始化')
     return
   }
+  createType.value = ['SYMBOL', 'FOOTPRINT', 'DATASHEET'].includes(type) ? type : 'FOOTPRINT'
   // 默认落到左侧当前选中的文件夹，保持与页面上下文一致（未选中任何文件夹时留空，由用户在表单中选择）
   form.value = {
     typeDefinitionCode: createType.value,
@@ -407,6 +438,7 @@ async function confirmCreate() {
       const clsIbaValues = dynamicFormRef.value.getClsIbaValues() || {}
       if (Object.keys(clsIbaValues).length > 0) payload.clsIbaValues = clsIbaValues
     }
+    // 类型由入库按钮锁定（与所用 pagelayout 一致），不让表单里的类型选择器改成别的类型
     payload.typeDefinitionCode = createType.value
     payload.containerOid = c.containerOid
     payload.containerType = c.containerType || 'CORP_RESOURCE'
@@ -518,19 +550,6 @@ onMounted(async () => {
   border: 1px solid #ffd591;
   border-radius: 4px;
   color: #ad6800;
-  font-size: 12px;
-}
-.psl-create-type {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.psl-create-type-label {
-  color: #8c8c8c;
-}
-.psl-create-type-hint {
-  color: #8c8c8c;
   font-size: 12px;
 }
 </style>

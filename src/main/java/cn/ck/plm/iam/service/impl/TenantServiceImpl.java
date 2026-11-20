@@ -237,6 +237,33 @@ public class TenantServiceImpl implements TenantService {
     }
 
     @Override
+    @Transactional
+    public Tenant updateProfile(String oid, String name, String contactName, String contactEmail, String updater) {
+        if (oid == null || oid.trim().isEmpty()) {
+            throw new IllegalArgumentException("租户标识不能为空");
+        }
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("企业名称不能为空");
+        }
+        Tenant tenant = tenantMapper.selectByOid(oid);
+        if (tenant == null) {
+            throw new IllegalArgumentException("租户不存在");
+        }
+        tenant.setName(name.trim());
+        tenant.setContactName(contactName == null ? null : contactName.trim());
+        tenant.setContactEmail(contactEmail == null ? null : contactEmail.trim());
+        tenant.setUpdater(updater);
+        int rows = tenantMapper.updateProfile(tenant);
+        if (rows == 0) {
+            throw new IllegalStateException("企业信息更新失败");
+        }
+        // selectByOid 的列清单不含 admin_password，这里仍显式清空，避免以后补列时把密码带出去
+        tenant.setAdminPassword(null);
+        log.info("企业信息已更新: tenantId={}, oid={}, by={}", tenant.getTenantId(), oid, updater);
+        return tenant;
+    }
+
+    @Override
     public Tenant getByOid(String oid) {
         if (oid == null || oid.trim().isEmpty()) {
             return null;

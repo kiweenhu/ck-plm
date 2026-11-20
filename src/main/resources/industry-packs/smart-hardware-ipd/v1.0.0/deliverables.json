@@ -91,7 +91,7 @@
       "dueOffsetDays": -3, "gate": "TR3",
       "industryNote": "叠层与阻抗必须与板厂工艺能力对齐——阻抗不控的高速板，EMC 阶段一定返工" },
 
-    { "code": "DLV-STRUCT-DRAWING", "name": "结构件图纸（3D/2D）", "stage": "IPD_DEVELOP", "discipline": "STRUCTURE", "mandatory": false, "ownerRole": "ME_ENGINEER", "objectType": "STRUCTURAL", "bindMode": "DOCUMENT",
+    { "code": "DLV-STRUCT-DRAWING", "name": "结构件图纸（3D/2D）", "stage": "IPD_DEVELOP", "discipline": "STRUCTURE", "mandatory": false, "ownerRole": "ME_ENGINEER", "objectType": "THREE_D,TWO_D,ENG_DOCUMENT", "bindMode": "DOCUMENT",
       "completionRule": { "all": [ { "type": "BOUND" }, { "type": "LIFECYCLE", "minState": "已发布" }, { "type": "ISSUE_CLOSED", "severity": "BLOCK" } ] },
       "dueOffsetDays": -3, "gate": "TR3",
       "industryNote": "自研结构件时强制（见企业画像 HAS_MECH 题）；关键尺寸 / 公差 / 材质与表面处理齐备——模具一开，改图就是改钱" },

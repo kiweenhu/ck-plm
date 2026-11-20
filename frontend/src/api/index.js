@@ -2798,6 +2798,11 @@ export function getGenPartThresholdConfig() {
   return request.get('/gen-part-threshold-config')
 }
 
+/** 发起前判定某零件是否达到通用件认定阈值（后端同一口径，返回 eligible / reason / 计数） */
+export function checkGenPartEligibility(partOid) {
+  return request.get(`/gen-part-threshold-config/eligibility/${partOid}`)
+}
+
 /** 保存通用件阈值配置 */
 export function saveGenPartThresholdConfig(data) {
   return request.put('/gen-part-threshold-config', data)
@@ -2941,7 +2946,8 @@ export function getEngDocPartLinks(params = {}) {
 
 /**
  * 建立关联：
- * { partOid | partIterationOid, engDocumentOid, engDocIterationOid?, assocType?,
+ * { partOid | partIterationOid, engDocumentOid, engDocIterationOid?（不传取最新迭代）,
+ *   assocType?, linkType?（SYMBOL / FOOTPRINT / DATASHEET / THREE_D / ENG_DOCUMENT）,
  *   buildStructure?, buildAttribute?, buildRepresentation?, primary?, sortOrder? }
  */
 export function createEngDocPartLink(data) {
@@ -3380,6 +3386,33 @@ export function convertCadModel(data) {
 /** 查询某迭代最近一次转换记录（前端轮询入口） */
 export function getLatestCadVisualization(engDocIterationOid) {
   return request.get('/cad-visualizations/latest', { params: { engDocIterationOid } })
+}
+
+// ==================== 二维图纸轻量化（CK-DrawingForge） ====================
+
+/** 二维图纸转换器是否可用（未部署时前端隐藏 2D 预览入口） */
+export function getDrawingViewerAvailable() {
+  return request.get('/drawing-visualizations/available')
+}
+
+/** 触发二维图纸转换（异步提交，立刻返回 QUEUED，结果靠轮询拿） */
+export function convertDrawing(data) {
+  return request.post('/drawing-visualizations/convert', data)
+}
+
+/** 查询某迭代最近一次二维图纸转换记录（前端轮询入口） */
+export function getLatestDrawingVisualization(engDocIterationOid) {
+  return request.get('/drawing-visualizations/latest', { params: { engDocIterationOid } })
+}
+
+/** 重试二维图纸转换 */
+export function retryDrawing(oid) {
+  return request.post(`/drawing-visualizations/${oid}/retry`)
+}
+
+/** 取消二维图纸转换 */
+export function cancelDrawing(oid) {
+  return request.post(`/drawing-visualizations/${oid}/cancel`)
 }
 
 /**

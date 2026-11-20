@@ -119,7 +119,12 @@ public interface PostgreSqlResourceLibraryMapper extends ResourceLibraryMapper {
             + "ON ls.iteration_oid = i.lifecycle_template_iteration_oid AND ls.status_code = i.status "
             + "AND ls.tenant_oid = p.tenant_oid " +
             "<where>" +
-            "p.type_definition_code = #{typeCode}" +
+            "p.type_definition_code IN " +
+            "<foreach item='t' collection='typeCodes' open='(' separator=',' close=')'>#{t}</foreach>" +
+            // 2026-11-18：必须按当前资源子库容器过滤。
+            // 标准件/通用件与产品结构下的结构件同为 STRUCTURAL 软类型，
+            // 只按 typeCode 会把产品里的结构件（container_oid 指向产品/其它节点）也列进标准件库。
+            " AND p.container_oid = #{containerOid}" +
             "<if test='clsOids != null and clsOids.size() > 0'>" +
             " AND p.cls_oid IN <foreach item='c' collection='clsOids' open='(' separator=',' close=')'>#{c}</foreach>" +
             "</if>" +
@@ -131,5 +136,6 @@ public interface PostgreSqlResourceLibraryMapper extends ResourceLibraryMapper {
             "</script>")
     List<Map<String, Object>> selectLibraryItems(@Param("clsOids") List<String> clsOids,
                                                  @Param("keyword") String keyword,
-                                                 @Param("typeCode") String typeCode);
+                                                 @Param("typeCodes") List<String> typeCodes,
+                                                 @Param("containerOid") String containerOid);
 }

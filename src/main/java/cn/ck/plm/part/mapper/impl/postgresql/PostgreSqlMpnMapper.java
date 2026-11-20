@@ -307,6 +307,20 @@ public interface PostgreSqlMpnMapper extends MpnMapper {
     int countDistinctSuppliersByPart(@Param("partOid") String partOid);
 
     @Override
+    @Select("SELECT count(DISTINCT v.supplier_oid) FROM ck_part_avl v " +
+            "JOIN ck_part_aml a ON a.oid = v.aml_oid " +
+            "JOIN ck_supplier s ON s.oid = v.supplier_oid " +
+            "WHERE a.part_oid = #{partOid} AND COALESCE(s.disabled, false) = false")
+    int countActiveDistinctSuppliersByPart(@Param("partOid") String partOid);
+
+    @Override
+    @Select("SELECT count(DISTINCT v.supplier_oid) FROM ck_part_avl v " +
+            "JOIN ck_part_aml a ON a.oid = v.aml_oid " +
+            "JOIN ck_supplier s ON s.oid = v.supplier_oid " +
+            "WHERE a.part_oid = #{partOid} AND COALESCE(s.disabled, false) = true")
+    int countDisabledDistinctSuppliersByPart(@Param("partOid") String partOid);
+
+    @Override
     @Select("SELECT count(*) FROM ck_part_aml WHERE part_oid = #{partOid}")
     int countAmlByPart(@Param("partOid") String partOid);
 

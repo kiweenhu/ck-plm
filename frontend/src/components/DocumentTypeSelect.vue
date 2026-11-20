@@ -9,7 +9,7 @@
     allow-clear
     :placeholder="placeholder"
     :disabled="disabled"
-    :field-names="{ label: 'name', key: 'oid', value: 'oid', children: 'children' }"
+    :field-names="{ label: 'name', key: 'oid', value: valueField, children: 'children' }"
     style="width: 100%"
     @change="onSelectChange"
   />
@@ -32,6 +32,12 @@ const props = defineProps({
    * 新建工程数据时根本选不到 FOOTPRINT / PCB_LAYOUT / SCHEMATIC 这些数模类型。
    */
   rootCode: { type: String, default: 'DOCUMENT' },
+  /**
+   * TreeSelect 绑定值取节点的哪个字段：默认 oid（ProductLineDashboard 里的文档类型选择用 oid）。
+   * DynamicForm 的 typeDefinitionCode 字段存的是类型编码（FOOTPRINT / SYMBOL …），
+   * 传 'code' 才能正确回显名称、并把 code 写回表单（否则 code 匹配不到 oid，控件直接显示原始 code）。
+   */
+  valueField: { type: String, default: 'oid' },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -63,15 +69,15 @@ function onSelectChange(value) {
     emit('change', null)
     return
   }
-  const node = findNodeByOid(docTypeTree.value, value)
+  const node = findNodeByValue(docTypeTree.value, value, props.valueField)
   emit('change', node ? { oid: node.oid, code: node.code, name: node.name } : null)
 }
 
-function findNodeByOid(nodes, oid) {
+function findNodeByValue(nodes, value, field) {
   for (const n of nodes) {
-    if (n.oid === oid) return n
+    if (n[field] === value) return n
     if (n.children?.length) {
-      const found = findNodeByOid(n.children, oid)
+      const found = findNodeByValue(n.children, value, field)
       if (found) return found
     }
   }

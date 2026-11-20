@@ -112,8 +112,9 @@ public class EngDocPartLinkController {
      * 建立关联。
      *
      * <p>body: { partIterationOid | partOid, engDocumentOid | engDocIterationOid,
-     * engDocIterationOid?, assocType?, buildStructure?, buildAttribute?, buildRepresentation?,
-     * primary?, sortOrder?, assocSource? }
+     * engDocIterationOid?（不传自动取最新迭代）, assocType?,
+     * linkType?（SYMBOL / FOOTPRINT / DATASHEET / THREE_D / ENG_DOCUMENT，不传按对象类型推断）,
+     * buildStructure?, buildAttribute?, buildRepresentation?, primary?, sortOrder?, assocSource? }
      */
     @PostMapping
     public ApiResponse<EngDocPartLinkVO> create(@RequestBody Map<String, Object> body) {
@@ -139,6 +140,7 @@ public class EngDocPartLinkController {
             link.setEngDocumentOid(engDocumentOid);
             link.setEngDocIterationOid(engDocIterationOid);
             link.setAssocType(str(body.get("assocType")));
+            link.setLinkType(str(body.get("linkType")));
             link.setBuildStructure(bool(body.get("buildStructure")));
             link.setBuildAttribute(bool(body.get("buildAttribute")));
             link.setBuildRepresentation(bool(body.get("buildRepresentation")));
@@ -161,6 +163,7 @@ public class EngDocPartLinkController {
             EngDocPartLink link = new EngDocPartLink();
             link.setOid(oid);
             link.setAssocType(str(body.get("assocType")));
+            link.setLinkType(str(body.get("linkType")));
             link.setEngDocIterationOid(str(body.get("engDocIterationOid")));
             link.setBuildStructure(bool(body.get("buildStructure")));
             link.setBuildAttribute(bool(body.get("buildAttribute")));
@@ -196,6 +199,7 @@ public class EngDocPartLinkController {
         vo.setEngDocumentOid(link.getEngDocumentOid());
         vo.setEngDocIterationOid(link.getEngDocIterationOid());
         vo.setAssocType(link.getAssocType());
+        vo.setLinkType(link.getLinkType());
         vo.setBuildStructure(link.isBuildStructure());
         vo.setBuildAttribute(link.isBuildAttribute());
         vo.setBuildRepresentation(link.isBuildRepresentation());

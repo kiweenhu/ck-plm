@@ -57,12 +57,11 @@
           </div>
         </div>
 
-        <!-- 右侧一列：统计信息在上，描述与创建信息在它下面。
-             描述/创建原本占着标题下面的一整行，左侧因此比右侧高出两行；收到右列后
-             左侧只剩「面包屑 + 标题 + 编码」，页头少一行 —— 内容区就多一行可用高度 -->
+        <!-- 右侧一列：保留原有子系列 / 型号 / 阶段统计，并在下面补上目标成本 + 目标上市日期
+             （IBA TARGET_COST / TARGET_LAUNCH_DATE，与经营战报同一口径）。 -->
         <div class="pl-header-side" v-if="line">
           <div class="pl-header-stats">
-            <!-- 产品系列：显示子系列数量 -->
+            <!-- 产品系列：显示子系列数量，点开下面那块子系列面板 -->
             <template v-if="line.nodeType !== 'PRODUCT_MODEL'">
               <div
                 class="pl-stat-pill"
@@ -80,7 +79,6 @@
                 <span class="pl-stat-pill-label">型号</span>
               </div>
             </template>
-            <!-- 产品型号：不显示子系列和型号数量 -->
             <div class="pl-stat-pill">
               <ExperimentOutlined class="pl-stat-pill-icon" style="color:#722ed1" />
               <span class="pl-stat-pill-num">{{ stageDefs.length }}</span>
@@ -88,12 +86,25 @@
             </div>
           </div>
 
-          <!-- 描述是变长的：自己截断（悬停看全），"创建于"始终留在可见位置 -->
-          <p class="pl-meta">
-            <span v-if="line.description" class="pl-meta-desc" :title="line.description">{{ line.description }}</span>
-            <span v-if="line.description" class="pl-meta-sep" />
-            <span class="pl-meta-created">创建于 {{ formatTime(line.createdAt) }}</span>
-          </p>
+          <!-- 目标值单独一行，避免把统计行撑宽 -->
+          <div class="pl-header-stats pl-header-stats--targets">
+            <a-tooltip :title="targetCost == null ? '尚未设定目标成本（IBA TARGET_COST）' : `目标成本 ¥${formatCount(targetCost)}`">
+              <div class="pl-stat-pill">
+                <DollarOutlined class="pl-stat-pill-icon" style="color:#52c41a" />
+                <span class="pl-stat-pill-num pl-stat-pill-num--text">
+                  {{ targetCost == null ? '未设定' : `¥${formatCount(targetCost)}` }}
+                </span>
+                <span class="pl-stat-pill-label">目标成本</span>
+              </div>
+            </a-tooltip>
+            <a-tooltip :title="targetLaunchDate ? `目标上市日期 ${targetLaunchDate}` : '尚未设定目标上市日期（IBA TARGET_LAUNCH_DATE）'">
+              <div class="pl-stat-pill">
+                <CalendarOutlined class="pl-stat-pill-icon" style="color:#1677ff" />
+                <span class="pl-stat-pill-num pl-stat-pill-num--text">{{ targetLaunchDate || '未设定' }}</span>
+                <span class="pl-stat-pill-label">上市时间</span>
+              </div>
+            </a-tooltip>
+          </div>
         </div>
       </div>
 
@@ -142,7 +153,7 @@
           <div class="pl-bom-materials">
             <div class="pl-bom-materials-bar">
               <span class="pl-bom-materials-hint">
-                本{{ line?.nodeType === 'PRODUCT_MODEL' ? '型号' : '产品' }}下所有零件的最新大版本 · 最新小版本，不区分阶段与文件夹
+                本{{ line?.nodeType === 'PRODUCT_MODEL' ? '型号' : '产品' }}下同名 Part 及其 BOM 全部子/孙物料的最新版本，不区分阶段与文件夹
               </span>
               <span class="pl-bom-materials-count">共 {{ bomMaterials.length }} 个零件</span>
             </div>
@@ -169,6 +180,14 @@
                 </a-tooltip>
               </template>
               <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'level'">
+                  <a-tooltip v-if="record.parentNumber" :title="`父件：${record.parentNumber}`">
+                    <a-tag :color="record.level === 0 ? 'blue' : (record.level === 1 ? 'green' : 'default')" style="margin:0">
+                      {{ record.level === 0 ? '根' : (record.level === 1 ? '子' : `孙${record.level - 1}`) }}
+                    </a-tag>
+                  </a-tooltip>
+                  <a-tag v-else color="blue" style="margin:0">根</a-tag>
+                </template>
                 <template v-if="column.key === 'checkout_status'">
                   <a-tooltip v-if="record.checkedOut" placement="top">
                     <template #title>
@@ -210,10 +229,15 @@
                   <a-tag v-else color="green" size="small">已检入</a-tag>
                 </template>
                 <template v-else-if="column.key === 'action'">
+                  <!-- 电子元器件 / 标准件 / 通用件来自资源库（外购库件），由资源库统一维护，
+                       产品 BOM 页不提供检出/检入/修订/删除等操作（2026-11-18 用户要求）。 -->
+                  <a-tooltip v-if="record.fromResourceLibrary" title="该物料来自资源库，请在资源库中维护">
+                    <a-tag color="default" style="cursor:not-allowed;margin:0">库件</a-tag>
+                  </a-tooltip>
                   <!-- 复用研发资料行菜单：后端已把 entityType 标成 PART，分派到零件的检出/检入/修订。
                        注意注释别写进 #overlay 里 —— Vue dev 构建会保留注释节点，而 antd Dropdown
                        的 renderOverlay 只取插槽返回的第一个 vnode，注释当头会把整个菜单吞掉（点击无反应）。 -->
-                  <a-dropdown :trigger="['click']">
+                  <a-dropdown v-else :trigger="['click']">
                     <a-button type="link" size="small">操作 <DownOutlined style="font-size:10px;margin-left:2px" /></a-button>
                     <template #overlay>
                       <a-menu @click="(e) => handleMixedAction(e, record)">
@@ -233,6 +257,10 @@
                         <a-menu-divider />
                         <a-menu-item v-if="!record.checkedOut" key="lifecycle"><ExperimentOutlined /> 设置生命周期状态</a-menu-item>
                         <a-menu-item v-if="!record.checkedOut" key="workflow"><SendOutlined /> 发起流程</a-menu-item>
+                        <!-- 通用件认定统计启用时，适用类型的结构件可发起认定并升级为通用件 -->
+                        <a-menu-item v-if="!record.checkedOut && canUpgradeToGenPart(record)" key="upgradeToGen">
+                          <RocketOutlined /> 升级为通用件
+                        </a-menu-item>
                         <a-menu-item v-if="!record.checkedOut" key="delete" danger><DeleteOutlined /> 删除</a-menu-item>
                       </a-menu>
                     </template>
@@ -302,11 +330,11 @@
                 -->
                 <a-tooltip
                   v-if="stageManagedObjects.has('ENG_DOCUMENT') || stageManagedObjects.has('DOCUMENT')"
-                  title="工程数据归档：新建工程数据（ENG_DOCUMENT），主文件挂 STEP / IGES / STL 等三维数模。当前为临时入口 —— 后续由 MCAD 集成插件在 CAD 中保存时自动归档"
+                  title="三维数模归档：新建工程数据（ENG_DOCUMENT），主文件挂 STEP / IGES / STL 等三维数模。当前为临时入口 —— 后续由 MCAD 集成插件在 CAD 中保存时自动归档"
                 >
                   <a-button type="primary" size="small" @click="openCreateEngDocument">
                     <template #icon><ExperimentOutlined /></template>
-                    工程数据归档
+                    三维数模归档
                   </a-button>
                 </a-tooltip>
               </template>
@@ -495,6 +523,7 @@
                       >
                         <template #toolbar>
                           <a-tooltip title="新建文档"><a-button v-if="stageManagedObjects.has('DOCUMENT')" size="small" @click="openCreateDocument"><FileTextOutlined /></a-button></a-tooltip>
+                          <a-tooltip title="新建工程数据"><a-button v-if="stageManagedObjects.has('ENG_DOCUMENT')" size="small" @click="openCreateEngDocument"><ExperimentOutlined /></a-button></a-tooltip>
                           <a-tooltip title="新建功能架构"><a-button v-if="stageManagedObjects.has('FUNCTIONAL') && has('FUNCTIONAL_ARCHITECTURE')" size="small" @click="openCreateFunctional"><BranchesOutlined /></a-button></a-tooltip>
                         </template>
                         <template #bodyCell="{ column, record }">
@@ -570,6 +599,7 @@
                         </template>
                         <template #toolbar>
                           <a-tooltip title="新建文档"><a-button v-if="stageManagedObjects.has('DOCUMENT')" size="small" @click="openCreateDocument"><FileTextOutlined /></a-button></a-tooltip>
+                          <a-tooltip title="新建工程数据"><a-button v-if="stageManagedObjects.has('ENG_DOCUMENT')" size="small" @click="openCreateEngDocument"><ExperimentOutlined /></a-button></a-tooltip>
                           <a-tooltip title="新建功能架构"><a-button v-if="stageManagedObjects.has('FUNCTIONAL') && has('FUNCTIONAL_ARCHITECTURE')" size="small" @click="openCreateFunctional"><BranchesOutlined /></a-button></a-tooltip>
                         </template>
                         <template #bodyCell="{ column, record }">
@@ -686,6 +716,7 @@
                         <!-- 零组件统一在「物料清单」页签创建：研发资料只管文档 / 功能架构，
                              同一件事两个入口只会让人在两处各建一个零件（2026-11-03 用户要求移除） -->
                         <a-tooltip title="新建文档"><a-button v-if="stageManagedObjects.has('DOCUMENT')" size="small" @click="openCreateDocument"><FileTextOutlined /></a-button></a-tooltip>
+                        <a-tooltip title="新建工程数据"><a-button v-if="stageManagedObjects.has('ENG_DOCUMENT')" size="small" @click="openCreateEngDocument"><ExperimentOutlined /></a-button></a-tooltip>
                         <a-tooltip title="新建功能架构"><a-button v-if="stageManagedObjects.has('FUNCTIONAL') && has('FUNCTIONAL_ARCHITECTURE')" size="small" @click="openCreateFunctional"><BranchesOutlined /></a-button></a-tooltip>
                       </template>
                       <template #bodyCell="{ column, record }">
@@ -1338,7 +1369,7 @@
         show-icon
         banner
         style="margin-bottom:12px"
-        message="工程数据（ENG_DOCUMENT）用于承载三维数模：可直接上传 CATIA / Creo / NX / SolidWorks 原生数模归档；上传 STEP / IGES / STL 后系统会转换成轻量化文件，生成三维预览"
+        message="工程数据（ENG_DOCUMENT）用于承载三维数模：可直接上传 CATIA / Creo / NX / SolidWorks 原生数模归档；上传 STEP / IGES / STL 后系统会转换成轻量化文件，生成三维预览；也可以是电子设计相关工程数据，如：符号、封装、datasheet、原理图和布板图"
       />
       <DynamicForm
         ref="engDocFormRef"
@@ -1453,6 +1484,7 @@ import {
   AuditOutlined, BulbOutlined, FundProjectionScreenOutlined, ToolOutlined,
   RocketOutlined, ShoppingCartOutlined,
   TeamOutlined, GoldOutlined, ExperimentOutlined, CaretDownOutlined,
+  DollarOutlined, CalendarOutlined,
   FolderOutlined, FolderAddOutlined,
   FileTextOutlined, InboxOutlined, PlusOutlined, LinkOutlined, EyeOutlined,
   PictureOutlined, LockFilled,
@@ -1472,7 +1504,9 @@ import { getProductLine, getProductLineChildren, getProductLineStats, getFolderT
          reviseObject, resolveReviseEntityType, resolveEntityApiPath,
         listMethodologyInstances, getDeliverableArtifactSummary, tailorInstance, getIssueGateCheck,
         getBomMaterials, getContainerCadModels, convertCadModel, retryCadVisualization, convertCadBatch,
-        getCadViewerAvailable, ckFileStreamUrl, createSoftTypeInstance, getCKFile, downloadContainerCadModels } from '@/api'
+        getCadViewerAvailable, ckFileStreamUrl, createSoftTypeInstance, getCKFile, downloadContainerCadModels,
+        getGenPartThresholdConfig, checkGenPartEligibility, getProcessTemplate,
+        getTargetCost, getTargetLaunchDate } from '@/api'
 import { useUserStore } from '@/stores/user'
 import FolderTreeNode from './FolderTreeNode.vue'
 import DynamicForm from '@/components/DynamicForm.vue'
@@ -1495,6 +1529,9 @@ const userStore = useUserStore()
 const line = ref(null)
 const children = ref([])
 const modelCount = ref(0)
+/** 页头目标值：IBA TARGET_COST / TARGET_LAUNCH_DATE，与经营战报同一口径 */
+const targetCost = ref(null)
+const targetLaunchDate = ref('')
 const showChildren = ref(false)
 const activeStage = ref(null) // 存储当前阶段的 oid
 // ---- 方法论实例（六类）与能力开关 ----
@@ -1559,10 +1596,41 @@ const bomLoaded = ref(false)
  * 一行 = 本系列 / 型号下的一个零件（最新大版本 · 最新小版本），
  * 不再是"BOM 行的物料汇总"——所以操作列直接用零件自己的能力（检出/检入/修订…）。
  */
+/**
+ * 通用件认定配置（业务配置 → 资源库配置 → 通用件阈值配置）。
+ * 配置启用时，物料清单里适用类型的零件显示「升级为通用件」入口 —— 按配置绑定的认定流程发起。
+ */
+const genPartConfig = ref(null)
+
+async function loadGenPartConfig() {
+  try {
+    const res = await getGenPartThresholdConfig()
+    genPartConfig.value = res?.code === 200 ? (res.data || null) : null
+  } catch {
+    genPartConfig.value = null
+  }
+}
+
+/** 该物料是否显示「升级为通用件」：配置启用 + 类型匹配 + 非资源库库件（库件由资源库维护） */
+function canUpgradeToGenPart(record) {
+  const c = genPartConfig.value
+  if (!c || c.enabled !== true) return false
+  // 适用类型可多选：后端返回 scopeTypeCodes 数组，老数据退回 CSV 单值
+  const scopes = (Array.isArray(c.scopeTypeCodes) && c.scopeTypeCodes.length
+    ? c.scopeTypeCodes
+    : String(c.scopeTypeCode || 'STRUCTURAL').split(','))
+    .map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+  const type = String(record.typeCode || record.typeDefinitionCode || '').toUpperCase()
+  if (!scopes.includes(type)) return false
+  return !record.fromResourceLibrary
+}
+
 const bomMaterialColumns = [
   { title: '', dataIndex: 'checkedOut', key: 'checkout_status', width: 32, align: 'center' },
   // 缩略图放最前（与「产品数模」同口径）：扫列表先认形状，再看编码/版本
   { title: '缩略图', key: 'thumb', width: 64 },
+  // 层级：按同名根件的 BOM 递归展开（0=根、1=子、2=孙…），父件编码在 tooltip 里
+  { title: '层级', key: 'level', width: 68, align: 'center' },
   { title: '编码', dataIndex: 'code', key: 'code', width: 110 },
   { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true, width: 150 },
   { title: '类型', dataIndex: 'typeDefinitionName', key: 'typeDefinitionName', width: 100 },
@@ -2026,7 +2094,8 @@ function openCreateEngDocument() {
     // productOid 是设计器改过布局时可能出现的另一种写法，一并预填。
     ownerOid: defaultOwner || undefined,
     productOid: defaultOwner || undefined,
-    typeDefinitionCode: 'ENG_DOCUMENT'
+    // 数模归档入口：类型默认到「三维数模」（THREE_D，ENG_DOCUMENT 的子类型）
+    typeDefinitionCode: 'THREE_D'
   }
   engDocModalVisible.value = true
 }
@@ -2758,7 +2827,6 @@ const mapStageToDef = (stage) => ({
 })
 
 /* ==================== 工具函数 ==================== */
-const formatTime = (s) => s ? s.replace('T', ' ').substring(0, 19) : '-'
 
 /* ==================== 继承文件夹标记 ==================== */
 const markInheritedRecursive = (nodes, sourceName) => {
@@ -3740,9 +3808,68 @@ function handleMixedAction({ key }, record) {
     case 'workflow':
       openStartProcess(record)
       break
+    case 'upgradeToGen':
+      upgradeToGenPart(record)
+      break
     case 'delete':
       openDeleteModal(record)
       break
+  }
+}
+
+/**
+ * 「升级为通用件」：按通用件认定配置绑定的流程模板发起认定流程。
+ * 配置未选流程模板时明确提示（配置口径：空 = 只通知不自动发起），不静默什么都不做。
+ */
+async function upgradeToGenPart(record) {
+  // 先按后端同一口径判阈值：未达标直接挡在弹框之前，避免"能打开发起页却发不出去"
+  const partOid = record.oid || record.childPartOid
+  try {
+    const eligibilityRes = await checkGenPartEligibility(partOid)
+    if (eligibilityRes?.code === 200 && eligibilityRes.data && !eligibilityRes.data.eligible) {
+      message.warning(eligibilityRes.data.reason || '未达到通用件认定阈值，不能发起流程')
+      return
+    }
+    if (eligibilityRes?.code !== 200) {
+      message.warning(eligibilityRes?.message || '通用件阈值校验失败，暂不能发起流程')
+      return
+    }
+  } catch {
+    message.warning('通用件阈值校验失败，暂不能发起流程')
+    return
+  }
+  const oid = genPartConfig.value?.processTemplateOid
+  if (!oid) {
+    message.warning('通用件认定流程模板未配置，请在「业务配置 → 资源库配置 → 通用件阈值配置」中选择')
+    return
+  }
+  try {
+    const res = await getProcessTemplate(oid)
+    if (res?.code !== 200 || !res.data) {
+      message.error('读取认定流程模板失败')
+      return
+    }
+    const key = res.data.key || res.data.processKey
+    if (!key) {
+      message.error('认定流程模板缺少流程编码（key）')
+      return
+    }
+    // 复用现有发起弹框：直传认定流程 key，业务对象就是当前零件
+    startProcessKey.value = key
+    startProcessPreset.value = null
+    startProcessTarget.value = {
+      oid: record.oid || record.childPartOid,
+      name: record.name || record.code,
+      code: record.code || record.number,
+      typeDefinitionCode: record.typeCode || record.typeDefinitionCode || record.entityType,
+      typeDefinitionName: record.typeDefinitionName,
+      statusCode: record.statusCode || record.status,
+      statusName: record.statusName,
+      lifecycleTemplateIterationOid: record.lifecycleTemplateIterationOid || null,
+    }
+    startProcessVisible.value = true
+  } catch {
+    message.error('读取认定流程模板失败')
   }
 }
 
@@ -4497,6 +4624,7 @@ const loadProductLine = async () => {
     stopCadPolling()
     loadChildren(oid)
     loadModelCount(oid)
+    loadHeaderTargets(oid)
     // 加载父级产品系列名称（用于面包屑显示）
     // parentOid 统一表示父级
     const parentOid = line.value.parentOid || line.value.productLineOid
@@ -4609,6 +4737,18 @@ const loadModelCount = async (oid) => {
   }
 }
 
+/** 页头目标成本 / 目标上市日期：两个独立 IBA 端点，任一失败只让对应格显示"未设定" */
+const loadHeaderTargets = async (oid) => {
+  targetCost.value = null
+  targetLaunchDate.value = ''
+  const [costRes, dateRes] = await Promise.all([
+    getTargetCost(oid).catch(() => null),
+    getTargetLaunchDate(oid).catch(() => null),
+  ])
+  if (costRes?.code === 200) targetCost.value = costRes.data?.targetCost ?? null
+  if (dateRes?.code === 200) targetLaunchDate.value = dateRes.data?.targetLaunchDate || ''
+}
+
 /** 加载完成后，如果当前阶段存在文件夹且未选中任何文件夹，自动选中第一个并展示其内容 */
 function ensureFirstFolderSelected() {
   if (folderTree.value.length === 0) { selectedFolder.value = null; return }
@@ -4642,6 +4782,8 @@ onMounted(() => {
   loadProductLine().then(loadInstances)
   // 业务对象过滤下拉：加载 source=ootb 的类型清单（与其他来源/模型定义页面同源）
   loadBizObjectFilterOptions()
+  // 通用件认定配置：决定物料清单是否显示「升级为通用件」入口
+  loadGenPartConfig()
 })
 </script>
 
@@ -4738,25 +4880,25 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 3px;
   flex-shrink: 0;
   max-width: 52%;
   min-width: 0;
 }
 
-/* 统计 pill */
+/* 统计 pill：2026-11-18 用户反馈间隙太宽，整体横纵间距与内边距至少减半 */
 .pl-header-stats {
   display: flex;
-  gap: 8px;
+  gap: 3px;
   flex-shrink: 0;
 }
+.pl-header-stats--targets { margin-top: 0; }
 
 .pl-stat-pill {
   display: flex;
   align-items: center;
-  gap: 6px;
-  /* 比原来的 8px 14px 矮 4px：三个 pill 并排是页头里第二高的元素，收一点就够看 */
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 4px 8px;
   border-radius: 20px;
   background: var(--pl-bg);
   border: 1px solid var(--pl-border);
@@ -4766,9 +4908,11 @@ onMounted(() => {
 .pl-stat-pill--active { background: #f6ffed; border-color: #b7eb8f; cursor: pointer; }
 .pl-stat-pill--active:hover { border-color: #52c41a; box-shadow: 0 0 0 2px rgba(82,196,26,.1); }
 
-.pl-stat-pill-icon { font-size: 18px; flex-shrink: 0; }
-.pl-stat-pill-num { font-size: 20px; font-weight: 700; color: var(--pl-text); line-height: 1; }
-.pl-stat-pill-label { font-size: 12px; color: var(--pl-text-muted); }
+.pl-stat-pill-icon { font-size: 16px; flex-shrink: 0; }
+.pl-stat-pill-num { font-size: 18px; font-weight: 700; color: var(--pl-text); line-height: 1; }
+/* 目标成本 / 日期是文本而非计数：缩小字号、避免把页头撑宽 */
+.pl-stat-pill-num--text { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.pl-stat-pill-label { font-size: 11px; color: var(--pl-text-muted); white-space: nowrap; }
 
 .pl-stat-pill-arrow {
   font-size: 12px; color: #bbb; transition: transform .25s;

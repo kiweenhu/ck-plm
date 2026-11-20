@@ -113,6 +113,12 @@ public interface MpnMapper {
      */
     int countDistinctSuppliersByPart(@Param("partOid") String partOid);
 
+    /** 有效供应商数：排除已停用（disabled=true）但仍被 AVL 引用的供应商 */
+    int countActiveDistinctSuppliersByPart(@Param("partOid") String partOid);
+
+    /** 已停用但仍被 AVL 引用的供应商数（历史渠道需保留，但不能算有效来源） */
+    int countDisabledDistinctSuppliersByPart(@Param("partOid") String partOid);
+
     /** 该内部件有多少个 AML 行（汇总用） */
     int countAmlByPart(@Param("partOid") String partOid);
 

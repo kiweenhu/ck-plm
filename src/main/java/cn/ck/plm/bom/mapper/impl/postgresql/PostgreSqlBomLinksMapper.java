@@ -14,6 +14,7 @@ import org.apache.ibatis.annotations.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * BomLinks PostgreSQL 持久化实现。
@@ -21,6 +22,52 @@ import java.util.List;
 @Mapper
 @ConditionalOnProperty(name = "plm.database.type", havingValue = "postgresql", matchIfMissing = true)
 public interface PostgreSqlBomLinksMapper extends BomLinksMapper {
+
+    /**
+     * 物料清单行的公共列 / 分组 —— 容器直属清单与「同名根件的子孙清单」共用同一套字段口径，
+     * 避免在两处 SQL 里各写一份导致字段漂移。
+     */
+    String MATERIAL_SELECT =
+            "SELECT p.oid AS \"childPartOid\", "
+            + "p.oid AS \"oid\", 'PART' AS \"entityType\", "
+            + "p.number AS \"number\", p.number AS \"code\", p.name AS \"name\", "
+            + "p.type_definition_code AS \"typeCode\", "
+            + "p.container_oid AS \"containerOid\", "
+            + "td.name AS \"typeDefinitionName\", "
+            + "i.display_version AS \"version\", i.display_version AS \"displayVersion\", "
+            + "i.status AS \"status\", i.status AS \"statusCode\", "
+            + "i.oid AS \"iterationOid\", "
+            + "i.lifecycle_template_iteration_oid AS \"lifecycleTemplateIterationOid\", "
+            + "i.checked_out AS \"checkedOut\", i.checked_out_by AS \"checkedOutBy\", "
+            + "i.checked_out_comment AS \"checkedOutComment\", "
+            + "i.unit AS \"unit\", "
+            + "COALESCE(SUM(bl.quantity), 0) AS \"totalQuantity\", "
+            + "COUNT(bl.oid) AS \"lineCount\", "
+            + "STRING_AGG(DISTINCT parent.number, ', ') AS \"parentNumbers\" ";
+    String MATERIAL_FROM =
+            "FROM ck_part p "
+            + "JOIN ck_part_iteration i ON i.master_oid = p.oid AND i.latest = TRUE "
+            + "LEFT JOIN ck_type_definition td ON td.code = p.type_definition_code AND td.tenant_oid = p.tenant_oid "
+            + "LEFT JOIN ck_bom_links bl ON bl.child_part_oid = p.oid "
+            + "LEFT JOIN ck_part_iteration pi ON pi.oid = bl.parent_iteration_oid AND pi.latest = TRUE "
+            + "LEFT JOIN ck_part parent ON parent.oid = pi.master_oid ";
+
+    /** 容器清单专用 FROM：BOM 行只统计"父件也在本容器"的，无 BOM 的零件靠 LEFT JOIN 保留 */
+    String MATERIAL_FROM_CONTAINER =
+            "FROM ck_part p "
+            + "JOIN ck_part_iteration i ON i.master_oid = p.oid AND i.latest = TRUE "
+            + "LEFT JOIN ck_type_definition td ON td.code = p.type_definition_code AND td.tenant_oid = p.tenant_oid "
+            + "LEFT JOIN ck_bom_links bl ON bl.child_part_oid = p.oid "
+            + "     AND bl.parent_iteration_oid IN ("
+            + "         SELECT pi2.oid FROM ck_part_iteration pi2 "
+            + "         JOIN ck_part bp ON bp.oid = pi2.master_oid "
+            + "         WHERE pi2.latest = TRUE AND bp.container_oid = #{containerOid}) "
+            + "LEFT JOIN ck_part_iteration pi ON pi.oid = bl.parent_iteration_oid AND pi.latest = TRUE "
+            + "LEFT JOIN ck_part parent ON parent.oid = pi.master_oid ";
+    String MATERIAL_GROUP =
+            "GROUP BY p.oid, p.number, p.name, p.type_definition_code, p.container_oid, td.name, "
+            + "i.oid, i.display_version, i.status, i.lifecycle_template_iteration_oid, "
+            + "i.checked_out, i.checked_out_by, i.checked_out_comment, i.unit ";
 
     @Override
     @Insert("INSERT INTO ck_bom_links (oid, code, name, description, " +
@@ -134,36 +181,63 @@ public interface PostgreSqlBomLinksMapper extends BomLinksMapper {
      * {@code TenantStatementInterceptor#clauseStart}）。这里只有外层一个 GROUP BY。
      */
     @Override
-    @Select("SELECT p.oid AS \"childPartOid\", "
-            + "p.oid AS \"oid\", 'PART' AS \"entityType\", "
-            + "p.number AS \"number\", p.number AS \"code\", p.name AS \"name\", "
-            + "p.type_definition_code AS \"typeCode\", "
-            + "td.name AS \"typeDefinitionName\", "
-            + "i.display_version AS \"version\", i.display_version AS \"displayVersion\", "
-            + "i.status AS \"status\", i.status AS \"statusCode\", "
-            + "i.oid AS \"iterationOid\", "
-            + "i.lifecycle_template_iteration_oid AS \"lifecycleTemplateIterationOid\", "
-            + "i.checked_out AS \"checkedOut\", i.checked_out_by AS \"checkedOutBy\", "
-            + "i.checked_out_comment AS \"checkedOutComment\", "
-            + "i.unit AS \"unit\", "
-            + "COALESCE(SUM(bl.quantity), 0) AS \"totalQuantity\", "
-            + "COUNT(bl.oid) AS \"lineCount\", "
-            + "STRING_AGG(DISTINCT parent.number, ', ') AS \"parentNumbers\" "
-            + "FROM ck_part p "
-            + "JOIN ck_part_iteration i ON i.master_oid = p.oid AND i.latest = TRUE "
-            // 类型显示名：类型定义按租户各一份，取同租户那份（缺省时前端回退显示 code）
-            + "LEFT JOIN ck_type_definition td ON td.code = p.type_definition_code AND td.tenant_oid = p.tenant_oid "
-            + "LEFT JOIN ck_bom_links bl ON bl.child_part_oid = p.oid "
-            + "     AND bl.parent_iteration_oid IN ("
-            + "         SELECT pi.oid FROM ck_part_iteration pi "
-            + "         JOIN ck_part bp ON bp.oid = pi.master_oid "
-            + "         WHERE pi.latest = TRUE AND bp.container_oid = #{containerOid}) "
-            + "LEFT JOIN ck_part_iteration pi ON pi.oid = bl.parent_iteration_oid AND pi.latest = TRUE "
-            + "LEFT JOIN ck_part parent ON parent.oid = pi.master_oid "
+    @Select(MATERIAL_SELECT + MATERIAL_FROM_CONTAINER
             + "WHERE p.container_oid = #{containerOid} "
-            + "GROUP BY p.oid, p.number, p.name, p.type_definition_code, td.name, "
-            + "i.oid, i.display_version, i.status, i.lifecycle_template_iteration_oid, "
-            + "i.checked_out, i.checked_out_by, i.checked_out_comment, i.unit "
-            + "ORDER BY p.number NULLS LAST")
+            + MATERIAL_GROUP + "ORDER BY p.number NULLS LAST")
     List<BomMaterialVO> selectMaterialsByContainerOid(@Param("containerOid") String containerOid);
+
+    /**
+     * 按零件 oid 集合查物料清单行（字段口径与容器清单完全一致）。
+     * 用于把"同名根件的子孙零件"补进物料清单 —— 这些零件的 container_oid 可能在外库/父系列，
+     * 走容器查询取不到，但它们是根件 BOM 的一部分，必须展示。
+     *
+     * <p>part oid 由调用方从 {@code buildTree} 展平得到，数量有限且已去重；用 IN 一次查回，避免 N+1。
+     */
+    @Select("<script>" + MATERIAL_SELECT + MATERIAL_FROM
+            + "WHERE p.oid IN <foreach item='oid' collection='partOids' open='(' separator=',' close=')'>#{oid}</foreach> "
+            + MATERIAL_GROUP + "ORDER BY p.number NULLS LAST</script>")
+    List<BomMaterialVO> selectMaterialsByPartOids(@Param("partOids") List<String> partOids);
+
+    /**
+     * 通用件阈值统计。递归 where-used 最多 20 层（与 BOM 树构建深度一致），用 UNION 去重防环；
+     * 型号 = 上层对象里 {@code type_definition_code='PART'} 且位于产品系列/型号容器中的零件
+     * （如 I-WATCH-X7），按对象 oid 去重 —— 本地数据里型号既可以挂 PRODUCT_MODEL 容器，
+     * 也可以作为 PART 类顶层对象直接挂在 PRODUCT_LINE 容器里，只数容器会漏掉后者。
+     *
+     * <p>统计窗口按 BOM 行 created_at 过滤（当前只有这个时间点能表达"引用落库时间"，
+     * 修订重建 BOM 行会刷新它 —— 口径限制写进配置页提示，不在这里偷偷换字段）。
+     */
+    @Override
+    @Select("<script>" +
+            "WITH RECURSIVE ancestors(master_oid, depth) AS (" +
+            "  SELECT pi.master_oid, 1 FROM ck_bom_links bl " +
+            "  JOIN ck_part_iteration pi ON pi.oid = bl.parent_iteration_oid " +
+            "  WHERE bl.child_part_oid = #{partOid} AND bl.tenant_oid = #{tenantOid} " +
+            "  <if test='months != null and months > 0'>" +
+            "    AND bl.created_at &gt;= NOW() - (#{months} || ' months')::interval " +
+            "  </if>" +
+            "  UNION " +
+            "  SELECT pi.master_oid, a.depth + 1 FROM ancestors a " +
+            "  JOIN ck_bom_links bl ON bl.child_part_oid = a.master_oid " +
+            "  JOIN ck_part_iteration pi ON pi.oid = bl.parent_iteration_oid " +
+            "  WHERE a.depth &lt; 20 AND bl.tenant_oid = #{tenantOid} " +
+            "  <if test='months != null and months > 0'>" +
+            "    AND bl.created_at &gt;= NOW() - (#{months} || ' months')::interval " +
+            "  </if>" +
+            ")" +
+            "SELECT " +
+            "  (SELECT COUNT(*) FROM ck_bom_links bl " +
+            "   WHERE bl.child_part_oid = #{partOid} AND bl.tenant_oid = #{tenantOid} " +
+            "   <if test='months != null and months > 0'>" +
+            "     AND bl.created_at &gt;= NOW() - (#{months} || ' months')::interval " +
+            "   </if>" +
+            "  ) AS \"usageCount\", " +
+            "  COUNT(DISTINCT p.oid) FILTER (WHERE p.type_definition_code = 'PART' " +
+            "    AND p.container_type IN ('PRODUCT_MODEL', 'PRODUCT_LINE')) AS \"modelCount\" " +
+            "FROM ancestors a " +
+            "JOIN ck_part p ON p.oid = a.master_oid AND p.tenant_oid = #{tenantOid}" +
+            "</script>")
+    Map<String, Object> selectGenPartUsage(@Param("partOid") String partOid,
+                                            @Param("tenantOid") String tenantOid,
+                                            @Param("months") Integer months);
 }

@@ -101,6 +101,23 @@ public class BomMaterialVO {
      */
     private String thumbnailCkfileOid;
 
+    /** 零件归属容器 oid（判断是否来自资源库用；mapper 返回） */
+    private String containerOid;
+
+    /** BOM 层级：0=根件（同名 Part），1=子件，2=孙件…；容器直属但不在根件 BOM 上的零件为 0 */
+    private Integer level;
+
+    /** 直接父件编码（物料清单按同名根件展开时回填，用于看清层级来源） */
+    private String parentNumber;
+
+    /**
+     * 是否来自资源库（元器件库 / 标准件库 / 通用件库）。
+     *
+     * <p>这类零件是外购/库件，由资源库统一维护，不在产品 BOM 页做检出/检入/修订/删除等操作；
+     * 前端据此隐藏整列操作（2026-11-18 用户要求）。
+     */
+    private Boolean fromResourceLibrary;
+
     public String getChildPartOid() { return childPartOid; }
     public void setChildPartOid(String childPartOid) { this.childPartOid = childPartOid; }
 
@@ -172,4 +189,16 @@ public class BomMaterialVO {
 
     public String getThumbnailCkfileOid() { return thumbnailCkfileOid; }
     public void setThumbnailCkfileOid(String thumbnailCkfileOid) { this.thumbnailCkfileOid = thumbnailCkfileOid; }
+
+    public String getContainerOid() { return containerOid; }
+    public void setContainerOid(String containerOid) { this.containerOid = containerOid; }
+
+    public Integer getLevel() { return level; }
+    public void setLevel(Integer level) { this.level = level; }
+
+    public String getParentNumber() { return parentNumber; }
+    public void setParentNumber(String parentNumber) { this.parentNumber = parentNumber; }
+
+    public Boolean getFromResourceLibrary() { return fromResourceLibrary; }
+    public void setFromResourceLibrary(Boolean fromResourceLibrary) { this.fromResourceLibrary = fromResourceLibrary; }
 }

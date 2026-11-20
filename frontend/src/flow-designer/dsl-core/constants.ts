@@ -792,6 +792,14 @@ export const SERVICE_COMPLETE_NOTICE = 'change.completeNotice'
 export const SERVICE_EXECUTE_TASK = 'change.executeTask'
 
 /**
+ * 「升级为通用件」服务 id —— 通用件认定流程会签通过后的自动落库节点。
+ *
+ * <p>后端实现：{@code UpgradeToGenPartHandler} → {@code PartService#upgradeToGenPart}，
+ * 把零件软类型改为 GEN_PART 并迁入当前租户的通用件资源库容器（幂等）。
+ */
+export const SERVICE_UPGRADE_TO_GEN_PART = 'part.upgradeToGenPart'
+
+/**
  * 「系统集成」服务 id（旧称「发布到目标系统」）。
  *
  * <p>与「设置状态」并列的一条自动化服务：把本流程的<b>业务对象集合</b>（ProcessEntitySet，
@@ -1001,6 +1009,12 @@ export const BUILTIN_SERVICES: ServiceDescriptor[] = [
     // 与「修订对象」分开的原因见 SERVICE_EXECUTE_TASK 的注释（范围与产物表都不同）。
     id: SERVICE_EXECUTE_TASK,
     label: '执行变更修订',
+    params: [],
+  },
+  {
+    // 通用件认定落库：改软类型 + 迁通用件库，幂等。作用对象取流程实体关联表，无需参数。
+    id: SERVICE_UPGRADE_TO_GEN_PART,
+    label: '升级为通用件',
     params: [],
   },
   {

@@ -688,17 +688,62 @@
             <a-row :gutter="16">
               <a-col :span="8">
                 <a-card title="三维模型" size="small">
-                  <a-empty description="暂无三维模型" :image-style="{ height: '48px' }" />
+                  <template v-if="cadPrimaryLink.THREE_D">
+                    <div class="cad-link-row">
+                      <div class="cad-link-line">
+                        <span class="cad-link-number">{{ cadPrimaryLink.THREE_D.engDocNumber || cadPrimaryLink.THREE_D.engDocumentOid }}</span>
+                        <a-tag v-if="cadPrimaryLink.THREE_D.engDocVersion" color="blue" class="cad-link-version">{{ cadPrimaryLink.THREE_D.engDocVersion }}</a-tag>
+                      </div>
+                      <div class="cad-link-line cad-link-line--sub">
+                        <span class="cad-link-name">{{ cadPrimaryLink.THREE_D.engDocName || '-' }}</span>
+                        <a-button type="link" size="small" danger class="cad-link-unlink" @click="onUnlinkEngDoc(cadPrimaryLink.THREE_D)">解除</a-button>
+                      </div>
+                    </div>
+                    <a-button type="link" size="small" class="cad-link-add" @click="onAddEngDocLink('THREE_D')">更换三维模型</a-button>
+                  </template>
+                  <a-empty v-else description="暂无三维模型" :image-style="{ height: '48px' }">
+                    <a-button type="link" size="small" @click="onAddEngDocLink('THREE_D')">关联三维模型</a-button>
+                  </a-empty>
                 </a-card>
               </a-col>
               <a-col :span="8">
                 <a-card title="二维图纸" size="small">
-                  <a-empty description="暂无二维图纸" :image-style="{ height: '48px' }" />
+                  <template v-if="cadPrimaryLink.TWO_D">
+                    <div class="cad-link-row">
+                      <div class="cad-link-line">
+                        <span class="cad-link-number">{{ cadPrimaryLink.TWO_D.engDocNumber || cadPrimaryLink.TWO_D.engDocumentOid }}</span>
+                        <a-tag v-if="cadPrimaryLink.TWO_D.engDocVersion" color="blue" class="cad-link-version">{{ cadPrimaryLink.TWO_D.engDocVersion }}</a-tag>
+                      </div>
+                      <div class="cad-link-line cad-link-line--sub">
+                        <span class="cad-link-name">{{ cadPrimaryLink.TWO_D.engDocName || '-' }}</span>
+                        <a-button type="link" size="small" danger class="cad-link-unlink" @click="onUnlinkEngDoc(cadPrimaryLink.TWO_D)">解除</a-button>
+                      </div>
+                    </div>
+                    <a-button type="link" size="small" class="cad-link-add" @click="onAddEngDocLink('TWO_D')">更换二维图纸</a-button>
+                  </template>
+                  <a-empty v-else description="暂无二维图纸" :image-style="{ height: '48px' }">
+                    <a-button type="link" size="small" @click="onAddEngDocLink('TWO_D')">关联二维图纸</a-button>
+                  </a-empty>
                 </a-card>
               </a-col>
               <a-col :span="8">
                 <a-card title="工程图" size="small">
-                  <a-empty description="暂无工程图" :image-style="{ height: '48px' }" />
+                  <template v-if="cadPrimaryLink.DRAWING">
+                    <div class="cad-link-row">
+                      <div class="cad-link-line">
+                        <span class="cad-link-number">{{ cadPrimaryLink.DRAWING.engDocNumber || cadPrimaryLink.DRAWING.engDocumentOid }}</span>
+                        <a-tag v-if="cadPrimaryLink.DRAWING.engDocVersion" color="blue" class="cad-link-version">{{ cadPrimaryLink.DRAWING.engDocVersion }}</a-tag>
+                      </div>
+                      <div class="cad-link-line cad-link-line--sub">
+                        <span class="cad-link-name">{{ cadPrimaryLink.DRAWING.engDocName || '-' }}</span>
+                        <a-button type="link" size="small" danger class="cad-link-unlink" @click="onUnlinkEngDoc(cadPrimaryLink.DRAWING)">解除</a-button>
+                      </div>
+                    </div>
+                    <a-button type="link" size="small" class="cad-link-add" @click="onAddEngDocLink('DRAWING')">更换工程图</a-button>
+                  </template>
+                  <a-empty v-else description="暂无工程图" :image-style="{ height: '48px' }">
+                    <a-button type="link" size="small" @click="onAddEngDocLink('DRAWING')">关联工程图</a-button>
+                  </a-empty>
                 </a-card>
               </a-col>
             </a-row>
@@ -707,17 +752,62 @@
             <a-row :gutter="16">
               <a-col :span="8">
                 <a-card title="图符" size="small">
-                  <a-empty description="暂无图符" :image-style="{ height: '48px' }" />
+                  <template v-if="cadPrimaryLink.SYMBOL">
+                    <div class="cad-link-row">
+                      <div class="cad-link-line">
+                        <span class="cad-link-number">{{ cadPrimaryLink.SYMBOL.engDocNumber || cadPrimaryLink.SYMBOL.engDocumentOid }}</span>
+                        <a-tag v-if="cadPrimaryLink.SYMBOL.engDocVersion" color="blue" class="cad-link-version">{{ cadPrimaryLink.SYMBOL.engDocVersion }}</a-tag>
+                      </div>
+                      <div class="cad-link-line cad-link-line--sub">
+                        <span class="cad-link-name">{{ cadPrimaryLink.SYMBOL.engDocName || '-' }}</span>
+                        <a-button type="link" size="small" danger class="cad-link-unlink" @click="onUnlinkEngDoc(cadPrimaryLink.SYMBOL)">解除</a-button>
+                      </div>
+                    </div>
+                    <a-button type="link" size="small" class="cad-link-add" @click="onAddEngDocLink('SYMBOL')">更换图符</a-button>
+                  </template>
+                  <a-empty v-else description="暂无图符" :image-style="{ height: '48px' }">
+                    <a-button type="link" size="small" @click="onAddEngDocLink('SYMBOL')">关联图符</a-button>
+                  </a-empty>
                 </a-card>
               </a-col>
               <a-col :span="8">
                 <a-card title="封装" size="small">
-                  <a-empty description="暂无封装" :image-style="{ height: '48px' }" />
+                  <template v-if="cadPrimaryLink.FOOTPRINT">
+                    <div class="cad-link-row">
+                      <div class="cad-link-line">
+                        <span class="cad-link-number">{{ cadPrimaryLink.FOOTPRINT.engDocNumber || cadPrimaryLink.FOOTPRINT.engDocumentOid }}</span>
+                        <a-tag v-if="cadPrimaryLink.FOOTPRINT.engDocVersion" color="blue" class="cad-link-version">{{ cadPrimaryLink.FOOTPRINT.engDocVersion }}</a-tag>
+                      </div>
+                      <div class="cad-link-line cad-link-line--sub">
+                        <span class="cad-link-name">{{ cadPrimaryLink.FOOTPRINT.engDocName || '-' }}</span>
+                        <a-button type="link" size="small" danger class="cad-link-unlink" @click="onUnlinkEngDoc(cadPrimaryLink.FOOTPRINT)">解除</a-button>
+                      </div>
+                    </div>
+                    <a-button type="link" size="small" class="cad-link-add" @click="onAddEngDocLink('FOOTPRINT')">更换封装</a-button>
+                  </template>
+                  <a-empty v-else description="暂无封装" :image-style="{ height: '48px' }">
+                    <a-button type="link" size="small" @click="onAddEngDocLink('FOOTPRINT')">关联封装</a-button>
+                  </a-empty>
                 </a-card>
               </a-col>
               <a-col :span="8">
                 <a-card title="Datasheet" size="small">
-                  <a-empty description="暂无 Datasheet" :image-style="{ height: '48px' }" />
+                  <template v-if="cadPrimaryLink.DATASHEET">
+                    <div class="cad-link-row">
+                      <div class="cad-link-line">
+                        <span class="cad-link-number">{{ cadPrimaryLink.DATASHEET.engDocNumber || cadPrimaryLink.DATASHEET.engDocumentOid }}</span>
+                        <a-tag v-if="cadPrimaryLink.DATASHEET.engDocVersion" color="blue" class="cad-link-version">{{ cadPrimaryLink.DATASHEET.engDocVersion }}</a-tag>
+                      </div>
+                      <div class="cad-link-line cad-link-line--sub">
+                        <span class="cad-link-name">{{ cadPrimaryLink.DATASHEET.engDocName || '-' }}</span>
+                        <a-button type="link" size="small" danger class="cad-link-unlink" @click="onUnlinkEngDoc(cadPrimaryLink.DATASHEET)">解除</a-button>
+                      </div>
+                    </div>
+                    <a-button type="link" size="small" class="cad-link-add" @click="onAddEngDocLink('DATASHEET')">更换 Datasheet</a-button>
+                  </template>
+                  <a-empty v-else description="暂无 Datasheet" :image-style="{ height: '48px' }">
+                    <a-button type="link" size="small" @click="onAddEngDocLink('DATASHEET')">关联 Datasheet</a-button>
+                  </a-empty>
                 </a-card>
               </a-col>
             </a-row>
@@ -751,89 +841,9 @@
             </a-row>
           </div>
 
-          <!--
-            工程数据（3D 数模 / 2D 工程图 / 封装 / 图符）：零件版本 ↔ 工程数据版本，对应 Windchill EPMBuildRule。
-            2026-10-26 用户要求：从「关联文档 → 工程数据」子页签移到本页签 —— 工程数据本就是 CAD 描述的
-            实物证据，和三维模型 / 图符放一处，不用在两个页签之间来回切。
-
-            <p>原来这里还有一句「该类型无需 CAD 描述」的空状态：它只看零件类型
-            （STRUCT / ELECTRONIC / ELECTRICAL / SOFTWARE 之外一律这么说），跟有没有工程数据、
-            跟业务配置里停用了哪个对象类型**毫无关系** —— 关掉 ENG_DOCUMENT 相关对象它照样出现，
-            而且和下面的「工程数据」表自相矛盾（说没 CAD 描述，却又列着关联的数模）。
-            现在直接不显示：没有卡片就只渲染工程数据，页签本身仍有用。
-          -->
-          <div class="cad-eng" :class="{ 'cad-eng--solo': !hasCadCards }">
-            <div class="cad-eng-title">
-              <ApartmentOutlined class="tab-stat-icon" />
-              工程数据
-              <span class="cad-eng-hint">
-                零件版本 ↔ 工程数据版本 · 一个零件版本<b>只能</b>关联一份工程数据
-              </span>
-            </div>
-            <div class="tab-stats-bar">
-              <div class="tab-stat-item">
-                <span class="tab-stat-value">{{ engDocLinks.length }}</span>
-                <span class="tab-stat-label">已关联</span>
-              </div>
-              <div class="tab-stat-actions">
-                <!-- 已关联一份就把入口关掉：一个零件版本只允许一份工程数据（后端同样会拦） -->
-                <a-tooltip :title="engDocLinks.length ? '已关联一份工程数据，要换请先「解除关联」' : '选择一个工程数据并建立关联'">
-                  <span>
-                    <a-button size="small" type="primary" :disabled="engDocLinks.length > 0" @click="onAddEngDocLink">
-                      <PlusOutlined /> 关联工程数据
-                    </a-button>
-                  </span>
-                </a-tooltip>
-                <a-button size="small" danger :disabled="!engDocSelectedKeys.length" @click="onRemoveEngDocLinks">
-                  <DeleteOutlined /> 解除关联
-                </a-button>
-              </div>
-            </div>
-            <DataTable
-              scroll-x="max-content"
-              :columns="engDocLinkColumns"
-              :data-source="engDocLinks"
-              :loading="engDocLoading"
-              :pagination="false"
-              row-key="oid"
-              size="small"
-              :row-selection="{ selectedRowKeys: engDocSelectedKeys, onChange: keys => (engDocSelectedKeys = keys) }"
-              empty-text="暂无关联工程数据，点击「关联工程数据」建立关系"
-              searchable
-              search-placeholder="搜索编号/名称..."
-              :search-fields="['engDocNumber', 'engDocName']"
-            >
-              <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'engDoc'">
-                  <span style="color:#262626">{{ record.engDocName || '-' }}</span>
-                  <code style="font-size:12px;background:#f5f5f5;padding:1px 6px;border-radius:3px;color:#595959;margin-left:6px">{{ record.engDocNumber || '-' }}</code>
-                </template>
-                <template v-else-if="column.key === 'engDocType'">
-                  <a-tag color="cyan">{{ record.engDocType || '-' }}</a-tag>
-                </template>
-                <template v-else-if="column.key === 'engDocVersion'">
-                  <span>{{ record.engDocVersion || '-' }}</span>
-                  <a-tag v-if="!record.pinned" style="margin-left:4px">跟随最新</a-tag>
-                </template>
-                <template v-else-if="column.key === 'assocType'">
-                  <a-tag :color="ENG_DOC_ASSOC_COLOR[record.assocType] || 'default'">
-                    {{ ENG_DOC_ASSOC_LABEL[record.assocType] || record.assocType }}
-                  </a-tag>
-                </template>
-                <template v-else-if="column.key === 'buildRules'">
-                  <a-space v-if="hasBuildRule(record)" size="small" wrap>
-                    <a-tag v-if="record.buildStructure" color="blue">结构</a-tag>
-                    <a-tag v-if="record.buildAttribute" color="purple">属性</a-tag>
-                    <a-tag v-if="record.buildRepresentation" color="geekblue">表示</a-tag>
-                  </a-space>
-                  <span v-else style="color:#bfbfbf">—</span>
-                </template>
-                <template v-else-if="column.key === 'createdAt'">
-                  {{ fmtTime(record.createdAt) }}
-                </template>
-              </template>
-            </DataTable>
-          </div>
+          <!-- 2026-11-18 用户要求：图符 / 封装 / Datasheet 的关联收敛到上方三张卡片，
+               不再在下面重复铺一张通用「工程数据关联」表 —— 卡片就是入口，也避免同一份关联
+               在两个地方各显示一次、各有一套按钮。 -->
         </a-tab-pane>
 
         <!-- ========== 3.5 双向替代（EQUIVALENT 可替代清单） ========== -->
@@ -1516,7 +1526,7 @@
     <!-- 关联工程数据弹窗：选工程数据 + 关联类型 + 构建规则（EPMBuildRule） -->
     <a-modal
       v-model:visible="addEngDocModalVisible"
-      title="关联工程数据"
+      :title="addEngDocModalTitle"
       ok-text="关联"
       cancel-text="取消"
       :ok-button-props="{ disabled: !addEngDocSelectedRowKeys.length }"
@@ -1529,7 +1539,13 @@
     >
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <span style="color:#8c8c8c;font-size:12px;white-space:nowrap">所属容器</span>
+        <!-- 图符 / 封装固定到「封装·图符库」（同一个库，靠类型区分），不让用户改成产品系列 oid -->
+        <template v-if="isPackageSymbolEntry">
+          <a-input :value="addEngDocLibraryName || '封装·图符库'" readonly style="width:220px" />
+          <span style="color:#8c8c8c;font-size:12px">固定库</span>
+        </template>
         <a-select
+          v-else
           v-model:value="addEngDocContainerOid"
           placeholder="选择产品系列/型号"
           allow-clear
@@ -1548,16 +1564,42 @@
           allow-clear
         />
       </div>
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <div v-if="isPackageSymbolEntry && addEngDocFolderTree.length" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="color:#8c8c8c;font-size:12px;white-space:nowrap">文件夹</span>
+        <a-tree-select
+          v-model:value="addEngDocFolderOid"
+          :tree-data="addEngDocFolderTree"
+          :field-names="{ label: 'name', value: 'oid', children: 'children' }"
+          tree-node-filter-prop="name"
+          placeholder="全部分录（不限文件夹）"
+          allow-clear
+          style="width:260px"
+          @change="loadAddEngDocs"
+        />
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap">
         <span style="color:#8c8c8c;font-size:12px;white-space:nowrap">关联类型</span>
         <a-select v-model:value="addEngDocAssocType" :options="ENG_DOC_ASSOC_OPTIONS" style="width: 180px" />
-        <a-checkbox v-model:checked="addEngDocBuildStructure">构建结构</a-checkbox>
-        <a-checkbox v-model:checked="addEngDocBuildAttribute">构建属性</a-checkbox>
-        <a-checkbox v-model:checked="addEngDocBuildRepresentation">构建表示</a-checkbox>
+        <!-- 图符 / 封装只是设计数据的引用，不驱动 BOM / 属性 / 轻量化，这三个 EPMBuildRule
+             标志位只对三维数模等工程数据有意义，故在符号封装入口隐藏（提交值仍固定为 false） -->
+        <template v-if="!isPackageSymbolEntry">
+          <a-tooltip title="BOM 结构由该份数模驱动；同一零件版本建议只有一份结构来源">
+            <a-checkbox v-model:checked="addEngDocBuildStructure">构建结构</a-checkbox>
+          </a-tooltip>
+          <a-tooltip title="零件属性由该份工程数据回写，如从 CAD 模型同步尺寸、材料">
+            <a-checkbox v-model:checked="addEngDocBuildAttribute">构建属性</a-checkbox>
+          </a-tooltip>
+          <a-tooltip title="由该份工程数据生成可视化 / 轻量化表示，用于预览与浏览">
+            <a-checkbox v-model:checked="addEngDocBuildRepresentation">构建表示</a-checkbox>
+          </a-tooltip>
+        </template>
       </div>
-      <!-- 单选：一个零件版本只能挂一份工程数据（EPMBuildRule 的基数口径，后端也会拦第二条） -->
+      <div v-if="!isPackageSymbolEntry" style="margin-bottom:10px;color:#8c8c8c;font-size:12px">
+        构建结构 = BOM 由数模驱动 · 构建属性 = 零件属性从数模回写 · 构建表示 = 生成可视化/轻量化预览（对齐 Windchill EPMBuildRule）
+      </div>
+      <!-- 每次只选一份，但同一零件版本可分别关联符号 / 封装 / Datasheet / 三维 -->
       <div style="margin-bottom:8px;color:#8c8c8c;font-size:12px">
-        选择一个工程数据（单选）—— 一个零件版本只能关联一份，需要换对象请先解除原有关系
+        选择一个工程数据 —— 同一零件版本可以同时关联不同类型（符号 / 封装 / Datasheet / 三维），同一类型请勿重复关联
       </div>
       <a-table
         :columns="addEngDocColumns"
@@ -1876,6 +1918,7 @@ import {
   createPartAlternateLink, deletePartAlternateLink,
   getPartDocLinks, createPartDocLink, deletePartDocLink, promotePartDocLink,
   getEngDocPartLinks, createEngDocPartLink, deleteEngDocPartLink, getEngineeringDocuments,
+  getPackageSymbolContext, getPackageSymbols, getFolderTree,
   listChangeNoticesByEntity,
   getDocuments, getDocument, getFolderDocumentDetails,
   getProductLine, getProductModel, getProductLines, getProductModels, getClassificationIBAs,
@@ -2696,10 +2739,15 @@ const clsIbaEntries = computed(() => {
     .map(([k, v]) => ({ label: resolveClsIbaLabel(k), value: formatIbaValue(v) }))
 })
 
-/** 是否为结构件（含 STRUCTURAL / STRUCTURE） */
+/**
+ * 是否为结构件（通用机械件）。
+ *
+ * 内置 PART 就是默认的结构件类型，不能只认 STRUCT*，否则 PART 在 CAD 描述页签下
+ * 四个类型判断全不命中，整块卡片区域会渲染成空白。
+ */
 const isStructural = computed(() => {
   const c = (part.value?.typeDefinitionCode || '').toUpperCase()
-  return c.includes('STRUCT')
+  return c.includes('STRUCT') || c === 'PART'
 })
 
 /** 是否为电子元器件 */
@@ -4904,18 +4952,77 @@ function hasBuildRule(record) {
   return !!(record?.buildStructure || record?.buildAttribute || record?.buildRepresentation)
 }
 
-/** 加载当前零件版本的工程数据关联（后端已补齐零件/工程数据的编号、名称、版本） */
+/**
+ * 加载当前零件版本的工程数据关联（后端已补齐零件/工程数据的编号、名称、版本）。
+ *
+ * 关系是 iteration ↔ iteration：关联写在 currentIterationOid 上。这里必须按同一迭代查询，
+ * 只传 partOid 会被后端解析成「最新迭代」，在查看历史版本时就会查不到刚关联的数据。
+ */
 async function loadEngDocLinks() {
   if (!oid.value) return
   engDocLoading.value = true
   try {
-    const res = await getEngDocPartLinks({ partOid: oid.value })
+    const params = currentIterationOid.value
+      ? { partIterationOid: currentIterationOid.value }
+      : { partOid: oid.value }
+    const res = await getEngDocPartLinks(params)
     engDocLinks.value = pickList(res)
   } catch {
     engDocLinks.value = []
   } finally {
     engDocLoading.value = false
   }
+}
+
+/**
+ * CAD 卡片按关系类型分组：三维 / 图符 / 封装 / Datasheet / 通用工程数据。
+ * ENG_DOCUMENT 是历史及通用工程数据关系，结构件的「三维模型」卡片也要把它显示出来。
+ */
+const cadLinksByType = computed(() => {
+  const groups = {
+    THREE_D: [], TWO_D: [], DRAWING: [],
+    SYMBOL: [], FOOTPRINT: [], DATASHEET: [], ENG_DOCUMENT: [],
+  }
+  for (const link of engDocLinks.value || []) {
+    const t = String(link?.linkType || 'ENG_DOCUMENT').toUpperCase()
+    if (groups[t]) groups[t].push(link)
+  }
+  return groups
+})
+
+/** 每类 CAD 关系至多一条，这里取该类的那一条（三维兼容历史 ENG_DOCUMENT） */
+const cadPrimaryLink = computed(() => ({
+  THREE_D: cadLinksByType.value.THREE_D[0] || cadLinksByType.value.ENG_DOCUMENT[0] || null,
+  TWO_D: cadLinksByType.value.TWO_D[0] || null,
+  DRAWING: cadLinksByType.value.DRAWING[0] || null,
+  SYMBOL: cadLinksByType.value.SYMBOL[0] || null,
+  FOOTPRINT: cadLinksByType.value.FOOTPRINT[0] || null,
+  DATASHEET: cadLinksByType.value.DATASHEET[0] || null,
+}))
+
+/** 单条解除关联（CAD 卡片内使用） */
+function onUnlinkEngDoc(link) {
+  Modal.confirm({
+    title: '确认解除关联',
+    content: `确定要解除与「${link.engDocName || link.engDocNumber || link.oid}」的关联吗？`,
+    okText: '解除',
+    okType: 'danger',
+    cancelText: '取消',
+    centered: true,
+    onOk: async () => {
+      try {
+        const res = await deleteEngDocPartLink(link.oid)
+        if (res?.code === 200) {
+          message.success('已解除关联')
+          await loadEngDocLinks()
+        } else {
+          message.error(res?.message || '解除失败')
+        }
+      } catch (e) {
+        message.error(e?.response?.data?.message || e.message || '解除失败')
+      }
+    },
+  })
 }
 
 // ---- 关联工程数据弹窗 ----
@@ -4926,6 +5033,15 @@ const addEngDocList = ref([])
 const addEngDocKeyword = ref('')
 const addEngDocSelectedRowKeys = ref([])
 const addEngDocContainerOid = ref(null)
+/** 卡片入口带来的类型过滤（SYMBOL / FOOTPRINT / DATASHEET），空 = 不限制 */
+const addEngDocTypeFilter = ref('')
+/** 符号/封装入口：固定到「封装·图符库」，显示库名而非原始 oid，并可下选文件夹 */
+const addEngDocLibraryName = ref('')
+const addEngDocStageOid = ref(null)
+const addEngDocFolderOid = ref(null)
+const addEngDocFolderTree = ref([])
+const isPackageSymbolEntry = computed(() =>
+  ['SYMBOL', 'FOOTPRINT', 'DATASHEET'].includes(addEngDocTypeFilter.value))
 const addEngDocAssocType = ref('CONTENT')
 const addEngDocBuildStructure = ref(false)
 const addEngDocBuildAttribute = ref(false)
@@ -4937,37 +5053,105 @@ const addEngDocColumns = [
   { title: '类型', key: 'type', width: 130 },
 ]
 
+/** 三维 / 二维 / 工程图在工程数据软类型里都是 ENG_DOCUMENT，靠关系的 linkType 区分 */
+const CAD_DRAWING_TYPES = ['THREE_D', 'TWO_D', 'DRAWING']
+const CAD_DRAWING_OBJECT_CODES = ['ENG_DOCUMENT', 'THREE_D', 'CAD_MODEL', '3D_MODEL', 'TWO_D', 'DRAWING']
+
 /** 按关键词本地过滤（名称/编号），避免依赖后端关键字参数 */
 const filteredAddEngDocList = computed(() => {
   const kw = addEngDocKeyword.value.trim().toLowerCase()
-  if (!kw) return addEngDocList.value
-  return addEngDocList.value.filter(d =>
-    (d.name || '').toLowerCase().includes(kw) || (d.number || '').toLowerCase().includes(kw)
-  )
+  const type = addEngDocTypeFilter.value
+  return addEngDocList.value.filter(d => {
+    const code = String(d.typeDefinitionCode || '').toUpperCase()
+    if (CAD_DRAWING_TYPES.includes(type)) {
+      if (!CAD_DRAWING_OBJECT_CODES.includes(code)) return false
+    } else if (type && code !== type) {
+      return false
+    }
+    if (!kw) return true
+    return (d.name || '').toLowerCase().includes(kw) || (d.number || '').toLowerCase().includes(kw)
+  })
 })
 
-function onAddEngDocLink() {
+const addEngDocModalTitle = computed(() => ({
+  SYMBOL: '关联图符',
+  FOOTPRINT: '关联封装',
+  DATASHEET: '关联 Datasheet',
+  THREE_D: '关联三维模型',
+  TWO_D: '关联二维图纸',
+  DRAWING: '关联工程图',
+}[addEngDocTypeFilter.value] || '关联工程数据'))
+
+/** type 由 CAD 卡片传入；空值时退化为原来的通用关联弹窗 */
+async function onAddEngDocLink(type = '') {
   if (!oid.value) { message.warning('缺少当前部件信息'); return }
   addEngDocModalVisible.value = true
+  addEngDocTypeFilter.value = type
   addEngDocKeyword.value = ''
   addEngDocSelectedRowKeys.value = []
   addEngDocAssocType.value = 'CONTENT'
   addEngDocBuildStructure.value = false
   addEngDocBuildAttribute.value = false
   addEngDocBuildRepresentation.value = false
+  addEngDocFolderOid.value = null
+  addEngDocFolderTree.value = []
+  addEngDocLibraryName.value = ''
+  addEngDocStageOid.value = null
+
+  if (['SYMBOL', 'FOOTPRINT', 'DATASHEET'].includes(type)) {
+    // 图符 / 封装 / Datasheet 都放在「封装·图符库」PACKAGE_SYMBOL 里，靠 typeDefinitionCode 区分；
+    // 容器固定，不允许改，显示库名而不是原始 oid。
+    try {
+      const res = await getPackageSymbolContext()
+      const ctx = res?.code === 200 ? (res.data || null) : null
+      if (ctx?.containerOid) {
+        addEngDocContainerOid.value = ctx.containerOid
+        addEngDocLibraryName.value = ctx.containerName || '封装·图符库'
+        addEngDocStageOid.value = ctx.stageOid || null
+        const treeRes = await getFolderTree(ctx.containerOid, ctx.stageOid)
+        addEngDocFolderTree.value = treeRes?.code === 200 ? (treeRes.data || []) : []
+      } else {
+        addEngDocContainerOid.value = null
+        message.warning('未取到封装·图符库上下文')
+      }
+    } catch {
+      addEngDocContainerOid.value = null
+      message.warning('加载封装·图符库失败')
+    }
+    await loadAddEngDocs()
+    return
+  }
+
   addEngDocContainerOid.value = part.value?.containerOid || null
   loadContainerOptions()
   loadAddEngDocs()
 }
 
-/** 加载当前容器下的工程数据，排除已关联的（后端唯一约束兜底） */
+/** 加载可选工程数据，排除已关联的（后端唯一约束兜底） */
 async function loadAddEngDocs() {
   const containerOid = addEngDocContainerOid.value
   if (!containerOid) { addEngDocList.value = []; return }
   addEngDocLoading.value = true
   try {
-    const res = await getEngineeringDocuments({ containerOid })
-    const arr = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+    let arr
+    if (isPackageSymbolEntry.value) {
+      // 专用端点同时支持 folderOid + typeCode，避免把整个容器的图符/封装都拉回来再本地筛
+      const res = await getPackageSymbols({
+        folderOid: addEngDocFolderOid.value || undefined,
+        typeCode: addEngDocTypeFilter.value,
+      })
+      const data = res?.code === 200 ? (res.data || {}) : {}
+      arr = data.items || []
+      if (data.context?.containerName && !addEngDocLibraryName.value) {
+        addEngDocLibraryName.value = data.context.containerName
+      }
+    } else {
+      const res = await getEngineeringDocuments({
+        containerOid,
+        folderOid: addEngDocFolderOid.value || undefined,
+      })
+      arr = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+    }
     const linked = new Set(engDocLinks.value.map(l => l.engDocumentOid))
     addEngDocList.value = arr.filter(d => d && d.oid && !linked.has(d.oid))
   } catch { addEngDocList.value = [] }
@@ -4975,10 +5159,11 @@ async function loadAddEngDocs() {
 }
 
 /**
- * 关联工程数据（单选）。
+ * 关联工程数据。
  *
- * <p>一个零件版本只能挂**一份**工程数据（2026-10-26 用户口径），所以这里只提交选中的那一条；
- * 后端 create 里还有一道同样的校验 —— 两个页签同时点、或绕过弹窗直接调接口，也只会成功一条。
+ * <p>关系是 iteration ↔ iteration：零件侧传当前迭代；工程数据侧即便不传迭代，后端也会解析到
+ * 最新版本并落库。linkType 记录对象语义（符号 / 封装 / Datasheet / 三维 / 通用），
+ * 一个零件版本可以同时挂不同类型，同一类型同一迭代不会重复。
  */
 async function confirmAddEngDocLinks() {
   const target = addEngDocList.value.find(d => addEngDocSelectedRowKeys.value.includes(d.oid))
@@ -4987,8 +5172,11 @@ async function confirmAddEngDocLinks() {
   try {
     const res = await createEngDocPartLink({
       partOid: oid.value,
+      partIterationOid: currentIterationOid.value || undefined,
       engDocumentOid: target.oid,
+      engDocIterationOid: target.latestIterationOid || target.iterationOid || undefined,
       assocType: addEngDocAssocType.value,
+      linkType: addEngDocTypeFilter.value || 'ENG_DOCUMENT',
       buildStructure: addEngDocBuildStructure.value,
       buildAttribute: addEngDocBuildAttribute.value,
       buildRepresentation: addEngDocBuildRepresentation.value,
@@ -5128,8 +5316,8 @@ watch(activeTab, (key) => {
   if (key === 'usedBy' && usedByList.value.length === 0 && !usedByLoading.value) loadUsedBy()
   if (key === 'twoWaySubstitute' && alternateList.value.length === 0 && !alternateLoading.value) loadAlternates()
   if (key === 'relatedDocs' && docLinksList.value.length === 0 && !docLinksLoading.value) loadDocLinks()
-  // 工程数据已并入「CAD 描述」页签（2026-10-26）：切到它时再拉，打开别的页签不多发请求
-  if (key === 'cad' && engDocLinks.value.length === 0 && !engDocLoading.value) loadEngDocLinks()
+  // 工程数据已并入「CAD 描述」页签：每次切进来都按当前迭代重拉，避免历史版本间串数据
+  if (key === 'cad' && !engDocLoading.value) loadEngDocLinks()
   if (key === 'changes' && changeNotices.value.length === 0 && !changeLoading.value) loadChangeNotices()
 })
 
@@ -5163,9 +5351,10 @@ watch(() => route.params.oid, async (newOid, oldOid) => {
   if (activeTab.value === 'bom') loadBom()
 })
 
-// 当前查看迭代变化时（如详情数据更新），同步刷新 BOM
+// 当前查看迭代变化时（如详情数据更新），同步刷新 BOM 与 CAD 卡片关联
 watch(currentIterationOid, () => {
   if (activeTab.value === 'bom') loadBom()
+  if (activeTab.value === 'cad' && !engDocLoading.value) loadEngDocLinks()
 })
 
 onMounted(async () => {
@@ -6072,6 +6261,52 @@ onMounted(async () => {
 }
 .cad-grid {
   padding: 4px 0;
+}
+.cad-link-row {
+  padding: 4px 0 6px;
+  border-bottom: 1px dashed #f0f0f0;
+}
+.cad-link-row:last-of-type {
+  border-bottom: none;
+}
+.cad-link-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+}
+.cad-link-line--sub {
+  justify-content: space-between;
+}
+.cad-link-number {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f1f1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cad-link-version {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 5px;
+}
+.cad-link-name {
+  font-size: 12px;
+  color: #8c8c8c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cad-link-unlink {
+  flex: none;
+  padding: 0 2px;
+  font-size: 12px;
+}
+.cad-link-add {
+  padding: 4px 0 0;
+  font-size: 12px;
 }
 
 /* 工程数据区块：挂在 CAD 卡片下方，用一条虚线把"描述"与"关联的数据"分开 */

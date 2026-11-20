@@ -77,11 +77,15 @@ public interface ResourceLibraryMapper {
      * @param keyword  关键字（名称/编码模糊，可空）
      */
     /**
-     * 资源库清单查询：按对象软类型 + 分类集合。
+     * 资源库清单查询：按对象软类型 + 所属资源库容器 + 分类集合。
      *
-     * @param typeCode 对象软类型 code（ELECTRONIC / STD_PART / GEN_PART）
+     * @param typeCodes   对象软类型 code 集合：兼容库里原有的 STRUCTURAL 与升级后的
+     *                    STD_PART / GEN_PART（仍必须叠加容器条件）
+     * @param containerOid 当前资源子库容器 oid（COMPONENT / STD_PART / GEN_PART 节点）；
+     *                    必须限定，否则类型相同的产品结构下对象（如 STRUCTURAL 结构件）会串进标准件/通用件库
      */
     List<Map<String, Object>> selectLibraryItems(@Param("clsOids") List<String> clsOids,
                                                  @Param("keyword") String keyword,
-                                                 @Param("typeCode") String typeCode);
+                                                 @Param("typeCodes") List<String> typeCodes,
+                                                 @Param("containerOid") String containerOid);
 }
