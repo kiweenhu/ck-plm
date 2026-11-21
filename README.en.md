@@ -13,9 +13,9 @@
 
 CK-PLM is an open-source Product Lifecycle Management platform initiated and open-sourced by **Shenzhen Chengkai Technology Co., Ltd.** It is built from scratch based on over a decade of Windchill implementation experience and architectural understanding. Designed for discrete manufacturing, it provides core PLM capabilities including version control, BOM management, lifecycle management, soft type extension, classification system, engineering documents, workflow engine, and resource libraries.
 
-> ⚠️ **Project Status**: Work In Progress — the core architecture is implemented in code. You are welcome to clone, try it out, and contribute. Not yet recommended for production use.
+> ✅ **Project Status**: v0.3.6 — core features are implemented in code and **ready for production use**. You are welcome to clone, try it out, contribute, or use it directly.
 >
-> Latest release: [v0.3.0](CHANGELOG.md) (2026-11-04) — v0.3 development cycle: added BOM management, change management (ECR/ECN/technical review), CAD visualization integration, methodology template system, MPN manufacturer management, and industry pack framework. Workflow engine switched from Activiti to Flowable 7.2.0.
+> Latest release: [v0.3.6](CHANGELOG.md) (2026-11-21) — ECAD electronic design integration: Cadence OrCAD schematics brought under PLM version control, plus drawing conversion (CK-DrawingForge) and generic part upgrade capabilities.
 
 > 🌐 **Live Demo**: <http://plm.ckai-tech.group/>
 >
@@ -171,7 +171,7 @@ Default access: http://localhost:5173
 
 ## Known Limitations
 
-- Project is in WIP stage; APIs and data models may change, not recommended for production
+- Minor releases may still adjust APIs and data models; please read [CHANGELOG.md](CHANGELOG.md) and release notes before upgrading
 - **Internationalization (i18n)** not yet supported; UI and messages are Chinese-only
 - BOM multi-view complete semantics (inter-view transition, effectivity management) still being refined
 - Cross-version upgrades require manual incremental SQL (no auto-migration framework); `schema.sql` only describes the complete structure of the current version
